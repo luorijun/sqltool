@@ -31,7 +31,7 @@ const schema = z.object({
 
 type Schema = z.infer<typeof schema>
 
-export default function NewConn() {
+export default function NewConn({ onSaved }: { onSaved?: () => void } = {}) {
   const [open, setOpen] = useState(false)
   const form = useForm({
     resolver: zodResolver(schema),
@@ -51,6 +51,7 @@ export default function NewConn() {
       await connection.create(data)
       toast.success("连接已保存")
       toggleDialog(false)
+      onSaved?.()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "保存失败")
     }

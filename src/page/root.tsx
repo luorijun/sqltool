@@ -1,13 +1,17 @@
-import NewConn from "./conn"
+import { useCallback, useState } from "react"
+import Header from "./header/header"
+import Main from "./main"
+import Nav from "./navabr/navbar"
 
 export default function Root() {
+  const [refreshKey, setRefreshKey] = useState(0)
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
+
   return (
-    <div className="w-screen h-screen grid grid-cols-[256px_1fr] grid-rows-[64px_1fr]">
-      <header className="col-start-1 col-span-2 bg-red-50">
-        <NewConn />
-      </header>
-      <nav>nav</nav>
-      <main className="col-start-2 col-span-1">main</main>
+    <div className="w-screen h-screen grid grid-cols-[256px_1fr] grid-rows-[40px_1fr]">
+      <Header onSaved={refresh} />
+      <Nav refreshKey={refreshKey} onChanged={refresh} />
+      <Main />
     </div>
   )
 }
