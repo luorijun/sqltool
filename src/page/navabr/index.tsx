@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Connection } from "@/lib/connection/index"
-import connection from "@/lib/connection/renderer"
+import type { Config } from "../../lib/config/index"
+import config from "../../lib/config/renderer"
 import { ConnectionItem } from "./conn-item"
 import { DbExplorer } from "./db-explorer"
 import { DbHeader } from "./db-header"
@@ -22,15 +22,15 @@ export interface NavProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Nav({ refreshKey, onChanged }: NavProps) {
-  const [connections, setConnections] = useState<Connection[]>([])
-  const [activeConn, setActiveConn] = useState<Connection | null>(null)
-  const [editTarget, setEditTarget] = useState<Connection | null>(null)
+  const [connections, setConnections] = useState<Config[]>([])
+  const [activeConn, setActiveConn] = useState<Config | null>(null)
+  const [editTarget, setEditTarget] = useState<Config | null>(null)
 
   // Accepts an ignored `_trigger` so callers can pass `refreshKey` as an
   // argument, making it visible to Biome's exhaustive-deps rule in useEffect.
   const load = useCallback(async (_trigger?: unknown) => {
     try {
-      const list = await connection.list()
+      const list = await config.list()
       setConnections(list)
     } catch {
       toast.error("加载连接列表失败")
@@ -42,9 +42,9 @@ export default function Nav({ refreshKey, onChanged }: NavProps) {
     load(refreshKey)
   }, [load, refreshKey])
 
-  const handleDelete = async (conn: Connection) => {
+  const handleDelete = async (conn: Config) => {
     try {
-      await connection.delete(conn.id)
+      await config.delete(conn.id)
       setConnections((prev) => prev.filter((c) => c.id !== conn.id))
       if (activeConn?.id === conn.id) setActiveConn(null)
       toast.success(`"${conn.name ?? "连接"}" 已删除`)

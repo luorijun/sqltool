@@ -1,7 +1,7 @@
 import path from "node:path"
 import { app, BrowserWindow } from "electron"
 import started from "electron-squirrel-startup"
-import { registerHandlers as registerConnectionHandlers } from "./lib/connection/main"
+import { registerHandlers as registerConnectionHandlers } from "./lib/config/main"
 
 if (started) {
   app.quit()

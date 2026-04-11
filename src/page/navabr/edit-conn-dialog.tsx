@@ -15,9 +15,9 @@ import {
 import { FieldGroup } from "@/components/ui/field"
 import { FormField } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import type { Connection } from "@/lib/connection/index"
-import connection from "@/lib/connection/renderer"
 import z from "@/lib/zod"
+import type { Config } from "../../lib/config/index"
+import config from "../../lib/config/renderer"
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ type Schema = z.infer<typeof schema>
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export interface EditConnDialogProps {
-  conn: Connection | null
+  conn: Config | null
   onClose: () => void
   onSaved: () => void
 }
@@ -67,7 +67,7 @@ export function EditConnDialog({
   const save = async (data: Schema) => {
     if (!conn) return
     try {
-      await connection.update(conn.id, data)
+      await config.update(conn.id, data)
       toast.success("连接已更新")
       onSaved()
     } catch (err) {

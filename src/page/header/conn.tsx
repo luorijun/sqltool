@@ -16,8 +16,8 @@ import {
 import { FieldGroup } from "@/components/ui/field"
 import { FormField } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import connection from "@/lib/connection/renderer"
 import z from "@/lib/zod"
+import config from "../../lib/config/renderer"
 
 const schema = z.object({
   name: z.string().nonempty(),
@@ -48,7 +48,7 @@ export default function NewConn({ onSaved }: { onSaved?: () => void } = {}) {
 
   const save = async (data: Schema) => {
     try {
-      await connection.create(data)
+      await config.create(data)
       toast.success("连接已保存")
       toggleDialog(false)
       onSaved?.()

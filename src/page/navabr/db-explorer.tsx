@@ -14,9 +14,9 @@ import {
 } from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Connection } from "@/lib/connection/index"
 import { addTabAtom } from "@/lib/tabs"
 import { cn } from "@/lib/utils"
+import type { Config } from "../../lib/config/index"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -437,7 +437,7 @@ function SchemaSection({
 // ─── DbExplorer ───────────────────────────────────────────────────────────────
 
 export interface DbExplorerProps {
-  conn: Connection
+  conn: Config
 }
 
 export function DbExplorer({ conn }: DbExplorerProps) {

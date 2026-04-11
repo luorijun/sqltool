@@ -14,13 +14,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Connection } from "@/lib/connection/index"
+import type { Config } from "../../lib/config/index"
 import { DriverIcon } from "./driver-icon"
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export interface DbHeaderProps {
-  conn: Connection
+  conn: Config
   onBack: () => void
   onNewQuery: () => void
   onRefresh: () => void

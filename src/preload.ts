@@ -1,6 +1,6 @@
 import { contextBridge } from "electron"
-import { bridge as connectionBridge } from "./lib/connection/preload"
+import { bridge as configBridge } from "./lib/config/preload"
 
 contextBridge.exposeInMainWorld("main", {
-  connection: connectionBridge,
+  config: configBridge,
 })

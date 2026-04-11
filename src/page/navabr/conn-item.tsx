@@ -7,13 +7,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Connection } from "@/lib/connection/index"
+import type { Config } from "../../lib/config/index"
 import { DriverIcon, driverLabel } from "./driver-icon"
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export interface ConnectionItemProps {
-  conn: Connection
+  conn: Config
   active: boolean
   onSelect: () => void
   onEdit: () => void
