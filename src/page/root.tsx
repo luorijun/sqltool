@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react"
 import Header from "./header/header"
 import Main from "./main"
-import Nav from "./navabr/navbar"
+import Nav from "./navabr"
 
 export default function Root() {
   const [refreshKey, setRefreshKey] = useState(0)
