@@ -1,25 +1,9 @@
+import { useAtomValue, useSetAtom } from "jotai"
 import { AlignLeft, Play } from "lucide-react"
 import { useCallback, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { activeTabSqlAtom, updateActiveSqlAtom } from "@/lib/tabs"
 import { cn } from "@/lib/utils"
-
-// ─── Mock SQL ─────────────────────────────────────────────────────────────────
-
-const MOCK_SQL = `-- 查询近 30 天注册的用户列表
-SELECT
-  u.id,
-  u.username,
-  u.email,
-  u.role,
-  u.status,
-  u.created_at,
-  u.updated_at
-FROM users u
-WHERE u.role = 'member'
-  AND u.created_at > NOW() - INTERVAL '30 days'
-ORDER BY u.created_at DESC
-LIMIT 100;
-`
 
 // ─── Line Numbers ─────────────────────────────────────────────────────────────
 
@@ -57,7 +41,8 @@ function LineNumbers({
 const LINE_HEIGHT = 20 // px — must match the textarea's line-height
 
 export function CodeArea() {
-  const [sql, setSql] = useState(MOCK_SQL)
+  const sql = useAtomValue(activeTabSqlAtom)
+  const updateSql = useSetAtom(updateActiveSqlAtom)
   const [scrollTop, setScrollTop] = useState(0)
   const [cursor, setCursor] = useState({ line: 1, col: 1 })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -128,7 +113,7 @@ export function CodeArea() {
           <textarea
             ref={textareaRef}
             value={sql}
-            onChange={(e) => setSql(e.target.value)}
+            onChange={(e) => updateSql(e.target.value)}
             onScroll={handleScroll}
             onKeyUp={handleKeyUp}
             onClick={handleKeyUp}

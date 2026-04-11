@@ -1,6 +1,9 @@
+import { useAtomValue } from "jotai"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { hasTabsAtom } from "@/lib/tabs"
 import { CodeArea } from "./code-area"
 import { Divider } from "./divider"
+import { EmptyPage } from "./empty-page"
 import { ExecLog } from "./exec-log"
 import { TabBar } from "./tab-bar"
 import { TableArea } from "./table-area"
@@ -30,6 +33,7 @@ interface DragState {
 export default function Main() {
   // tableHeight  — pixel height given to the table panel
   // logWidth     — pixel width given to the log panel
+  const hasTabs = useAtomValue(hasTabsAtom)
   const [tableHeight, setTableHeight] = useState(INITIAL_TABLE_HEIGHT)
   const [logWidth, setLogWidth] = useState(INITIAL_LOG_WIDTH)
 
@@ -128,32 +132,42 @@ export default function Main() {
       {/* Tab bar — fixed height */}
       <TabBar />
 
-      {/* Table area — controlled height */}
-      <div className="shrink-0 overflow-hidden" style={{ height: tableHeight }}>
-        <TableArea />
-      </div>
+      {/* Main content area */}
+      {hasTabs ? (
+        <>
+          {/* Table area — controlled height */}
+          <div
+            className="shrink-0 overflow-hidden"
+            style={{ height: tableHeight }}
+          >
+            <TableArea />
+          </div>
 
-      {/* Horizontal divider — resizes table / bottom split */}
-      <Divider orientation="horizontal" onMouseDown={onHDividerMouseDown} />
+          {/* Horizontal divider — resizes table / bottom split */}
+          <Divider orientation="horizontal" onMouseDown={onHDividerMouseDown} />
 
-      {/* Bottom section: code editor + vertical divider + exec log */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Code area — fills remaining width */}
-        <div className="flex-1 overflow-hidden min-w-0">
-          <CodeArea />
-        </div>
+          {/* Bottom section: code editor + vertical divider + exec log */}
+          <div className="flex-1 flex overflow-hidden min-h-0">
+            {/* Code area — fills remaining width */}
+            <div className="flex-1 overflow-hidden min-w-0">
+              <CodeArea />
+            </div>
 
-        {/* Vertical divider — resizes code / log split */}
-        <Divider orientation="vertical" onMouseDown={onVDividerMouseDown} />
+            {/* Vertical divider — resizes code / log split */}
+            <Divider orientation="vertical" onMouseDown={onVDividerMouseDown} />
 
-        {/* Exec log — controlled width */}
-        <div
-          className="shrink-0 overflow-hidden border-l"
-          style={{ width: logWidth }}
-        >
-          <ExecLog />
-        </div>
-      </div>
+            {/* Exec log — controlled width */}
+            <div
+              className="shrink-0 overflow-hidden border-l"
+              style={{ width: logWidth }}
+            >
+              <ExecLog />
+            </div>
+          </div>
+        </>
+      ) : (
+        <EmptyPage />
+      )}
     </main>
   )
 }

@@ -1,27 +1,15 @@
+import { useAtomValue, useSetAtom } from "jotai"
 import { Plus, X } from "lucide-react"
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import {
+  activeTabIdAtom,
+  addTabAtom,
+  closeTabAtom,
+  selectTabAtom,
+  type Tab,
+  tabsAtom,
+} from "@/lib/tabs"
 import { cn } from "@/lib/utils"
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Tab {
-  id: string
-  label: string
-  /** Unsaved changes indicator */
-  dirty?: boolean
-}
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const INITIAL_TABS: Tab[] = [
-  { id: "1", label: "查询 1" },
-  { id: "2", label: "查询 2", dirty: true },
-]
-
-let nextTabId = 3
-
-// ─── Tab Item ─────────────────────────────────────────────────────────────────
 
 function TabItem({
   tab,
@@ -87,31 +75,12 @@ function TabItem({
   )
 }
 
-// ─── Tab Bar ─────────────────────────────────────────────────────────────────
-
 export function TabBar() {
-  const [tabs, setTabs] = useState<Tab[]>(INITIAL_TABS)
-  const [activeId, setActiveId] = useState<string>("1")
-
-  const addTab = () => {
-    const id = String(nextTabId++)
-    const newTab: Tab = { id, label: `查询 ${id}` }
-    setTabs((prev) => [...prev, newTab])
-    setActiveId(id)
-  }
-
-  const closeTab = (id: string) => {
-    setTabs((prev) => {
-      const next = prev.filter((t) => t.id !== id)
-      if (activeId === id && next.length > 0) {
-        // Activate the tab to the left, or the last one
-        const closedIndex = prev.findIndex((t) => t.id === id)
-        const newActive = next[Math.max(0, closedIndex - 1)]
-        setActiveId(newActive.id)
-      }
-      return next
-    })
-  }
+  const tabs = useAtomValue(tabsAtom)
+  const activeId = useAtomValue(activeTabIdAtom)
+  const addTab = useSetAtom(addTabAtom)
+  const closeTab = useSetAtom(closeTabAtom)
+  const selectTab = useSetAtom(selectTabAtom)
 
   return (
     <div className="flex-none basis-10 flex items-stretch border-b bg-sidebar overflow-hidden">
@@ -122,7 +91,7 @@ export function TabBar() {
             key={tab.id}
             tab={tab}
             active={activeId === tab.id}
-            onSelect={() => setActiveId(tab.id)}
+            onSelect={() => selectTab(tab.id)}
             onClose={() => closeTab(tab.id)}
           />
         ))}
@@ -133,7 +102,7 @@ export function TabBar() {
         <Button
           variant="ghost"
           size="icon-xs"
-          onClick={addTab}
+          onClick={() => addTab()}
           title="新建查询"
         >
           <Plus />

@@ -1,6 +1,8 @@
+import { useAtomValue } from "jotai"
 import { CheckCircle2, CircleX, Info, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { activeTabContentAtom } from "@/lib/tabs"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -15,47 +17,6 @@ interface LogEntry {
   detail?: string
   duration?: number
 }
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_LOGS: LogEntry[] = [
-  {
-    id: "5",
-    time: "14:32:01",
-    status: "running",
-    sql: "SELECT * FROM orders WHERE status = 'pending'",
-  },
-  {
-    id: "4",
-    time: "14:31:45",
-    status: "success",
-    sql: "SELECT u.id, u.username, u.email FROM users u LIMIT 100",
-    duration: 12,
-    detail: "返回 100 行",
-  },
-  {
-    id: "3",
-    time: "14:31:22",
-    status: "error",
-    sql: "SELECT * FROM nonexistent_table",
-    detail:
-      'ERROR: relation "nonexistent_table" does not exist\nLINE 1: SELECT * FROM nonexistent_table',
-  },
-  {
-    id: "2",
-    time: "14:30:55",
-    status: "success",
-    sql: "UPDATE users SET role = 'admin' WHERE id = 1",
-    duration: 5,
-    detail: "1 行受影响",
-  },
-  {
-    id: "1",
-    time: "14:30:30",
-    status: "info",
-    sql: "已连接到 localhost:5432/mydb",
-  },
-]
 
 // ─── Status Icon ──────────────────────────────────────────────────────────────
 
@@ -164,6 +125,19 @@ function LogEntryItem({ entry }: { entry: LogEntry }) {
 // ─── Exec Log ─────────────────────────────────────────────────────────────────
 
 export function ExecLog() {
+  const content = useAtomValue(activeTabContentAtom)
+
+  const entry: LogEntry | null = content?.executed
+    ? {
+        id: "1",
+        time: content.executedAt,
+        status: "success",
+        sql: content.sql,
+        duration: content.durationMs,
+        detail: `返回 ${content.rowCount} 行`,
+      }
+    : null
+
   return (
     <div className="size-full flex flex-col overflow-hidden">
       {/* Header */}
@@ -183,16 +157,14 @@ export function ExecLog() {
 
       {/* Log list */}
       <ScrollArea className="flex-1">
-        {MOCK_LOGS.length === 0 ? (
+        {entry ? (
+          <ul className="p-2 space-y-0.5">
+            <LogEntryItem entry={entry} />
+          </ul>
+        ) : (
           <p className="px-4 py-8 text-center text-xs text-muted-foreground">
             暂无执行记录
           </p>
-        ) : (
-          <ul className="p-2 space-y-0.5">
-            {MOCK_LOGS.map((entry) => (
-              <LogEntryItem key={entry.id} entry={entry} />
-            ))}
-          </ul>
         )}
       </ScrollArea>
     </div>

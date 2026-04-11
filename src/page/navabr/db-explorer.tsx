@@ -1,3 +1,4 @@
+import { useSetAtom } from "jotai"
 import {
   Braces,
   ChevronDown,
@@ -8,11 +9,13 @@ import {
   Layers,
   Link,
   Minus,
+  Play,
   Table2,
 } from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Connection } from "@/lib/connection/index"
+import { addTabAtom } from "@/lib/tabs"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -209,25 +212,75 @@ function ColumnIcon({ col }: { col: Column }) {
 
 function TableNode({
   table,
+  schemaName,
   expanded,
   onToggle,
 }: {
   table: Table
+  schemaName: string
   expanded: boolean
   onToggle: () => void
 }) {
+  const addTab = useSetAtom(addTabAtom)
+
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    addTab({
+      label: table.name,
+      sql: `SELECT *\nFROM ${schemaName}.${table.name}\nLIMIT 100;`,
+      columns: table.columns.map((c) => c.name),
+    })
+  }
+
   return (
     <>
-      <TreeRow
-        depth={2}
-        icon={<Table2 className="size-3.5 text-muted-foreground shrink-0" />}
-        label={table.name}
-        meta={table.rowCount?.toLocaleString()}
-        expandable
-        expanded={expanded}
-        onToggle={onToggle}
-      />
+      {/* Table row — plain div so we can nest an action button */}
+      <div
+        className="group/row flex items-center h-7 rounded-md text-xs select-none pr-1 cursor-pointer transition-colors hover:bg-accent/60"
+        style={{ paddingLeft: 2 * INDENT + 4 }}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") onToggle()
+        }}
+        role="button"
+        tabIndex={0}
+      >
+        {/* Chevron */}
+        <span className="w-4 shrink-0 flex items-center justify-center text-muted-foreground/50">
+          {expanded ? (
+            <ChevronDown className="size-3" />
+          ) : (
+            <ChevronRight className="size-3" />
+          )}
+        </span>
 
+        {/* Table icon */}
+        <span className="shrink-0 mr-1.5 flex items-center">
+          <Table2 className="size-3.5 text-muted-foreground shrink-0" />
+        </span>
+
+        {/* Label */}
+        <span className="flex-1 min-w-0 truncate">{table.name}</span>
+
+        {/* Row count — visible normally, hidden on hover */}
+        {table.rowCount !== undefined && (
+          <span className="font-mono text-[10.5px] text-muted-foreground/55 pl-2 shrink-0 group-hover/row:hidden">
+            {table.rowCount.toLocaleString()}
+          </span>
+        )}
+
+        {/* Open-in-tab button — shown on hover */}
+        <button
+          type="button"
+          title={`查询 ${table.name}`}
+          className="hidden group-hover/row:flex items-center justify-center size-5 rounded shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+          onClick={handleOpen}
+        >
+          <Play className="size-3" />
+        </button>
+      </div>
+
+      {/* Column rows (unchanged) */}
       {expanded &&
         table.columns.map((col) => (
           <TreeRow
@@ -324,6 +377,7 @@ function SchemaSection({
                 <TableNode
                   key={tableKey}
                   table={table}
+                  schemaName={schema.name}
                   expanded={expandedNodes.has(tableKey)}
                   onToggle={() => toggleNode(tableKey)}
                 />
