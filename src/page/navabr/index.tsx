@@ -25,6 +25,7 @@ export default function Nav({ refreshKey, onChanged }: NavProps) {
   const [connections, setConnections] = useState<Config[]>([])
   const [activeConn, setActiveConn] = useState<Config | null>(null)
   const [editTarget, setEditTarget] = useState<Config | null>(null)
+  const [explorerRefreshKey, setExplorerRefreshKey] = useState(0)
 
   // Accepts an ignored `_trigger` so callers can pass `refreshKey` as an
   // argument, making it visible to Biome's exhaustive-deps rule in useEffect.
@@ -63,11 +64,15 @@ export default function Nav({ refreshKey, onChanged }: NavProps) {
             conn={activeConn}
             onBack={() => setActiveConn(null)}
             onNewQuery={() => {}}
-            onRefresh={() => {}}
+            onRefresh={() => setExplorerRefreshKey((prev) => prev + 1)}
             onDisconnect={() => setActiveConn(null)}
             onEditConn={() => setEditTarget(activeConn)}
           />
-          <DbExplorer conn={activeConn} />
+          <DbExplorer
+            key={activeConn.id}
+            conn={activeConn}
+            refreshKey={explorerRefreshKey}
+          />
         </>
       ) : (
         // ── Disconnected: show connection list ───────────────────────────────
@@ -116,8 +121,9 @@ export default function Nav({ refreshKey, onChanged }: NavProps) {
       <EditConnDialog
         conn={editTarget}
         onClose={() => setEditTarget(null)}
-        onSaved={() => {
+        onSaved={(savedConn) => {
           setEditTarget(null)
+          setActiveConn((prev) => (prev?.id === savedConn.id ? savedConn : prev))
           load()
           onChanged?.()
         }}

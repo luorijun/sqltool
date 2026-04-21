@@ -1,11 +1,21 @@
 import { ipcRenderer } from "electron"
-import type { CreateConfig, UpdateConfig } from "./index"
+import type { CreateConfig, UpdateConfig } from "."
+import { CREATE, DELETE, GET, LIST, UPDATE } from "."
 
 export const bridge = {
-  list: () => ipcRenderer.invoke("config:list"),
-  get: (id: string) => ipcRenderer.invoke("config:get", id),
-  create: (input: CreateConfig) => ipcRenderer.invoke("config:create", input),
-  update: (id: string, input: UpdateConfig) =>
-    ipcRenderer.invoke("config:update", id, input),
-  delete: (id: string) => ipcRenderer.invoke("config:delete", id),
+  list: () => {
+    return ipcRenderer.invoke(LIST)
+  },
+  get: (id: string) => {
+    return ipcRenderer.invoke(GET, id)
+  },
+  create: (input: CreateConfig) => {
+    return ipcRenderer.invoke(CREATE, input)
+  },
+  update: (id: string, input: UpdateConfig) => {
+    return ipcRenderer.invoke(UPDATE, id, input)
+  },
+  delete: (id: string) => {
+    return ipcRenderer.invoke(DELETE, id)
+  },
 }

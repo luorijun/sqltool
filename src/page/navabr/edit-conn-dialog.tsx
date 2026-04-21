@@ -38,7 +38,7 @@ type Schema = z.infer<typeof schema>
 export interface EditConnDialogProps {
   conn: Config | null
   onClose: () => void
-  onSaved: () => void
+  onSaved: (conn: Config) => void
 }
 
 export function EditConnDialog({
@@ -67,9 +67,9 @@ export function EditConnDialog({
   const save = async (data: Schema) => {
     if (!conn) return
     try {
-      await config.update(conn.id, data)
+      const updated = await config.update(conn.id, data)
       toast.success("连接已更新")
-      onSaved()
+      onSaved(updated)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "更新失败")
     }

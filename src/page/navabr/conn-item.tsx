@@ -30,25 +30,26 @@ export function ConnectionItem({
   onDelete,
 }: ConnectionItemProps) {
   return (
-    <button
-      type="button"
-      data-active={active}
-      className="group relative flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-accent data-[active=true]:bg-accent"
-      onClick={onSelect}
-    >
-      <span className="text-muted-foreground group-data-[active=true]:text-foreground">
-        <DriverIcon driver={conn.driver} />
-      </span>
+    <div className="w-full flex items-stretch group">
+      <button
+        type="button"
+        data-active={active}
+        className="flex-auto relative flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-accent data-[active=true]:bg-accent"
+        onClick={onSelect}
+      >
+        <span className="text-muted-foreground group-data-[active=true]:text-foreground">
+          <DriverIcon driver={conn.driver} />
+        </span>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium leading-tight">
-          {conn.name ?? "未命名"}
-        </p>
-        <p className="text-xs leading-tight text-muted-foreground">
-          {driverLabel[conn.driver] ?? conn.driver}
-        </p>
-      </div>
-
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium leading-tight">
+            {conn.name ?? "未命名"}
+          </p>
+          <p className="text-xs leading-tight text-muted-foreground">
+            {driverLabel[conn.driver] ?? conn.driver}
+          </p>
+        </div>
+      </button>
       <DropdownMenu>
         {/* stopPropagation prevents the parent button's onClick from firing */}
         <DropdownMenuTrigger
@@ -56,7 +57,7 @@ export function ConnectionItem({
             <Button
               variant="ghost"
               size="icon-xs"
-              className="shrink-0 opacity-0 group-hover:opacity-100 data-popup-open:opacity-100"
+              className="flex-none h-auto self-stretch opacity-0 group-hover:opacity-100 data-popup-open:opacity-100"
             />
           }
           onClick={(e) => e.stopPropagation()}
@@ -87,6 +88,6 @@ export function ConnectionItem({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </button>
+    </div>
   )
 }

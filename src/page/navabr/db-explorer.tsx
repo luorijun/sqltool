@@ -12,113 +12,41 @@ import {
   Play,
   Table2,
 } from "lucide-react"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import type {
+  DbColumn as Column,
+  DbSchema as Schema,
+  DbTable as Table,
+} from "@/lib/conn"
+import connApi from "@/lib/conn/renderer"
 import { addTabAtom } from "@/lib/tabs"
 import { cn } from "@/lib/utils"
 import type { Config } from "../../lib/config/index"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Column {
-  name: string
-  type: string
-  pk?: boolean
-  fk?: boolean
-}
-
-interface Table {
-  name: string
-  rowCount?: number
-  columns: Column[]
-}
-
-interface DbView {
-  name: string
-}
-
-interface DbFunction {
-  name: string
-}
-
-interface Schema {
-  name: string
-  tables: Table[]
-  views: DbView[]
-  functions: DbFunction[]
-}
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_SCHEMAS: Schema[] = [
-  {
-    name: "public",
-    tables: [
-      {
-        name: "users",
-        rowCount: 1247,
-        columns: [
-          { name: "id", type: "bigint", pk: true },
-          { name: "username", type: "varchar(100)" },
-          { name: "email", type: "varchar(255)" },
-          { name: "role", type: "varchar(50)" },
-          { name: "status", type: "varchar(20)" },
-          { name: "created_at", type: "timestamptz" },
-          { name: "updated_at", type: "timestamptz" },
-        ],
-      },
-      {
-        name: "orders",
-        rowCount: 8493,
-        columns: [
-          { name: "id", type: "bigint", pk: true },
-          { name: "user_id", type: "bigint", fk: true },
-          { name: "total", type: "numeric(10,2)" },
-          { name: "status", type: "varchar(20)" },
-          { name: "created_at", type: "timestamptz" },
-        ],
-      },
-      {
-        name: "products",
-        rowCount: 432,
-        columns: [
-          { name: "id", type: "bigint", pk: true },
-          { name: "name", type: "varchar(255)" },
-          { name: "price", type: "numeric(10,2)" },
-          { name: "stock", type: "integer" },
-          { name: "category_id", type: "bigint", fk: true },
-        ],
-      },
-      {
-        name: "categories",
-        rowCount: 18,
-        columns: [
-          { name: "id", type: "bigint", pk: true },
-          { name: "name", type: "varchar(100)" },
-          { name: "slug", type: "varchar(100)" },
-        ],
-      },
-      {
-        name: "order_items",
-        rowCount: 24891,
-        columns: [
-          { name: "id", type: "bigint", pk: true },
-          { name: "order_id", type: "bigint", fk: true },
-          { name: "product_id", type: "bigint", fk: true },
-          { name: "quantity", type: "integer" },
-          { name: "price", type: "numeric(10,2)" },
-        ],
-      },
-    ],
-    views: [{ name: "active_users" }, { name: "order_summary" }],
-    functions: [
-      { name: "get_total_revenue()" },
-      { name: "update_timestamps()" },
-    ],
-  },
-]
-
 // ─── Tree Row ─────────────────────────────────────────────────────────────────
+
+function quoteIdent(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`
+}
+
+function createDefaultExpandedNodes(schemas: Schema[]): Set<string> {
+  const next = new Set<string>()
+  const initialSchema =
+    schemas.find((schema) => schema.name === "public") ?? schemas[0]
+  if (!initialSchema) {
+    return next
+  }
+
+  next.add(`schema:${initialSchema.name}`)
+  next.add(`section:${initialSchema.name}:tables`)
+
+  if (initialSchema.tables[0]) {
+    next.add(`table:${initialSchema.name}:${initialSchema.tables[0].name}`)
+  }
+
+  return next
+}
 
 /** Horizontal indent per depth level in pixels */
 const INDENT = 10
@@ -227,7 +155,7 @@ function TableNode({
     e.stopPropagation()
     addTab({
       label: table.name,
-      sql: `SELECT *\nFROM ${schemaName}.${table.name}\nLIMIT 100;`,
+      sql: `SELECT *\nFROM ${quoteIdent(schemaName)}.${quoteIdent(table.name)}\nLIMIT 100;`,
       columns: table.columns.map((c) => c.name),
     })
   }
@@ -438,13 +366,59 @@ function SchemaSection({
 
 export interface DbExplorerProps {
   conn: Config
+  refreshKey?: number
 }
 
-export function DbExplorer({ conn }: DbExplorerProps) {
+export function DbExplorer({ conn, refreshKey }: DbExplorerProps) {
+  const [schemas, setSchemas] = useState<Schema[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(
-    () =>
-      new Set(["schema:public", "section:public:tables", "table:public:users"]),
+    () => new Set(),
   )
+  const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSchemas(connection: Config, _refreshTrigger?: unknown) {
+      setLoading(true)
+      setError(null)
+      setSchemas([])
+
+      try {
+        const nextSchemas = await connApi.inspect(connection)
+        if (cancelled) {
+          return
+        }
+        setSchemas(nextSchemas)
+      } catch (err) {
+        if (cancelled) {
+          return
+        }
+        setError(err instanceof Error ? err.message : "加载数据库结构失败")
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadSchemas(conn, refreshKey)
+
+    return () => {
+      cancelled = true
+    }
+  }, [conn, refreshKey])
+
+  useEffect(() => {
+    if (hasInitializedExpansion || schemas.length === 0) {
+      return
+    }
+
+    setExpandedNodes(createDefaultExpandedNodes(schemas))
+    setHasInitializedExpansion(true)
+  }, [hasInitializedExpansion, schemas])
 
   const toggleNode = (key: string) => {
     setExpandedNodes((prev) => {
@@ -471,19 +445,33 @@ export function DbExplorer({ conn }: DbExplorerProps) {
       {/* Schema tree */}
       <ScrollArea className="flex-1">
         <div className="p-1.5 space-y-px">
-          {MOCK_SCHEMAS.map((schema) => {
-            const schemaKey = `schema:${schema.name}`
-            return (
-              <SchemaSection
-                key={schemaKey}
-                schema={schema}
-                expanded={expandedNodes.has(schemaKey)}
-                onToggle={() => toggleNode(schemaKey)}
-                expandedNodes={expandedNodes}
-                toggleNode={toggleNode}
-              />
-            )
-          })}
+          {loading ? (
+            <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+              正在加载数据库结构...
+            </div>
+          ) : error ? (
+            <div className="px-3 py-8 text-center text-xs text-destructive">
+              {error}
+            </div>
+          ) : schemas.length === 0 ? (
+            <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+              当前数据库没有可显示的结构
+            </div>
+          ) : (
+            schemas.map((schema) => {
+              const schemaKey = `schema:${schema.name}`
+              return (
+                <SchemaSection
+                  key={schemaKey}
+                  schema={schema}
+                  expanded={expandedNodes.has(schemaKey)}
+                  onToggle={() => toggleNode(schemaKey)}
+                  expandedNodes={expandedNodes}
+                  toggleNode={toggleNode}
+                />
+              )
+            })
+          )}
         </div>
       </ScrollArea>
     </div>

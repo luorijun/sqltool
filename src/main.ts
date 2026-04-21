@@ -1,14 +1,16 @@
 import path from "node:path"
 import { app, BrowserWindow } from "electron"
 import started from "electron-squirrel-startup"
-import { registerHandlers as registerConnectionHandlers } from "./lib/config/main"
+import { registerHandlers as registerConfigHandlers } from "./lib/config/main"
+import { registerHandlers as registerConnHandlers } from "./lib/conn/main"
 
 if (started) {
   app.quit()
 }
 
 try {
-  registerConnectionHandlers()
+  registerConfigHandlers()
+  registerConnHandlers()
 } catch (e) {
   console.error(e)
 }
