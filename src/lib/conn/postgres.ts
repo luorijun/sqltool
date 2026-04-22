@@ -1,5 +1,4 @@
 import knex, { type Knex } from "knex"
-import pg from "pg"
 import type { Config } from "../config"
 import type {
   DbSchema,
@@ -98,21 +97,6 @@ function createClient(conn: Config): Knex {
       min: 0,
       max: 1,
     },
-  })
-}
-
-function createPgClient(conn: Config): pg.Client {
-  const port = Number(conn.port)
-  if (!Number.isInteger(port) || port <= 0) {
-    throw new Error(`无效的端口: ${conn.port}`)
-  }
-
-  return new pg.Client({
-    host: conn.host,
-    port,
-    user: conn.username,
-    password: conn.password,
-    database: conn.database,
   })
 }
 
@@ -278,15 +262,12 @@ export async function queryPostgres(
   conn: Config,
   sql: string,
 ): Promise<QueryResult> {
-  const client = createPgClient(conn)
+  const db = createClient(conn)
 
   try {
-    await client.connect()
-
-    const result = (await client.query({
-      rowMode: "array",
-      text: sql,
-    })) as PostgresQueryResult
+    const result = (await db
+      .raw(sql)
+      .options({ rowMode: "array" })) as PostgresQueryResult
 
     const rows = Array.isArray(result.rows) ? result.rows : []
     const columns: QueryResultColumn[] = Array.isArray(result.fields)
@@ -302,6 +283,6 @@ export async function queryPostgres(
       rowCount: toQueryRowCount(result.rowCount),
     }
   } finally {
-    await client.end()
+    await db.destroy()
   }
 }

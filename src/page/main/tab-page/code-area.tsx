@@ -1,8 +1,9 @@
 import { useAtomValue, useSetAtom } from "jotai"
 import { AlignLeft, Play } from "lucide-react"
-import { useCallback, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
+  activeTabIdAtom,
   activeTabContentAtom,
   activeTabSqlAtom,
   runActiveTabSqlAtom,
@@ -18,6 +19,7 @@ function getLineCount(sql: string): number {
 const DEFAULT_CURSOR: CursorPosition = { line: 1, col: 1 }
 
 export function CodeArea() {
+  const activeTabId = useAtomValue(activeTabIdAtom)
   const content = useAtomValue(activeTabContentAtom)
   const sql = useAtomValue(activeTabSqlAtom)
   const updateSql = useSetAtom(updateActiveSqlAtom)
@@ -28,7 +30,7 @@ export function CodeArea() {
     setCursor(nextCursor)
   }, [])
 
-  const lineCount = getLineCount(sql)
+  const lineCount = useMemo(() => getLineCount(sql), [sql])
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
@@ -49,6 +51,7 @@ export function CodeArea() {
           variant="ghost"
           size="xs"
           className="gap-1.5 text-muted-foreground"
+          disabled
         >
           <AlignLeft className="size-3" />
           格式化
@@ -73,6 +76,7 @@ export function CodeArea() {
       {/* ── Editor body ─────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <SqlEditor
+          key={activeTabId || "no-tab"}
           value={sql}
           driver={content?.connection?.driver}
           onChange={updateSql}

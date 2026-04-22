@@ -9,7 +9,14 @@ import {
 import { EditorView } from "@codemirror/view"
 import { tags } from "@lezer/highlight"
 import { basicSetup } from "codemirror"
-import { useEffect, useRef } from "react"
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import type { DbDriver } from "@/lib/config"
 
 export interface CursorPosition {
@@ -131,23 +138,29 @@ export function SqlEditor({
   onChange,
   onCursorChange,
 }: SqlEditorProps) {
-  const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const languageRef = useRef<Compartment | null>(null)
   const applyingExternalChangeRef = useRef(false)
-  const onChangeRef = useRef(onChange)
-  const onCursorChangeRef = useRef(onCursorChange)
+  const initialValueRef = useRef(value)
+  const initialDriverRef = useRef(driver)
+  const [host, setHost] = useState<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    onChangeRef.current = onChange
-  }, [onChange])
+  initialValueRef.current = value
+  initialDriverRef.current = driver
 
-  useEffect(() => {
-    onCursorChangeRef.current = onCursorChange
-  }, [onCursorChange])
+  const handleChange = useEffectEvent((nextValue: string) => {
+    onChange(nextValue)
+  })
 
-  useEffect(() => {
-    const host = hostRef.current
+  const handleCursorChange = useEffectEvent((cursor: CursorPosition) => {
+    onCursorChange(cursor)
+  })
+
+  const setHostRef = useCallback((node: HTMLDivElement | null) => {
+    setHost(node)
+  }, [])
+
+  useLayoutEffect(() => {
     if (!host) {
       return
     }
@@ -158,10 +171,10 @@ export function SqlEditor({
     const view = new EditorView({
       parent: host,
       state: EditorState.create({
-        doc: value,
+        doc: initialValueRef.current,
         extensions: [
           basicSetup,
-          language.of(getSqlExtension(driver)),
+          language.of(getSqlExtension(initialDriverRef.current)),
           sqlEditorTheme,
           syntaxHighlighting(sqlHighlightStyle),
           EditorView.contentAttributes.of({
@@ -172,11 +185,11 @@ export function SqlEditor({
           }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !applyingExternalChangeRef.current) {
-              onChangeRef.current(update.state.doc.toString())
+              handleChange(update.state.doc.toString())
             }
 
             if (update.docChanged || update.selectionSet) {
-              onCursorChangeRef.current(getCursorPosition(update.state))
+              handleCursorChange(getCursorPosition(update.state))
             }
           }),
         ],
@@ -184,14 +197,14 @@ export function SqlEditor({
     })
 
     viewRef.current = view
-    onCursorChangeRef.current(getCursorPosition(view.state))
+    handleCursorChange(getCursorPosition(view.state))
 
     return () => {
       languageRef.current = null
       viewRef.current = null
       view.destroy()
     }
-  }, [])
+  }, [host])
 
   useEffect(() => {
     const view = viewRef.current
@@ -228,5 +241,5 @@ export function SqlEditor({
     applyingExternalChangeRef.current = false
   }, [value])
 
-  return <div ref={hostRef} className="size-full min-w-0 min-h-0" />
+  return <div ref={setHostRef} className="size-full min-w-0 min-h-0" />
 }

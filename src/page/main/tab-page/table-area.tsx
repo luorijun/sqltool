@@ -6,14 +6,13 @@ import {
 } from "@tanstack/react-table"
 import { useAtomValue } from "jotai"
 import { CircleX, Loader2, Table2 } from "lucide-react"
+import { useMemo } from "react"
 import type { ReactNode } from "react"
 
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { QueryResultRow } from "@/lib/conn"
-import { activeTabContentAtom } from "@/lib/tabs"
+import { activeTabContentAtom, type TabContent } from "@/lib/tabs"
 import { cn } from "@/lib/utils"
-
-// ─── Cell Formatting ──────────────────────────────────────────────────────────
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "text-amber-600 dark:text-amber-400 font-medium",
@@ -38,7 +37,12 @@ function formatCellValue(value: unknown): string {
     return String(value)
   }
 
-  return JSON.stringify(value)
+  try {
+    const text = JSON.stringify(value)
+    return text ?? String(value)
+  } catch {
+    return String(value)
+  }
 }
 
 function CellValue({ col, value }: { col: string; value: unknown }) {
@@ -51,6 +55,7 @@ function CellValue({ col, value }: { col: string; value: unknown }) {
       </span>
     )
   }
+
   if (col === "status") {
     return (
       <span className={cn("font-mono text-xs", STATUS_STYLES[text] ?? "")}>
@@ -58,10 +63,9 @@ function CellValue({ col, value }: { col: string; value: unknown }) {
       </span>
     )
   }
+
   return <span className="font-mono text-xs">{text}</span>
 }
-
-// ─── Empty State ──────────────────────────────────────────────────────────────
 
 function EmptyState({ icon, message }: { icon?: ReactNode; message: string }) {
   return (
@@ -74,35 +78,133 @@ function EmptyState({ icon, message }: { icon?: ReactNode; message: string }) {
   )
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function StatusBar({ content }: { content: TabContent }) {
+  return (
+    <div className="flex-none flex items-center gap-4 px-3 h-7 border-b bg-muted/20 text-xs text-muted-foreground shrink-0">
+      <span>
+        <span className="text-foreground font-medium">{content.rowCount}</span>{" "}
+        行
+      </span>
+      <span>
+        <span className="text-foreground font-medium">
+          {content.columns.length}
+        </span>{" "}
+        列
+      </span>
+      <span className="ml-auto">耗时 {content.durationMs} ms</span>
+    </div>
+  )
+}
 
-export function TableArea() {
-  const content = useAtomValue(activeTabContentAtom)
-
-  const columns = content.columns
-  const rows = content.rows
-
-  const tableColumns: ColumnDef<QueryResultRow>[] = [
-    {
-      id: "__rownum__",
-      header: "#",
-      cell: ({ row }) => row.index + 1,
-    },
-    ...columns.map((column, columnIndex) => ({
-      id: column.id,
-      header: column.name,
-      accessorFn: (row: QueryResultRow) => row[columnIndex],
-      cell: ({ getValue }) => (
-        <CellValue col={column.name} value={getValue()} />
-      ),
-    })),
-  ]
+function ResultTable({ content }: { content: TabContent }) {
+  const tableColumns = useMemo<ColumnDef<QueryResultRow>[]>(
+    () => [
+      {
+        id: "__rownum__",
+        header: "#",
+        cell: ({ row }) => row.index + 1,
+      },
+      ...content.columns.map((column, columnIndex) => ({
+        id: column.id,
+        header: column.name,
+        accessorFn: (row: QueryResultRow) => row[columnIndex],
+        cell: ({ getValue }) => (
+          <CellValue col={column.name} value={getValue()} />
+        ),
+      })),
+    ],
+    [content.columns],
+  )
 
   const table = useReactTable({
-    data: rows,
+    data: content.rows,
     columns: tableColumns,
     getCoreRowModel: getCoreRowModel(),
   })
+
+  return (
+    <ScrollArea className="flex-1 min-h-0">
+      <table className="w-full text-sm border-collapse min-w-max">
+        <thead>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map((header, headerIndex) => {
+                const isRowNumber = header.column.id === "__rownum__"
+
+                return (
+                  <th
+                    key={header.id}
+                    className={cn(
+                      "sticky top-0 z-10 bg-sidebar shadow-[0_1px_0_0_hsl(var(--border))] border-b border-r whitespace-nowrap last:border-r-0",
+                      isRowNumber
+                        ? "w-10 px-2 py-1.5 text-right text-xs font-mono font-normal text-muted-foreground select-none"
+                        : "px-3 py-1.5 text-left text-xs font-semibold tracking-wide",
+                      headerIndex === headerGroup.headers.length - 1 &&
+                        "border-r-0",
+                    )}
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                  </th>
+                )
+              })}
+            </tr>
+          ))}
+        </thead>
+
+        <tbody>
+          {table.getRowModel().rows.map((row) => (
+            <tr
+              key={row.id}
+              className="group hover:bg-accent/50 cursor-default transition-colors"
+            >
+              {row.getVisibleCells().map((cell, cellIndex) => {
+                const isRowNumber = cell.column.id === "__rownum__"
+
+                return (
+                  <td
+                    key={cell.id}
+                    className={cn(
+                      "border-b border-r whitespace-nowrap last:border-r-0",
+                      isRowNumber
+                        ? "px-2 py-1 text-right text-xs font-mono text-muted-foreground select-none group-hover:text-foreground/60 transition-colors"
+                        : "px-3 py-1",
+                      cellIndex === row.getVisibleCells().length - 1 &&
+                        "border-r-0",
+                    )}
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ScrollArea>
+  )
+}
+
+function ExecutedTableArea({ content }: { content: TabContent }) {
+  return (
+    <div className="size-full flex flex-col overflow-hidden">
+      <StatusBar content={content} />
+
+      {content.columns.length === 0 ? (
+        <EmptyState message="语句执行成功，但没有可展示的结果集" />
+      ) : (
+        <ResultTable content={content} />
+      )}
+    </div>
+  )
+}
+
+export function TableArea() {
+  const content = useAtomValue(activeTabContentAtom)
 
   if (!content) {
     return <EmptyState message="运行 SQL 语句以查看结果" />
@@ -130,96 +232,5 @@ export function TableArea() {
     return <EmptyState message="运行 SQL 语句以查看结果" />
   }
 
-  if (content.columns.length === 0) {
-    return <EmptyState message="语句执行成功，但没有可展示的结果集" />
-  }
-
-  return (
-    <div className="size-full flex flex-col overflow-hidden">
-      {/* Status bar */}
-      <div className="flex-none flex items-center gap-4 px-3 h-7 border-b bg-muted/20 text-xs text-muted-foreground shrink-0">
-        <span>
-          <span className="text-foreground font-medium">
-            {content.rowCount}
-          </span>{" "}
-          行
-        </span>
-        <span>
-          <span className="text-foreground font-medium">
-            {content.columns.length}
-          </span>{" "}
-          列
-        </span>
-        <span className="ml-auto">耗时 {content.durationMs} ms</span>
-      </div>
-
-      {/* Table */}
-      <ScrollArea className="flex-1 min-h-0">
-        <table className="w-full text-sm border-collapse min-w-max">
-          <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header, headerIndex) => {
-                  const isRowNumber = header.column.id === "__rownum__"
-
-                  return (
-                    <th
-                      key={header.id}
-                      className={cn(
-                        "sticky top-0 z-10 bg-sidebar shadow-[0_1px_0_0_hsl(var(--border))] border-b border-r whitespace-nowrap last:border-r-0",
-                        isRowNumber
-                          ? "w-10 px-2 py-1.5 text-right text-xs font-mono font-normal text-muted-foreground select-none"
-                          : "px-3 py-1.5 text-left text-xs font-semibold tracking-wide",
-                        headerIndex === headerGroup.headers.length - 1 &&
-                          "border-r-0",
-                      )}
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                    </th>
-                  )
-                })}
-              </tr>
-            ))}
-          </thead>
-
-          <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <tr
-                key={row.id}
-                className="group hover:bg-accent/50 cursor-default transition-colors"
-              >
-                {row.getVisibleCells().map((cell, cellIndex) => {
-                  const isRowNumber = cell.column.id === "__rownum__"
-
-                  return (
-                    <td
-                      key={cell.id}
-                      className={cn(
-                        "border-b border-r whitespace-nowrap last:border-r-0",
-                        isRowNumber
-                          ? "px-2 py-1 text-right text-xs font-mono text-muted-foreground select-none group-hover:text-foreground/60 transition-colors"
-                          : "px-3 py-1",
-                        cellIndex === row.getVisibleCells().length - 1 &&
-                          "border-r-0",
-                      )}
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </ScrollArea>
-    </div>
-  )
+  return <ExecutedTableArea content={content} />
 }
