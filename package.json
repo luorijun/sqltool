@@ -8,6 +8,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
+    "typecheck": "tsc -b",
     "lint": "biome lint --write"
   },
   "devDependencies": {
@@ -28,9 +29,7 @@
     "@vitejs/plugin-react": "^5.1.2",
     "electron": "39.2.7",
     "typescript": "^5.9.3",
-    "vite": "^5.4.21"
-  },
-  "dependencies": {
+    "vite": "^5.4.21",
     "@base-ui/react": "^1.0.0",
     "@hookform/resolvers": "^5.2.2",
     "@tailwindcss/vite": "^4.1.18",
