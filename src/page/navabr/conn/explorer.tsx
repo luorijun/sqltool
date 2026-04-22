@@ -20,11 +20,9 @@ import type {
   DbTable as Table,
 } from "@/lib/conn"
 import connApi from "@/lib/conn/renderer"
+import type { Config } from "@/lib/config"
 import { addTabAtom } from "@/lib/tabs"
 import { cn } from "@/lib/utils"
-import type { Config } from "../../lib/config/index"
-
-// ─── Tree Row ─────────────────────────────────────────────────────────────────
 
 function quoteIdent(value: string): string {
   return `"${value.replaceAll('"', '""')}"`
@@ -48,7 +46,6 @@ function createDefaultExpandedNodes(schemas: Schema[]): Set<string> {
   return next
 }
 
-/** Horizontal indent per depth level in pixels */
 const INDENT = 10
 
 interface TreeRowProps {
@@ -79,7 +76,6 @@ function TreeRow({
 
   const content = (
     <>
-      {/* Chevron slot — always takes space to keep icons aligned */}
       <span className="w-4 shrink-0 flex items-center justify-center text-muted-foreground/50">
         {expandable &&
           (expanded ? (
@@ -89,13 +85,9 @@ function TreeRow({
           ))}
       </span>
 
-      {/* Node icon */}
       <span className="shrink-0 mr-1.5 flex items-center">{icon}</span>
-
-      {/* Label */}
       <span className="flex-1 min-w-0 truncate">{label}</span>
 
-      {/* Right-side meta (row count, type, section count…) */}
       {meta && (
         <span className="font-mono text-[10.5px] text-muted-foreground/55 pl-2 shrink-0">
           {meta}
@@ -124,19 +116,16 @@ function TreeRow({
   )
 }
 
-// ─── Column Icon ──────────────────────────────────────────────────────────────
-
 function ColumnIcon({ col }: { col: Column }) {
-  if (col.pk)
-    return (
-      <Key className="size-3 text-amber-500 dark:text-amber-400 shrink-0" />
-    )
-  if (col.fk)
+  if (col.pk) {
+    return <Key className="size-3 text-amber-500 dark:text-amber-400 shrink-0" />
+  }
+  if (col.fk) {
     return <Link className="size-3 text-blue-500 dark:text-blue-400 shrink-0" />
+  }
+
   return <Minus className="size-3 text-muted-foreground/40 shrink-0" />
 }
-
-// ─── Table Node ───────────────────────────────────────────────────────────────
 
 function TableNode({
   conn,
@@ -165,7 +154,6 @@ function TableNode({
 
   return (
     <>
-      {/* Table row — plain div so we can nest an action button */}
       <div
         className="group/row flex items-center h-7 rounded-md text-xs select-none pr-1 cursor-pointer transition-colors hover:bg-accent/60"
         style={{ paddingLeft: 2 * INDENT + 4 }}
@@ -176,7 +164,6 @@ function TableNode({
         role="button"
         tabIndex={0}
       >
-        {/* Chevron */}
         <span className="w-4 shrink-0 flex items-center justify-center text-muted-foreground/50">
           {expanded ? (
             <ChevronDown className="size-3" />
@@ -185,22 +172,18 @@ function TableNode({
           )}
         </span>
 
-        {/* Table icon */}
         <span className="shrink-0 mr-1.5 flex items-center">
           <Table2 className="size-3.5 text-muted-foreground shrink-0" />
         </span>
 
-        {/* Label */}
         <span className="flex-1 min-w-0 truncate">{table.name}</span>
 
-        {/* Row count — visible normally, hidden on hover */}
         {table.rowCount !== undefined && (
           <span className="font-mono text-[10.5px] text-muted-foreground/55 pl-2 shrink-0 group-hover/row:hidden">
             {table.rowCount.toLocaleString()}
           </span>
         )}
 
-        {/* Open-in-tab button — shown on hover */}
         <button
           type="button"
           title={`查询 ${table.name}`}
@@ -211,7 +194,6 @@ function TableNode({
         </button>
       </div>
 
-      {/* Column rows (unchanged) */}
       {expanded &&
         table.columns.map((col) => (
           <TreeRow
@@ -225,8 +207,6 @@ function TableNode({
     </>
   )
 }
-
-// ─── Section Node ─────────────────────────────────────────────────────────────
 
 function SectionNode({
   icon,
@@ -259,8 +239,6 @@ function SectionNode({
   )
 }
 
-// ─── Schema Section ───────────────────────────────────────────────────────────
-
 function SchemaSection({
   conn,
   schema,
@@ -282,7 +260,6 @@ function SchemaSection({
 
   return (
     <>
-      {/* Schema row */}
       <TreeRow
         depth={0}
         icon={<Layers className="size-3.5 text-muted-foreground shrink-0" />}
@@ -294,11 +271,8 @@ function SchemaSection({
 
       {expanded && (
         <>
-          {/* Tables */}
           <SectionNode
-            icon={
-              <Table2 className="size-3.5 text-muted-foreground/70 shrink-0" />
-            }
+            icon={<Table2 className="size-3.5 text-muted-foreground/70 shrink-0" />}
             label="Tables"
             count={schema.tables.length}
             expanded={expandedNodes.has(tablesKey)}
@@ -319,11 +293,8 @@ function SchemaSection({
             })}
           </SectionNode>
 
-          {/* Views */}
           <SectionNode
-            icon={
-              <Eye className="size-3.5 text-muted-foreground/70 shrink-0" />
-            }
+            icon={<Eye className="size-3.5 text-muted-foreground/70 shrink-0" />}
             label="Views"
             count={schema.views.length}
             expanded={expandedNodes.has(viewsKey)}
@@ -333,19 +304,14 @@ function SchemaSection({
               <TreeRow
                 key={view.name}
                 depth={2}
-                icon={
-                  <Eye className="size-3.5 text-muted-foreground shrink-0" />
-                }
+                icon={<Eye className="size-3.5 text-muted-foreground shrink-0" />}
                 label={view.name}
               />
             ))}
           </SectionNode>
 
-          {/* Functions */}
           <SectionNode
-            icon={
-              <Braces className="size-3.5 text-muted-foreground/70 shrink-0" />
-            }
+            icon={<Braces className="size-3.5 text-muted-foreground/70 shrink-0" />}
             label="Functions"
             count={schema.functions.length}
             expanded={expandedNodes.has(funcsKey)}
@@ -355,9 +321,7 @@ function SchemaSection({
               <TreeRow
                 key={fn.name}
                 depth={2}
-                icon={
-                  <Braces className="size-3.5 text-muted-foreground shrink-0" />
-                }
+                icon={<Braces className="size-3.5 text-muted-foreground shrink-0" />}
                 label={fn.name}
               />
             ))}
@@ -368,20 +332,16 @@ function SchemaSection({
   )
 }
 
-// ─── DbExplorer ───────────────────────────────────────────────────────────────
-
-export interface DbExplorerProps {
+export interface ConnExplorerProps {
   conn: Config
   refreshKey?: number
 }
 
-export function DbExplorer({ conn, refreshKey }: DbExplorerProps) {
+export function ConnExplorer({ conn, refreshKey }: ConnExplorerProps) {
   const [schemas, setSchemas] = useState<Schema[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(
-    () => new Set(),
-  )
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set())
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false)
 
   useEffect(() => {
@@ -440,7 +400,6 @@ export function DbExplorer({ conn, refreshKey }: DbExplorerProps) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      {/* Database context header */}
       <div className="flex-none flex items-center gap-2 px-3 h-8 border-b bg-muted/20 shrink-0">
         <Database className="size-3.5 text-muted-foreground shrink-0" />
         <span className="text-xs text-muted-foreground font-medium truncate">
@@ -448,8 +407,7 @@ export function DbExplorer({ conn, refreshKey }: DbExplorerProps) {
         </span>
       </div>
 
-      {/* Schema tree */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 overflow-auto">
         <div className="p-1.5 space-y-px">
           {loading ? (
             <div className="px-3 py-8 text-center text-xs text-muted-foreground">

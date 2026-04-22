@@ -14,12 +14,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Config } from "../../lib/config/index"
-import { DriverIcon } from "./driver-icon"
+import type { Config } from "@/lib/config"
+import { DriverIcon } from "../config/explorer"
 
-// ─── Props ────────────────────────────────────────────────────────────────────
-
-export interface DbHeaderProps {
+export interface ConnHeaderProps {
   conn: Config
   onBack: () => void
   onNewQuery: () => void
@@ -28,19 +26,16 @@ export interface DbHeaderProps {
   onEditConn: () => void
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export function DbHeader({
+export function ConnHeader({
   conn,
   onBack,
   onNewQuery,
   onRefresh,
   onDisconnect,
   onEditConn,
-}: DbHeaderProps) {
+}: ConnHeaderProps) {
   return (
     <div className="flex-none basis-10 border-b flex items-center gap-0.5 px-1 shrink-0">
-      {/* Back to connection list */}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -50,7 +45,6 @@ export function DbHeader({
         <ChevronLeft />
       </Button>
 
-      {/* Connection identity */}
       <div className="flex items-center gap-1.5 flex-1 min-w-0 px-0.5">
         <span className="text-muted-foreground shrink-0">
           <DriverIcon driver={conn.driver} />
@@ -60,7 +54,6 @@ export function DbHeader({
         </span>
       </div>
 
-      {/* New query tab */}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -70,7 +63,6 @@ export function DbHeader({
         <FilePlus2 />
       </Button>
 
-      {/* Refresh schema tree */}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -80,7 +72,6 @@ export function DbHeader({
         <RefreshCw />
       </Button>
 
-      {/* More actions */}
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
           <MoreHorizontal />
@@ -91,7 +82,9 @@ export function DbHeader({
             <Pencil />
             编辑连接
           </DropdownMenuItem>
+
           <DropdownMenuSeparator />
+
           <DropdownMenuItem variant="destructive" onClick={onDisconnect}>
             <LogOut />
             断开连接

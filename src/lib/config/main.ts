@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { ipcMain } from "electron"
 import Store from "electron-store"
 import type { Config, CreateConfig, UpdateConfig } from "."
-import { CREATE, DELETE, GET, LIST, UPDATE } from "."
+import { CREATE, GET, LIST, REMOVE, UPDATE } from "."
 
 type ConfigStore = {
   configs: Record<string, Config>
@@ -44,7 +44,7 @@ function create(input: CreateConfig): Config {
   return config
 }
 
-function updateConfig(id: string, input: UpdateConfig): Config {
+function update(id: string, input: UpdateConfig): Config {
   const existing = get(id)
   if (!existing) {
     throw new Error(`Config not found: ${id}`)
@@ -60,10 +60,10 @@ function updateConfig(id: string, input: UpdateConfig): Config {
   return updated
 }
 
-function deleteConfig(id: string): void {
+function remove(id: string): void {
   const _configs = configs()
   delete _configs[id]
-  store().set("configs", configs)
+  store().set("configs", _configs)
 }
 
 export function registerHandlers(): void {
@@ -77,9 +77,9 @@ export function registerHandlers(): void {
     return create(input)
   })
   ipcMain.handle(UPDATE, (_e, id: string, input: UpdateConfig) => {
-    return updateConfig(id, input)
+    return update(id, input)
   })
-  ipcMain.handle(DELETE, (_e, id: string) => {
-    return deleteConfig(id)
+  ipcMain.handle(REMOVE, (_e, id: string) => {
+    return remove(id)
   })
 }

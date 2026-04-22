@@ -13,8 +13,8 @@ const config = {
   update(id: string, input: UpdateConfig): Promise<Config> {
     return window.main.config.update(id, input)
   },
-  delete(id: string): Promise<void> {
-    return window.main.config.delete(id)
+  remove(id: string): Promise<void> {
+    return window.main.config.remove(id)
   },
 }
 

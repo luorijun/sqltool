@@ -2,7 +2,7 @@ export const LIST = "config:list"
 export const GET = "config:get"
 export const CREATE = "config:create"
 export const UPDATE = "config:update"
-export const DELETE = "config:delete"
+export const REMOVE = "config:remove"
 
 export type DbDriver = "postgres" | "mysql" | "sqlite"
 

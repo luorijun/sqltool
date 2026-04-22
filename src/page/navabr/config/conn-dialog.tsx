@@ -15,11 +15,9 @@ import {
 import { FieldGroup } from "@/components/ui/field"
 import { FormField } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import type { Config, CreateConfig, DbDriver } from "@/lib/config"
+import configApi from "@/lib/config/renderer"
 import z from "@/lib/zod"
-import type { Config } from "../../lib/config/index"
-import config from "../../lib/config/renderer"
-
-// ─── Schema ──────────────────────────────────────────────────────────────────
 
 const schema = z.object({
   name: z.string().nonempty(),
@@ -32,57 +30,82 @@ const schema = z.object({
 })
 
 type Schema = z.infer<typeof schema>
+type ConnDialogMode = "create" | "edit"
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function getDefaultValues(conn?: Config | null): Schema {
+  return {
+    name: conn?.name ?? "新连接",
+    driver: (conn?.driver ?? "postgres") as DbDriver,
+    host: conn?.host ?? "127.0.0.1",
+    port: conn?.port ?? "5432",
+    username: conn?.username ?? "",
+    password: conn?.password ?? "",
+    database: conn?.database ?? "",
+  }
+}
 
-export interface EditConnDialogProps {
-  conn: Config | null
+function toCreateConfig(data: Schema): CreateConfig {
+  return {
+    name: data.name,
+    driver: data.driver,
+    host: data.host,
+    port: data.port,
+    username: data.username,
+    password: data.password,
+    database: data.database,
+  }
+}
+
+export interface ConnDialogProps {
+  mode: ConnDialogMode | null
+  conn?: Config | null
   onClose: () => void
   onSaved: (conn: Config) => void
 }
 
-export function EditConnDialog({
-  conn,
-  onClose,
-  onSaved,
-}: EditConnDialogProps) {
+export function ConnDialog({ mode, conn, onClose, onSaved }: ConnDialogProps) {
+  const open = mode !== null
   const form = useForm<Schema>({
     resolver: zodResolver(schema),
+    defaultValues: getDefaultValues(conn),
   })
 
   useEffect(() => {
-    if (conn) {
-      form.reset({
-        name: conn.name ?? "",
-        driver: conn.driver,
-        host: conn.host,
-        port: conn.port,
-        username: conn.username,
-        password: conn.password,
-        database: conn.database,
-      })
-    }
-  }, [conn, form])
+    form.reset(getDefaultValues(mode === "edit" ? conn : null))
+  }, [conn, form, mode])
 
-  const save = async (data: Schema) => {
-    if (!conn) return
-    try {
-      const updated = await config.update(conn.id, data)
-      toast.success("连接已更新")
-      onSaved(updated)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "更新失败")
+  const handleClose = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      form.reset(getDefaultValues(mode === "edit" ? conn : null))
+      onClose()
     }
   }
 
-  const formId = "edit-conn-form"
+  const save = async (data: Schema) => {
+    try {
+      const payload = toCreateConfig(data)
+      const saved =
+        mode === "edit" && conn
+          ? await configApi.update(conn.id, payload)
+          : await configApi.create(payload)
+
+      toast.success(mode === "edit" ? "连接已更新" : "连接已保存")
+      onSaved(saved)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "保存失败")
+    }
+  }
+
+  const formId = mode === "edit" ? "edit-conn-form" : "create-conn-form"
 
   return (
-    <Dialog open={conn !== null} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>编辑连接</DialogTitle>
-          <DialogDescription>修改数据库连接配置</DialogDescription>
+          <DialogTitle>{mode === "edit" ? "编辑连接" : "新连接"}</DialogTitle>
+          <DialogDescription>
+            {mode === "edit" ? "修改数据库连接配置" : "创建一个新的数据库连接"}
+          </DialogDescription>
         </DialogHeader>
 
         <form id={formId} onSubmit={form.handleSubmit(save)}>

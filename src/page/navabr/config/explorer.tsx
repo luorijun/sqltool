@@ -7,24 +7,32 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Config } from "../../lib/config/index"
-import { DriverIcon, driverLabel } from "./driver-icon"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import type { Config } from "@/lib/config"
 
-// ─── Props ────────────────────────────────────────────────────────────────────
+import { Database, HardDrive, Server } from "lucide-react"
 
-export interface ConnectionItemProps {
+export const driverLabel: Record<string, string> = {
+  postgres: "PostgreSQL",
+  mysql: "MySQL",
+  sqlite: "SQLite",
+}
+
+export function DriverIcon({ driver }: { driver: string }) {
+  if (driver === "sqlite") return <HardDrive className="size-4 shrink-0" />
+  if (driver === "mysql") return <Server className="size-4 shrink-0" />
+  return <Database className="size-4 shrink-0" />
+}
+
+interface ConnectionItemProps {
   conn: Config
-  active: boolean
   onSelect: () => void
   onEdit: () => void
   onDelete: () => void
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export function ConnectionItem({
+function ConnectionItem({
   conn,
-  active,
   onSelect,
   onEdit,
   onDelete,
@@ -33,11 +41,10 @@ export function ConnectionItem({
     <div className="w-full flex items-stretch group">
       <button
         type="button"
-        data-active={active}
-        className="flex-auto relative flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-accent data-[active=true]:bg-accent"
+        className="flex-auto relative flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-accent"
         onClick={onSelect}
       >
-        <span className="text-muted-foreground group-data-[active=true]:text-foreground">
+        <span className="text-muted-foreground group-hover:text-foreground">
           <DriverIcon driver={conn.driver} />
         </span>
 
@@ -50,8 +57,8 @@ export function ConnectionItem({
           </p>
         </div>
       </button>
+
       <DropdownMenu>
-        {/* stopPropagation prevents the parent button's onClick from firing */}
         <DropdownMenuTrigger
           render={
             <Button
@@ -75,7 +82,9 @@ export function ConnectionItem({
             <Pencil />
             编辑
           </DropdownMenuItem>
+
           <DropdownMenuSeparator />
+
           <DropdownMenuItem
             variant="destructive"
             onClick={(e) => {
@@ -89,5 +98,42 @@ export function ConnectionItem({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  )
+}
+
+export interface ConfigExplorerProps {
+  connections: Config[]
+  onSelect: (conn: Config) => void
+  onEdit: (conn: Config) => void
+  onDelete: (conn: Config) => void
+}
+
+export function ConfigExplorer({
+  connections,
+  onSelect,
+  onEdit,
+  onDelete,
+}: ConfigExplorerProps) {
+  return (
+    <ScrollArea className="flex-auto">
+      {connections.length === 0 ? (
+        <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+          暂无连接
+        </p>
+      ) : (
+        <ul className="space-y-0.5 p-2">
+          {connections.map((conn) => (
+            <li key={conn.id}>
+              <ConnectionItem
+                conn={conn}
+                onSelect={() => onSelect(conn)}
+                onEdit={() => onEdit(conn)}
+                onDelete={() => onDelete(conn)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </ScrollArea>
   )
 }

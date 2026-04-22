@@ -1,6 +1,6 @@
 import { ipcRenderer } from "electron"
 import type { CreateConfig, UpdateConfig } from "."
-import { CREATE, DELETE, GET, LIST, UPDATE } from "."
+import { CREATE, GET, LIST, REMOVE, UPDATE } from "."
 
 export const bridge = {
   list: () => {
@@ -15,7 +15,7 @@ export const bridge = {
   update: (id: string, input: UpdateConfig) => {
     return ipcRenderer.invoke(UPDATE, id, input)
   },
-  delete: (id: string) => {
-    return ipcRenderer.invoke(DELETE, id)
+  remove: (id: string) => {
+    return ipcRenderer.invoke(REMOVE, id)
   },
 }

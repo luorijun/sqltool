@@ -27,24 +27,25 @@ function StatusIcon({ status }: { status: LogEntry["status"] }) {
 // ─── Status Label ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: LogEntry["status"] }) {
-  const map: Record<LogEntry["status"], { label: string; className: string }> = {
-    success: {
-      label: "成功",
-      className: "bg-green-500/10 text-green-600 dark:text-green-400",
-    },
-    error: {
-      label: "失败",
-      className: "bg-destructive/10 text-destructive",
-    },
-    running: {
-      label: "执行中",
-      className: "bg-primary/10 text-primary",
-    },
-    info: {
-      label: "信息",
-      className: "bg-muted text-muted-foreground",
-    },
-  }
+  const map: Record<LogEntry["status"], { label: string; className: string }> =
+    {
+      success: {
+        label: "成功",
+        className: "bg-green-500/10 text-green-600 dark:text-green-400",
+      },
+      error: {
+        label: "失败",
+        className: "bg-destructive/10 text-destructive",
+      },
+      running: {
+        label: "执行中",
+        className: "bg-primary/10 text-primary",
+      },
+      info: {
+        label: "信息",
+        className: "bg-muted text-muted-foreground",
+      },
+    }
 
   const { label, className: cls } = map[status]
 
@@ -115,7 +116,7 @@ function LogEntryItem({ entry }: { entry: LogEntry }) {
 
 // ─── Exec Log ─────────────────────────────────────────────────────────────────
 
-export function ExecLog() {
+export default function LogArea() {
   const content = useAtomValue(activeTabContentAtom)
   const clearLogs = useSetAtom(clearActiveTabLogsAtom)
   const entries = content?.logs || []
@@ -140,7 +141,7 @@ export function ExecLog() {
       </div>
 
       {/* Log list */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 overflow-auto">
         {entries.length > 0 ? (
           <ul className="p-2 space-y-0.5">
             {entries.map((entry) => (
