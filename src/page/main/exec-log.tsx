@@ -1,26 +1,17 @@
-import { useAtomValue } from "jotai"
+import { useAtomValue, useSetAtom } from "jotai"
 import { CheckCircle2, CircleX, Info, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { activeTabContentAtom } from "@/lib/tabs"
+import {
+  activeTabContentAtom,
+  clearActiveTabLogsAtom,
+  type TabLogEntry as LogEntry,
+} from "@/lib/tabs"
 import { cn } from "@/lib/utils"
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type LogStatus = "success" | "error" | "info" | "running"
-
-interface LogEntry {
-  id: string
-  time: string
-  status: LogStatus
-  sql: string
-  detail?: string
-  duration?: number
-}
 
 // ─── Status Icon ──────────────────────────────────────────────────────────────
 
-function StatusIcon({ status }: { status: LogStatus }) {
+function StatusIcon({ status }: { status: LogEntry["status"] }) {
   switch (status) {
     case "success":
       return <CheckCircle2 className="size-3.5 shrink-0 text-green-500" />
@@ -35,8 +26,8 @@ function StatusIcon({ status }: { status: LogStatus }) {
 
 // ─── Status Label ─────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: LogStatus }) {
-  const map: Record<LogStatus, { label: string; className: string }> = {
+function StatusBadge({ status }: { status: LogEntry["status"] }) {
+  const map: Record<LogEntry["status"], { label: string; className: string }> = {
     success: {
       label: "成功",
       className: "bg-green-500/10 text-green-600 dark:text-green-400",
@@ -126,17 +117,8 @@ function LogEntryItem({ entry }: { entry: LogEntry }) {
 
 export function ExecLog() {
   const content = useAtomValue(activeTabContentAtom)
-
-  const entry: LogEntry | null = content?.executed
-    ? {
-        id: "1",
-        time: content.executedAt,
-        status: "success",
-        sql: content.sql,
-        duration: content.durationMs,
-        detail: `返回 ${content.rowCount} 行`,
-      }
-    : null
+  const clearLogs = useSetAtom(clearActiveTabLogsAtom)
+  const entries = content?.logs || []
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
@@ -150,6 +132,8 @@ export function ExecLog() {
           size="icon-xs"
           title="清空日志"
           className="text-muted-foreground"
+          onClick={() => clearLogs()}
+          disabled={entries.length === 0}
         >
           <Trash2 />
         </Button>
@@ -157,9 +141,11 @@ export function ExecLog() {
 
       {/* Log list */}
       <ScrollArea className="flex-1">
-        {entry ? (
+        {entries.length > 0 ? (
           <ul className="p-2 space-y-0.5">
-            <LogEntryItem entry={entry} />
+            {entries.map((entry) => (
+              <LogEntryItem key={entry.id} entry={entry} />
+            ))}
           </ul>
         ) : (
           <p className="px-4 py-8 text-center text-xs text-muted-foreground">

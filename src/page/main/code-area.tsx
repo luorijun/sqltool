@@ -2,7 +2,12 @@ import { useAtomValue, useSetAtom } from "jotai"
 import { AlignLeft, Play } from "lucide-react"
 import { useCallback, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { activeTabSqlAtom, updateActiveSqlAtom } from "@/lib/tabs"
+import {
+  activeTabContentAtom,
+  activeTabSqlAtom,
+  runActiveTabSqlAtom,
+  updateActiveSqlAtom,
+} from "@/lib/tabs"
 import { cn } from "@/lib/utils"
 
 // ─── Line Numbers ─────────────────────────────────────────────────────────────
@@ -41,8 +46,10 @@ function LineNumbers({
 const LINE_HEIGHT = 20 // px — must match the textarea's line-height
 
 export function CodeArea() {
+  const content = useAtomValue(activeTabContentAtom)
   const sql = useAtomValue(activeTabSqlAtom)
   const updateSql = useSetAtom(updateActiveSqlAtom)
+  const runSql = useSetAtom(runActiveTabSqlAtom)
   const [scrollTop, setScrollTop] = useState(0)
   const [cursor, setCursor] = useState({ line: 1, col: 1 })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -67,7 +74,13 @@ export function CodeArea() {
     <div className="size-full flex flex-col overflow-hidden">
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div className="flex-none flex items-center gap-1 px-2 h-9 border-b bg-muted/20 shrink-0">
-        <Button variant="default" size="xs" className="gap-1.5">
+        <Button
+          variant="default"
+          size="xs"
+          className="gap-1.5"
+          onClick={() => runSql()}
+          disabled={content?.running}
+        >
           <Play className="size-3" />
           运行
         </Button>

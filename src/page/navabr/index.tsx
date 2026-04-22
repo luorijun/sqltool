@@ -1,8 +1,10 @@
+import { useSetAtom } from "jotai"
 import { RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { addTabAtom } from "@/lib/tabs"
 import type { Config } from "../../lib/config/index"
 import config from "../../lib/config/renderer"
 import { ConnectionItem } from "./conn-item"
@@ -22,6 +24,7 @@ export interface NavProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Nav({ refreshKey, onChanged }: NavProps) {
+  const addTab = useSetAtom(addTabAtom)
   const [connections, setConnections] = useState<Config[]>([])
   const [activeConn, setActiveConn] = useState<Config | null>(null)
   const [editTarget, setEditTarget] = useState<Config | null>(null)
@@ -63,7 +66,7 @@ export default function Nav({ refreshKey, onChanged }: NavProps) {
           <DbHeader
             conn={activeConn}
             onBack={() => setActiveConn(null)}
-            onNewQuery={() => {}}
+            onNewQuery={() => addTab({ connection: activeConn })}
             onRefresh={() => setExplorerRefreshKey((prev) => prev + 1)}
             onDisconnect={() => setActiveConn(null)}
             onEditConn={() => setEditTarget(activeConn)}

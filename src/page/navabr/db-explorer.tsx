@@ -139,11 +139,13 @@ function ColumnIcon({ col }: { col: Column }) {
 // ─── Table Node ───────────────────────────────────────────────────────────────
 
 function TableNode({
+  conn,
   table,
   schemaName,
   expanded,
   onToggle,
 }: {
+  conn: Config
   table: Table
   schemaName: string
   expanded: boolean
@@ -156,7 +158,8 @@ function TableNode({
     addTab({
       label: table.name,
       sql: `SELECT *\nFROM ${quoteIdent(schemaName)}.${quoteIdent(table.name)}\nLIMIT 100;`,
-      columns: table.columns.map((c) => c.name),
+      connection: conn,
+      autoRun: true,
     })
   }
 
@@ -259,12 +262,14 @@ function SectionNode({
 // ─── Schema Section ───────────────────────────────────────────────────────────
 
 function SchemaSection({
+  conn,
   schema,
   expanded,
   onToggle,
   expandedNodes,
   toggleNode,
 }: {
+  conn: Config
   schema: Schema
   expanded: boolean
   onToggle: () => void
@@ -304,6 +309,7 @@ function SchemaSection({
               return (
                 <TableNode
                   key={tableKey}
+                  conn={conn}
                   table={table}
                   schemaName={schema.name}
                   expanded={expandedNodes.has(tableKey)}
@@ -463,6 +469,7 @@ export function DbExplorer({ conn, refreshKey }: DbExplorerProps) {
               return (
                 <SchemaSection
                   key={schemaKey}
+                  conn={conn}
                   schema={schema}
                   expanded={expandedNodes.has(schemaKey)}
                   onToggle={() => toggleNode(schemaKey)}

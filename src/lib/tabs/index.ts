@@ -1,4 +1,7 @@
 import { atom } from "jotai"
+import type { Getter, Setter } from "jotai/vanilla"
+import type { Config } from "@/lib/config"
+import connApi from "@/lib/conn/renderer"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -6,6 +9,17 @@ export interface Tab {
   id: string
   label: string
   dirty?: boolean
+}
+
+export type TabLogStatus = "success" | "error" | "info" | "running"
+
+export interface TabLogEntry {
+  id: string
+  time: string
+  status: TabLogStatus
+  sql: string
+  detail?: string
+  duration?: number
 }
 
 /**
@@ -16,25 +30,32 @@ export interface Tab {
  * only care about whether/when a query was executed, not the in-progress text.
  */
 export interface TabContent {
-  /** The SQL that was auto-executed when the tab was opened */
+  /** The SQL that was executed most recently for this tab */
   sql: string
+  connection?: Config
   executed: boolean
+  running: boolean
   columns: string[]
+  rows: Array<Record<string, unknown>>
   rowCount: number
   durationMs: number
   executedAt: string
+  error?: string
+  logs: TabLogEntry[]
 }
 
 export interface AddTabOptions {
   label?: string
-  /** Pre-fill the code editor and auto-execute (mock) the query */
+  /** Pre-fill the code editor */
   sql?: string
-  columns?: string[]
+  connection?: Config
+  autoRun?: boolean
 }
 
 // ─── ID Counter ───────────────────────────────────────────────────────────────
 
 let nextTabId = 1
+let nextLogId = 1
 
 // ─── Core Atoms ───────────────────────────────────────────────────────────────
 
@@ -58,7 +79,7 @@ export const activeTabIdAtom = atom("")
 /** Per-tab live SQL editor content (updated on every keystroke) */
 export const tabSqlAtom = atom<Record<string, string>>({})
 
-/** Per-tab execution-result metadata (set once when the tab is opened with SQL) */
+/** Per-tab execution state and logs */
 export const tabContentAtom = atom<Record<string, TabContent>>({})
 
 // ─── Derived Atoms ────────────────────────────────────────────────────────────
@@ -89,9 +110,7 @@ export const activeTabSqlAtom = atom((get) => {
 
 /**
  * Execution result metadata of the active tab, or null if the tab has never
- * been auto-executed (i.e. it is a blank query tab created via the "+" button).
- * Only changes on tab switch or when a tab is opened with an initial query —
- * safe to subscribe to from TableArea and ExecLog without keystroke churn.
+ * been initialized.
  */
 export const activeTabContentAtom = atom<TabContent | null>((get) => {
   const activeId = get(activeTabIdAtom)
@@ -111,6 +130,206 @@ function formatTime(d: Date): string {
   ].join(":")
 }
 
+function createDefaultContent(connection?: Config): TabContent {
+  return {
+    sql: "",
+    connection,
+    executed: false,
+    running: false,
+    columns: [],
+    rows: [],
+    rowCount: 0,
+    durationMs: 0,
+    executedAt: "",
+    logs: [],
+  }
+}
+
+function ensureTabContent(
+  get: Getter,
+  set: Setter,
+  tabId: string,
+  connection?: Config,
+): TabContent {
+  const existing = get(tabContentAtom)[tabId]
+  if (existing) {
+    return existing
+  }
+
+  const content = createDefaultContent(connection)
+  setTabContent(get, set, tabId, content)
+  return content
+}
+
+function createLogEntry(
+  status: TabLogStatus,
+  sql: string,
+  detail?: string,
+  duration?: number,
+): TabLogEntry {
+  return {
+    id: String(nextLogId++),
+    time: formatTime(new Date()),
+    status,
+    sql,
+    detail,
+    duration,
+  }
+}
+
+function getTabContent(get: Getter, tabId: string): TabContent {
+  const existing = get(tabContentAtom)[tabId]
+  if (existing) {
+    return existing
+  }
+
+  return createDefaultContent()
+}
+
+function setTabContent(
+  get: Getter,
+  set: Setter,
+  tabId: string,
+  content: TabContent,
+) {
+  set(tabContentAtom, { ...get(tabContentAtom), [tabId]: content })
+}
+
+function hasTab(get: Getter, tabId: string): boolean {
+  return get(tabsAtom).some((tab) => tab.id === tabId)
+}
+
+function syncTabDirty(get: Getter, set: Setter, tabId: string, executedSql: string) {
+  const currentSql = get(tabSqlAtom)[tabId] || ""
+  set(
+    tabsAtom,
+    get(tabsAtom).map((tab) =>
+      tab.id === tabId ? { ...tab, dirty: currentSql !== executedSql } : tab,
+    ),
+  )
+}
+
+async function runTabSql(get: Getter, set: Setter, tabId: string) {
+  const editorSql = get(tabSqlAtom)[tabId] || ""
+  const sql = editorSql.trim()
+  const content = ensureTabContent(get, set, tabId)
+
+  if (!sql) {
+    const nextContent: TabContent = {
+      ...content,
+      sql: editorSql,
+      executed: false,
+      running: false,
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      durationMs: 0,
+      executedAt: "",
+      error: "SQL 不能为空",
+      logs: [
+        ...content.logs,
+        createLogEntry("error", editorSql, "SQL 不能为空"),
+      ],
+    }
+    setTabContent(get, set, tabId, nextContent)
+    syncTabDirty(get, set, tabId, editorSql)
+    return
+  }
+
+  if (!content.connection) {
+    const nextContent: TabContent = {
+      ...content,
+      sql: editorSql,
+      executed: false,
+      running: false,
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      durationMs: 0,
+      executedAt: "",
+      error: "该标签页未绑定数据库连接",
+      logs: [
+        ...content.logs,
+        createLogEntry("error", editorSql, "该标签页未绑定数据库连接"),
+      ],
+    }
+    setTabContent(get, set, tabId, nextContent)
+    syncTabDirty(get, set, tabId, editorSql)
+    return
+  }
+
+  const runningLog = createLogEntry("running", editorSql, "正在执行 SQL")
+
+  setTabContent(get, set, tabId, {
+    ...content,
+    sql: editorSql,
+    running: true,
+    error: undefined,
+    logs: [...content.logs, runningLog],
+  })
+
+  const startedAt = Date.now()
+
+  try {
+    const result = await connApi.query(content.connection, editorSql)
+    const durationMs = Math.max(1, Date.now() - startedAt)
+    const executedAt = formatTime(new Date())
+    const rowCount =
+      typeof result.rowCount === "number" ? result.rowCount : result.rows.length
+
+    if (!hasTab(get, tabId)) {
+      return
+    }
+
+    const latest = getTabContent(get, tabId)
+
+    setTabContent(get, set, tabId, {
+      ...latest,
+      sql: editorSql,
+      executed: true,
+      running: false,
+      columns: result.columns,
+      rows: result.rows,
+      rowCount,
+      durationMs,
+      executedAt,
+      error: undefined,
+      logs: [
+        ...latest.logs.filter((entry) => entry.id !== runningLog.id),
+        createLogEntry("success", editorSql, `返回 ${rowCount} 行`, durationMs),
+      ],
+    })
+    syncTabDirty(get, set, tabId, editorSql)
+  } catch (err) {
+    const durationMs = Math.max(1, Date.now() - startedAt)
+    const message = err instanceof Error ? err.message : "查询执行失败"
+
+    if (!hasTab(get, tabId)) {
+      return
+    }
+
+    const latest = getTabContent(get, tabId)
+
+    setTabContent(get, set, tabId, {
+      ...latest,
+      sql: editorSql,
+      executed: false,
+      running: false,
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      durationMs,
+      executedAt: formatTime(new Date()),
+      error: message,
+      logs: [
+        ...latest.logs.filter((entry) => entry.id !== runningLog.id),
+        createLogEntry("error", editorSql, message, durationMs),
+      ],
+    })
+    syncTabDirty(get, set, tabId, editorSql)
+  }
+}
+
 // ─── Action Atoms ─────────────────────────────────────────────────────────────
 //
 // All write-only atoms use `false` (not `null`) as their initial value.
@@ -118,33 +337,26 @@ function formatTime(d: Date): string {
 // `null` is assignable to function types and causes jotai to pick the wrong
 // overload, making the resulting atom read-only.
 
-/** Create a new tab, optionally pre-populated with an auto-executed SQL query */
-export const addTabAtom = atom(false, (get, set, options?: AddTabOptions) => {
-  const id = String(nextTabId++)
-  const label = options?.label ? options.label : `查询 ${id}`
-  const newTab: Tab = { id, label }
+/** Create a new tab, optionally pre-populated with SQL */
+export const addTabAtom = atom(
+  false,
+  async (get, set, options?: AddTabOptions) => {
+    const id = String(nextTabId++)
+    const label = options?.label ? options.label : `查询 ${id}`
+    const newTab: Tab = { id, label }
 
-  set(tabsAtom, [...get(tabsAtom), newTab])
-  set(activeTabIdAtom, id)
+    set(tabsAtom, [...get(tabsAtom), newTab])
+    set(activeTabIdAtom, id)
 
-  if (options?.sql) {
-    // Seed the editor with the initial SQL
-    set(tabSqlAtom, { ...get(tabSqlAtom), [id]: options.sql })
+    const sql = options?.sql || ""
+    set(tabSqlAtom, { ...get(tabSqlAtom), [id]: sql })
+    setTabContent(get, set, id, createDefaultContent(options?.connection))
 
-    // Record the mock execution result; durationMs is deterministic (not random)
-    // so it stays stable across re-renders without needing useState.
-    const numId = parseInt(id, 10)
-    const content: TabContent = {
-      sql: options.sql,
-      executed: true,
-      columns: options.columns || [],
-      rowCount: 20,
-      durationMs: ((numId * 7) % 36) + 5, // 5–40 ms, deterministic
-      executedAt: formatTime(new Date()),
+    if (options?.autoRun && sql) {
+      await runTabSql(get, set, id)
     }
-    set(tabContentAtom, { ...get(tabContentAtom), [id]: content })
-  }
-})
+  },
+)
 
 /** Close a tab by id; activates the nearest remaining tab */
 export const closeTabAtom = atom(false, (get, set, id: string) => {
@@ -183,7 +395,42 @@ export const selectTabAtom = atom(false, (_get, set, id: string) => {
 export const updateActiveSqlAtom = atom(false, (get, set, sql: string) => {
   const activeId = get(activeTabIdAtom)
   if (!activeId) return
+
   set(tabSqlAtom, { ...get(tabSqlAtom), [activeId]: sql })
+
+  ensureTabContent(get, set, activeId)
+  const content = getTabContent(get, activeId)
+
+  set(
+    tabsAtom,
+    get(tabsAtom).map((t) =>
+      t.id === activeId ? { ...t, dirty: sql !== content.sql } : t,
+    ),
+  )
+})
+
+/** Execute the SQL of the currently active tab */
+export const runActiveTabSqlAtom = atom(false, async (get, set) => {
+  const activeId = get(activeTabIdAtom)
+  if (!activeId) {
+    return
+  }
+
+  await runTabSql(get, set, activeId)
+})
+
+/** Clear execution logs of the currently active tab */
+export const clearActiveTabLogsAtom = atom(false, (get, set) => {
+  const activeId = get(activeTabIdAtom)
+  if (!activeId) {
+    return
+  }
+
+  const content = getTabContent(get, activeId)
+  setTabContent(get, set, activeId, {
+    ...content,
+    logs: [],
+  })
 })
 
 /** Mark a tab as dirty (unsaved changes) or clean */

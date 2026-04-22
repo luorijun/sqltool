@@ -1,41 +1,10 @@
 import { useAtomValue } from "jotai"
-import { Table2 } from "lucide-react"
+import type { ReactNode } from "react"
+import { CircleX, Loader2, Table2 } from "lucide-react"
 
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { activeTabContentAtom } from "@/lib/tabs"
 import { cn } from "@/lib/utils"
-
-// ─── Mock Row Generator ───────────────────────────────────────────────────────
-
-function generateCellValue(col: string, i: number): string {
-  if (col === "id") return String(i)
-  if (col.endsWith("_id")) return String(((i * 7) % 99) + 1)
-  if (col.endsWith("_at") || col.endsWith("_time"))
-    return new Date(Date.now() - i * 86_400_000)
-      .toISOString()
-      .slice(0, 19)
-      .replace("T", " ")
-  if (col === "status") return i % 7 === 0 ? "inactive" : "active"
-  if (col === "role")
-    return i % 5 === 0 ? "admin" : i % 3 === 0 ? "moderator" : "member"
-  if (col === "email") return `user${i}@example.com`
-  if (col === "username") return `user_${String(i).padStart(3, "0")}`
-  if (col.includes("price") || col.includes("total") || col.includes("amount"))
-    return (((i * 1337) % 99000) / 100 + 10).toFixed(2)
-  if (col === "quantity") return String(((i * 3) % 10) + 1)
-  if (col === "stock") return String(((i * 17) % 500) + 1)
-  if (col === "slug") return `item-${i}`
-  if (col.includes("name")) return `Item ${i}`
-  return `value_${i}`
-}
-
-function generateMockRows(columns: string[], count: number) {
-  return Array.from({ length: count }, (_, i) => {
-    const row: Record<string, string> = {}
-    for (const col of columns) row[col] = generateCellValue(col, i + 1)
-    return row
-  })
-}
 
 // ─── Cell Formatting ──────────────────────────────────────────────────────────
 
@@ -50,31 +19,48 @@ const STATUS_STYLES: Record<string, string> = {
   inactive: "text-muted-foreground line-through",
 }
 
-function CellValue({ col, value }: { col: string; value: string }) {
+function formatCellValue(value: unknown): string {
+  if (value === null) return "NULL"
+  if (value === undefined) return ""
+  if (typeof value === "string") return value
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value)
+  }
+
+  return JSON.stringify(value)
+}
+
+function CellValue({ col, value }: { col: string; value: unknown }) {
+  const text = formatCellValue(value)
+
   if (col === "role") {
     return (
-      <span className={cn("font-mono text-xs", ROLE_STYLES[value] ?? "")}>
-        {value}
+      <span className={cn("font-mono text-xs", ROLE_STYLES[text] ?? "")}>
+        {text}
       </span>
     )
   }
   if (col === "status") {
     return (
-      <span className={cn("font-mono text-xs", STATUS_STYLES[value] ?? "")}>
-        {value}
+      <span className={cn("font-mono text-xs", STATUS_STYLES[text] ?? "")}>
+        {text}
       </span>
     )
   }
-  return <span className="font-mono text-xs">{value}</span>
+  return <span className="font-mono text-xs">{text}</span>
 }
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ icon, message }: { icon?: ReactNode; message: string }) {
   return (
     <div className="size-full flex flex-col items-center justify-center gap-2 text-center select-none">
-      <Table2 className="size-8 text-muted-foreground/25 stroke-[1.25]" />
-      <p className="text-xs text-muted-foreground">运行 SQL 语句以查看结果</p>
+      {icon ?? <Table2 className="size-8 text-muted-foreground/25 stroke-[1.25]" />}
+      <p className="text-xs text-muted-foreground">{message}</p>
     </div>
   )
 }
@@ -84,21 +70,45 @@ function EmptyState() {
 export function TableArea() {
   const content = useAtomValue(activeTabContentAtom)
 
-  if (!content || !content.executed || content.columns.length === 0) {
-    return <EmptyState />
+  if (!content) {
+    return <EmptyState message="运行 SQL 语句以查看结果" />
+  }
+
+  if (content.running) {
+    return (
+      <EmptyState
+        icon={<Loader2 className="size-8 text-primary/40 animate-spin" />}
+        message="正在执行 SQL..."
+      />
+    )
+  }
+
+  if (content.error) {
+    return (
+      <EmptyState
+        icon={<CircleX className="size-8 text-destructive/40 stroke-[1.25]" />}
+        message={content.error}
+      />
+    )
+  }
+
+  if (!content.executed) {
+    return <EmptyState message="运行 SQL 语句以查看结果" />
+  }
+
+  if (content.columns.length === 0) {
+    return <EmptyState message="语句执行成功，但没有可展示的结果集" />
   }
 
   const columns = content.columns
-  const rows = generateMockRows(columns, content.rowCount)
+  const rows = content.rows
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
       {/* Status bar */}
       <div className="flex-none flex items-center gap-4 px-3 h-7 border-b bg-muted/20 text-xs text-muted-foreground shrink-0">
         <span>
-          <span className="text-foreground font-medium">
-            {content.rowCount}
-          </span>{" "}
+          <span className="text-foreground font-medium">{content.rowCount}</span>{" "}
           行
         </span>
         <span>

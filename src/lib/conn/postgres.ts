@@ -1,6 +1,16 @@
 import knex, { type Knex } from "knex"
-import type { Config } from "../config/index"
-import type { DbSchema, DbTable } from "./index"
+import type { Config } from "../config"
+import type { DbSchema, DbTable, QueryResult, QueryResultRow } from "."
+
+interface PostgresField {
+  name: string
+}
+
+interface PostgresQueryResult<T> {
+  rows?: T[]
+  fields?: PostgresField[]
+  rowCount?: number | null
+}
 
 interface SchemaRow {
   schema_name: string
@@ -39,6 +49,14 @@ function excludeSystemSchemas(column: string): string {
 async function queryRows<T>(db: Knex, sql: string): Promise<T[]> {
   const result = (await db.raw(sql)) as { rows?: T[] }
   return Array.isArray(result.rows) ? result.rows : []
+}
+
+function toQueryRowCount(value: number | null | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined
+  }
+
+  return Math.max(0, Math.trunc(value))
 }
 
 function toRowCount(value: number | string | null): number | undefined {
@@ -229,6 +247,32 @@ export async function inspectPostgres(conn: Config): Promise<DbSchema[]> {
     }
 
     return Array.from(schemaMap.values())
+  } finally {
+    await db.destroy()
+  }
+}
+
+export async function queryPostgres(
+  conn: Config,
+  sql: string,
+): Promise<QueryResult> {
+  const db = createClient(conn)
+
+  try {
+    const result = (await db.raw(sql)) as PostgresQueryResult<QueryResultRow>
+    const rows = Array.isArray(result.rows) ? result.rows : []
+    const firstRow = rows[0]
+    const columns = Array.isArray(result.fields)
+      ? result.fields.map((field) => field.name)
+      : firstRow && typeof firstRow === "object"
+        ? Object.keys(firstRow)
+        : []
+
+    return {
+      columns,
+      rows,
+      rowCount: toQueryRowCount(result.rowCount),
+    }
   } finally {
     await db.destroy()
   }

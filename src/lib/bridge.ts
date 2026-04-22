@@ -1,5 +1,5 @@
-import type { Config, CreateConfig, UpdateConfig } from "./config/index"
-import type { DbSchema } from "./conn/index"
+import type { Config, CreateConfig, UpdateConfig } from "./config"
+import type { DbSchema, QueryResult } from "./conn"
 
 export interface MainBridge {
   config: {
@@ -11,6 +11,7 @@ export interface MainBridge {
   }
   conn: {
     inspect(config: Config): Promise<DbSchema[]>
+    query(config: Config, sql: string): Promise<QueryResult>
   }
 }
 
