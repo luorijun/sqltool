@@ -1,6 +1,7 @@
 import { atom } from "jotai"
 import type { Getter, Setter } from "jotai/vanilla"
 import type { Config } from "@/lib/config"
+import type { QueryResult } from "@/lib/conn"
 import connApi from "@/lib/conn/renderer"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,8 +36,8 @@ export interface TabContent {
   connection?: Config
   executed: boolean
   running: boolean
-  columns: string[]
-  rows: Array<Record<string, unknown>>
+  columns: QueryResult["columns"]
+  rows: QueryResult["rows"]
   rowCount: number
   durationMs: number
   executedAt: string
@@ -199,7 +200,12 @@ function hasTab(get: Getter, tabId: string): boolean {
   return get(tabsAtom).some((tab) => tab.id === tabId)
 }
 
-function syncTabDirty(get: Getter, set: Setter, tabId: string, executedSql: string) {
+function syncTabDirty(
+  get: Getter,
+  set: Setter,
+  tabId: string,
+  executedSql: string,
+) {
   const currentSql = get(tabSqlAtom)[tabId] || ""
   set(
     tabsAtom,

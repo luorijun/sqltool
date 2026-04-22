@@ -1,12 +1,19 @@
 import knex, { type Knex } from "knex"
+import pg from "pg"
 import type { Config } from "../config"
-import type { DbSchema, DbTable, QueryResult, QueryResultRow } from "."
+import type {
+  DbSchema,
+  DbTable,
+  QueryResult,
+  QueryResultColumn,
+  QueryResultRow,
+} from "."
 
 interface PostgresField {
   name: string
 }
 
-interface PostgresQueryResult<T> {
+interface PostgresQueryResult<T = QueryResultRow> {
   rows?: T[]
   fields?: PostgresField[]
   rowCount?: number | null
@@ -91,6 +98,21 @@ function createClient(conn: Config): Knex {
       min: 0,
       max: 1,
     },
+  })
+}
+
+function createPgClient(conn: Config): pg.Client {
+  const port = Number(conn.port)
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(`无效的端口: ${conn.port}`)
+  }
+
+  return new pg.Client({
+    host: conn.host,
+    port,
+    user: conn.username,
+    password: conn.password,
+    database: conn.database,
   })
 }
 
@@ -256,17 +278,23 @@ export async function queryPostgres(
   conn: Config,
   sql: string,
 ): Promise<QueryResult> {
-  const db = createClient(conn)
+  const client = createPgClient(conn)
 
   try {
-    const result = (await db.raw(sql)) as PostgresQueryResult<QueryResultRow>
+    await client.connect()
+
+    const result = (await client.query({
+      rowMode: "array",
+      text: sql,
+    })) as PostgresQueryResult
+
     const rows = Array.isArray(result.rows) ? result.rows : []
-    const firstRow = rows[0]
-    const columns = Array.isArray(result.fields)
-      ? result.fields.map((field) => field.name)
-      : firstRow && typeof firstRow === "object"
-        ? Object.keys(firstRow)
-        : []
+    const columns: QueryResultColumn[] = Array.isArray(result.fields)
+      ? result.fields.map((field, index) => ({
+          id: `col_${index}`,
+          name: field.name,
+        }))
+      : []
 
     return {
       columns,
@@ -274,6 +302,6 @@ export async function queryPostgres(
       rowCount: toQueryRowCount(result.rowCount),
     }
   } finally {
-    await db.destroy()
+    await client.end()
   }
 }

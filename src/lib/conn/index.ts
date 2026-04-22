@@ -29,12 +29,15 @@ export interface DbSchema {
   functions: DbFunction[]
 }
 
-export interface QueryResultRow {
-  [key: string]: unknown
+export interface QueryResultColumn {
+  id: string
+  name: string
 }
 
+export type QueryResultRow = unknown[]
+
 export interface QueryResult {
-  columns: string[]
+  columns: QueryResultColumn[]
   rows: QueryResultRow[]
   rowCount?: number
 }
