@@ -1,6 +1,6 @@
 import { useAtomValue, useSetAtom } from "jotai"
 import { AlignLeft, Play } from "lucide-react"
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   activeTabContentAtom,
@@ -9,66 +9,26 @@ import {
   updateActiveSqlAtom,
 } from "@/lib/tabs"
 import { cn } from "@/lib/utils"
+import { type CursorPosition, SqlEditor } from "./sql-editor"
 
-// ─── Line Numbers ─────────────────────────────────────────────────────────────
-
-function LineNumbers({
-  lineCount,
-  scrollTop,
-  lineHeight,
-}: {
-  lineCount: number
-  scrollTop: number
-  lineHeight: number
-}) {
-  return (
-    <div className="relative flex-none w-11 bg-muted/20 border-r overflow-hidden select-none shrink-0">
-      <div
-        className="absolute inset-x-0 top-0"
-        style={{ transform: `translateY(${-scrollTop}px)` }}
-      >
-        {Array.from({ length: lineCount }, (_, i) => (
-          <div
-            key={i}
-            className="px-2 text-right text-xs font-mono text-muted-foreground/60"
-            style={{ height: lineHeight, lineHeight: `${lineHeight}px` }}
-          >
-            {i + 1}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+function getLineCount(sql: string): number {
+  return sql ? sql.split("\n").length : 1
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-const LINE_HEIGHT = 20 // px — must match the textarea's line-height
+const DEFAULT_CURSOR: CursorPosition = { line: 1, col: 1 }
 
 export function CodeArea() {
   const content = useAtomValue(activeTabContentAtom)
   const sql = useAtomValue(activeTabSqlAtom)
   const updateSql = useSetAtom(updateActiveSqlAtom)
   const runSql = useSetAtom(runActiveTabSqlAtom)
-  const [scrollTop, setScrollTop] = useState(0)
-  const [cursor, setCursor] = useState({ line: 1, col: 1 })
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [cursor, setCursor] = useState<CursorPosition>(DEFAULT_CURSOR)
 
-  const lineCount = sql.split("\n").length
-
-  const handleScroll = useCallback(() => {
-    if (textareaRef.current) {
-      setScrollTop(textareaRef.current.scrollTop)
-    }
+  const handleCursorChange = useCallback((nextCursor: CursorPosition) => {
+    setCursor(nextCursor)
   }, [])
 
-  const handleKeyUp = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    const before = el.value.slice(0, el.selectionStart)
-    const lines = before.split("\n")
-    setCursor({ line: lines.length, col: lines[lines.length - 1].length + 1 })
-  }, [])
+  const lineCount = getLineCount(sql)
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
@@ -94,10 +54,8 @@ export function CodeArea() {
           格式化
         </Button>
 
-        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Cursor position */}
         <span className="text-xs text-muted-foreground font-mono pr-1">
           {cursor.line}:{cursor.col}
         </span>
@@ -113,45 +71,13 @@ export function CodeArea() {
       </div>
 
       {/* ── Editor body ─────────────────────────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Line numbers gutter */}
-        <LineNumbers
-          lineCount={lineCount}
-          scrollTop={scrollTop}
-          lineHeight={LINE_HEIGHT}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <SqlEditor
+          value={sql}
+          driver={content?.connection?.driver}
+          onChange={updateSql}
+          onCursorChange={handleCursorChange}
         />
-
-        {/* Textarea */}
-        <div className="flex-1 relative overflow-hidden">
-          <textarea
-            ref={textareaRef}
-            value={sql}
-            onChange={(e) => updateSql(e.target.value)}
-            onScroll={handleScroll}
-            onKeyUp={handleKeyUp}
-            onClick={handleKeyUp}
-            spellCheck={false}
-            autoCorrect="off"
-            autoCapitalize="off"
-            className={cn(
-              "absolute inset-0 w-full h-full",
-              "resize-none bg-transparent",
-              "py-0 px-3",
-              "text-sm font-mono",
-              "text-foreground caret-foreground",
-              "outline-none focus:outline-none",
-              "overflow-auto",
-              // Subtle selection color
-              "selection:bg-primary/20",
-            )}
-            style={{
-              lineHeight: `${LINE_HEIGHT}px`,
-              tabSize: 2,
-              // Padding top to align with line numbers
-              paddingTop: 0,
-            }}
-          />
-        </div>
       </div>
 
       {/* ── Status bar ──────────────────────────────────────────────────── */}
