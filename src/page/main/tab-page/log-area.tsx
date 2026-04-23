@@ -2,11 +2,8 @@ import { useAtomValue, useSetAtom } from "jotai"
 import { CheckCircle2, CircleX, Info, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  activeTabContentAtom,
-  clearActiveTabLogsAtom,
-  type TabLogEntry as LogEntry,
-} from "@/lib/tabs"
+import type { TabLogEntry as LogEntry } from "@/lib/tabs"
+import { activeTabLogsAtom, clearActiveTabLogsAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 
 // ─── Status Icon ──────────────────────────────────────────────────────────────
@@ -117,9 +114,8 @@ function LogEntryItem({ entry }: { entry: LogEntry }) {
 // ─── Exec Log ─────────────────────────────────────────────────────────────────
 
 export default function LogArea() {
-  const content = useAtomValue(activeTabContentAtom)
+  const entries = useAtomValue(activeTabLogsAtom)
   const clearLogs = useSetAtom(clearActiveTabLogsAtom)
-  const entries = content?.logs || []
 
   return (
     <div className="size-full flex flex-col overflow-hidden">

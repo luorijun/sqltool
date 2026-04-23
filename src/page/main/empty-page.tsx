@@ -1,7 +1,7 @@
 import { useSetAtom } from "jotai"
 import { FilePlus2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { addTabAtom } from "@/lib/tabs"
+import { addTabAtom } from "@/lib/tabs/renderer"
 
 export function EmptyPage() {
   const addTab = useSetAtom(addTabAtom)

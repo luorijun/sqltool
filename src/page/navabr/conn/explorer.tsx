@@ -21,7 +21,7 @@ import type {
 } from "@/lib/conn"
 import connApi from "@/lib/conn/renderer"
 import type { Config } from "@/lib/config"
-import { addTabAtom } from "@/lib/tabs"
+import { addTabAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 
 function quoteIdent(value: string): string {

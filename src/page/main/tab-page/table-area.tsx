@@ -11,7 +11,8 @@ import type { ReactNode } from "react"
 
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { QueryResultRow } from "@/lib/conn"
-import { activeTabContentAtom, type TabContent } from "@/lib/tabs"
+import type { TabResultState } from "@/lib/tabs"
+import { activeTabResultAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 
 const ROLE_STYLES: Record<string, string> = {
@@ -78,25 +79,23 @@ function EmptyState({ icon, message }: { icon?: ReactNode; message: string }) {
   )
 }
 
-function StatusBar({ content }: { content: TabContent }) {
+function StatusBar({ result }: { result: TabResultState }) {
   return (
     <div className="flex-none flex items-center gap-4 px-3 h-7 border-b bg-muted/20 text-xs text-muted-foreground shrink-0">
       <span>
-        <span className="text-foreground font-medium">{content.rowCount}</span>{" "}
+        <span className="text-foreground font-medium">{result.rowCount}</span>{" "}
         行
       </span>
       <span>
-        <span className="text-foreground font-medium">
-          {content.columns.length}
-        </span>{" "}
+        <span className="text-foreground font-medium">{result.columns.length}</span>{" "}
         列
       </span>
-      <span className="ml-auto">耗时 {content.durationMs} ms</span>
+      <span className="ml-auto">耗时 {result.durationMs} ms</span>
     </div>
   )
 }
 
-function ResultTable({ content }: { content: TabContent }) {
+function ResultTable({ result }: { result: TabResultState }) {
   const tableColumns = useMemo<ColumnDef<QueryResultRow>[]>(
     () => [
       {
@@ -104,7 +103,7 @@ function ResultTable({ content }: { content: TabContent }) {
         header: "#",
         cell: ({ row }) => row.index + 1,
       },
-      ...content.columns.map((column, columnIndex) => ({
+      ...result.columns.map((column, columnIndex) => ({
         id: column.id,
         header: column.name,
         accessorFn: (row: QueryResultRow) => row[columnIndex],
@@ -113,11 +112,11 @@ function ResultTable({ content }: { content: TabContent }) {
         ),
       })),
     ],
-    [content.columns],
+    [result.columns],
   )
 
   const table = useReactTable({
-    data: content.rows,
+    data: result.rows,
     columns: tableColumns,
     getCoreRowModel: getCoreRowModel(),
   })
@@ -189,28 +188,28 @@ function ResultTable({ content }: { content: TabContent }) {
   )
 }
 
-function ExecutedTableArea({ content }: { content: TabContent }) {
+function ExecutedTableArea({ result }: { result: TabResultState }) {
   return (
     <div className="size-full flex flex-col overflow-hidden">
-      <StatusBar content={content} />
+      <StatusBar result={result} />
 
-      {content.columns.length === 0 ? (
+      {result.columns.length === 0 ? (
         <EmptyState message="语句执行成功，但没有可展示的结果集" />
       ) : (
-        <ResultTable content={content} />
+        <ResultTable result={result} />
       )}
     </div>
   )
 }
 
 export function TableArea() {
-  const content = useAtomValue(activeTabContentAtom)
+  const result = useAtomValue(activeTabResultAtom)
 
-  if (!content) {
+  if (!result) {
     return <EmptyState message="运行 SQL 语句以查看结果" />
   }
 
-  if (content.running) {
+  if (result.running) {
     return (
       <EmptyState
         icon={<Loader2 className="size-8 text-primary/40 animate-spin" />}
@@ -219,18 +218,18 @@ export function TableArea() {
     )
   }
 
-  if (content.error) {
+  if (result.error) {
     return (
       <EmptyState
         icon={<CircleX className="size-8 text-destructive/40 stroke-[1.25]" />}
-        message={content.error}
+        message={result.error}
       />
     )
   }
 
-  if (!content.executed) {
+  if (!result.executed) {
     return <EmptyState message="运行 SQL 语句以查看结果" />
   }
 
-  return <ExecutedTableArea content={content} />
+  return <ExecutedTableArea result={result} />
 }

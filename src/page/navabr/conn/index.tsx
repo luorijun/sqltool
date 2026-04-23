@@ -1,7 +1,7 @@
 import { useSetAtom } from "jotai"
 import { useState } from "react"
 import type { Config } from "@/lib/config"
-import { addTabAtom } from "@/lib/tabs"
+import { addTabAtom } from "@/lib/tabs/renderer"
 import { ConnDialog } from "../config/conn-dialog"
 import { ConnExplorer } from "./explorer"
 import { ConnHeader } from "./header"

@@ -2,31 +2,34 @@ import { useAtomValue, useSetAtom } from "jotai"
 import { AlignLeft, Play } from "lucide-react"
 import { useCallback, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
+import type { TabEditorCursor } from "@/lib/tabs"
 import {
   activeTabIdAtom,
-  activeTabContentAtom,
+  activeTabDialectAtom,
+  activeTabResultAtom,
   activeTabSqlAtom,
   runActiveTabSqlAtom,
   updateActiveSqlAtom,
-} from "@/lib/tabs"
+} from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
-import { type CursorPosition, SqlEditor } from "./sql-editor"
+import { SqlEditor } from "./sql-editor"
 
 function getLineCount(sql: string): number {
   return sql ? sql.split("\n").length : 1
 }
 
-const DEFAULT_CURSOR: CursorPosition = { line: 1, col: 1 }
+const DEFAULT_CURSOR: TabEditorCursor = { line: 1, col: 1 }
 
 export function CodeArea() {
   const activeTabId = useAtomValue(activeTabIdAtom)
-  const content = useAtomValue(activeTabContentAtom)
+  const result = useAtomValue(activeTabResultAtom)
+  const dialect = useAtomValue(activeTabDialectAtom)
   const sql = useAtomValue(activeTabSqlAtom)
   const updateSql = useSetAtom(updateActiveSqlAtom)
   const runSql = useSetAtom(runActiveTabSqlAtom)
-  const [cursor, setCursor] = useState<CursorPosition>(DEFAULT_CURSOR)
+  const [cursor, setCursor] = useState<TabEditorCursor>(DEFAULT_CURSOR)
 
-  const handleCursorChange = useCallback((nextCursor: CursorPosition) => {
+  const handleCursorChange = useCallback((nextCursor: TabEditorCursor) => {
     setCursor(nextCursor)
   }, [])
 
@@ -41,7 +44,7 @@ export function CodeArea() {
           size="xs"
           className="gap-1.5"
           onClick={() => runSql()}
-          disabled={content?.running}
+          disabled={result?.running}
         >
           <Play className="size-3" />
           运行
@@ -78,7 +81,7 @@ export function CodeArea() {
         <SqlEditor
           key={activeTabId || "no-tab"}
           value={sql}
-          driver={content?.connection?.driver}
+          driver={dialect}
           onChange={updateSql}
           onCursorChange={handleCursorChange}
         />
