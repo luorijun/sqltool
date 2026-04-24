@@ -9,12 +9,14 @@ import type {
   TabEditorData,
   TabLogEntry,
   TabLogStatus,
+  TabLogUiState,
   TabResultState,
   TabTableData,
 } from "./index"
 
 let nextTabId = 1
 let nextLogId = 1
+const MAX_TAB_LOG_ENTRIES = 300
 
 const DEFAULT_CURSOR = { line: 1, col: 1 } as const
 
@@ -23,6 +25,8 @@ export const tabsAtom = atom<Tab[]>([])
 export const activeTabIdAtom = atom("")
 
 const tabDataAtom = atom<Record<string, TabData>>({})
+const tabLogsByTabIdAtom = atom<Record<string, TabLogEntry[]>>({})
+const tabLogUiByTabIdAtom = atom<Record<string, TabLogUiState>>({})
 
 export const activeTabDataAtom = atom<TabData | null>((get) => {
   const activeId = get(activeTabIdAtom)
@@ -48,7 +52,21 @@ export const activeTabResultAtom = atom<TabResultState | null>((get) => {
 })
 
 export const activeTabLogsAtom = atom<TabLogEntry[]>((get) => {
-  return get(activeTabDataAtom)?.logs ?? []
+  const activeId = get(activeTabIdAtom)
+  if (!activeId) {
+    return []
+  }
+
+  return get(tabLogsByTabIdAtom)[activeId] ?? []
+})
+
+export const activeTabLogUiAtom = atom<TabLogUiState | null>((get) => {
+  const activeId = get(activeTabIdAtom)
+  if (!activeId) {
+    return null
+  }
+
+  return get(tabLogUiByTabIdAtom)[activeId] ?? createDefaultLogUiState()
 })
 
 export const activeTabTableUiAtom = atom<TabTableData | null>((get) => {
@@ -66,6 +84,14 @@ function formatTime(d: Date): string {
     String(d.getMinutes()).padStart(2, "0"),
     String(d.getSeconds()).padStart(2, "0"),
   ].join(":")
+}
+
+function createDefaultLogUiState(): TabLogUiState {
+  return {
+    query: "",
+    statuses: [],
+    followTail: true,
+  }
 }
 
 function createDefaultEditorState(): TabEditorData {
@@ -144,7 +170,6 @@ function createDefaultTabData(connection?: Config, sql = ""): TabData {
     sql,
     editor: createDefaultEditorState(),
     result: createDefaultResultState(),
-    logs: [],
     table: createDefaultTableUiState(),
   }
 }
@@ -152,17 +177,49 @@ function createDefaultTabData(connection?: Config, sql = ""): TabData {
 function createLogEntry(
   status: TabLogStatus,
   sql: string,
-  detail?: string,
-  duration?: number,
+  summary: string,
+  options?: {
+    detail?: string
+    startedAt?: number
+    finishedAt?: number
+    durationMs?: number
+  },
 ): TabLogEntry {
+  const startedAt = options?.startedAt ?? Date.now()
+
   return {
     id: String(nextLogId++),
-    time: formatTime(new Date()),
     status,
     sql,
-    detail,
-    duration,
+    summary,
+    detail: options?.detail,
+    startedAt,
+    finishedAt: options?.finishedAt,
+    durationMs: options?.durationMs,
   }
+}
+
+function trimLogs(entries: TabLogEntry[]): TabLogEntry[] {
+  if (entries.length <= MAX_TAB_LOG_ENTRIES) {
+    return entries
+  }
+
+  return entries.slice(entries.length - MAX_TAB_LOG_ENTRIES)
+}
+
+function replaceLogEntry(
+  entries: TabLogEntry[],
+  entryId: string,
+  getNextEntry: (current?: TabLogEntry) => TabLogEntry,
+): TabLogEntry[] {
+  const index = entries.findIndex((entry) => entry.id === entryId)
+  if (index === -1) {
+    return [...entries, getNextEntry()]
+  }
+
+  const nextEntries = [...entries]
+  nextEntries[index] = getNextEntry(nextEntries[index])
+  return nextEntries
 }
 
 function getTabData(get: Getter, tabId: string): TabData | undefined {
@@ -171,6 +228,45 @@ function getTabData(get: Getter, tabId: string): TabData | undefined {
 
 function hasTab(get: Getter, tabId: string): boolean {
   return get(tabsAtom).some((tab) => tab.id === tabId)
+}
+
+function getTabLogs(get: Getter, tabId: string): TabLogEntry[] {
+  return get(tabLogsByTabIdAtom)[tabId] ?? []
+}
+
+function setTabLogs(
+  get: Getter,
+  set: Setter,
+  tabId: string,
+  logs: TabLogEntry[],
+) {
+  set(tabLogsByTabIdAtom, {
+    ...get(tabLogsByTabIdAtom),
+    [tabId]: trimLogs(logs),
+  })
+}
+
+function updateTabLogs(
+  get: Getter,
+  set: Setter,
+  tabId: string,
+  updater: (logs: TabLogEntry[]) => TabLogEntry[],
+): TabLogEntry[] {
+  const nextLogs = trimLogs(updater(getTabLogs(get, tabId)))
+  setTabLogs(get, set, tabId, nextLogs)
+  return nextLogs
+}
+
+function setTabLogUi(
+  get: Getter,
+  set: Setter,
+  tabId: string,
+  nextLogUi: TabLogUiState,
+) {
+  set(tabLogUiByTabIdAtom, {
+    ...get(tabLogUiByTabIdAtom),
+    [tabId]: nextLogUi,
+  })
 }
 
 function setTabData(
@@ -249,11 +345,14 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
         executedAt: "",
         error: "SQL 不能为空",
       },
-      logs: [
-        ...current.logs,
-        createLogEntry("error", editorSql, "SQL 不能为空"),
-      ],
     }))
+    updateTabLogs(get, set, tabId, (logs) => [
+      ...logs,
+      createLogEntry("error", editorSql, "SQL 不能为空", {
+        detail: "请输入要执行的 SQL 语句",
+        finishedAt: Date.now(),
+      }),
+    ])
     syncTabDirty(get, set, tabId)
     return
   }
@@ -273,16 +372,23 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
         executedAt: "",
         error: "该标签页未绑定数据库连接",
       },
-      logs: [
-        ...current.logs,
-        createLogEntry("error", editorSql, "该标签页未绑定数据库连接"),
-      ],
     }))
+    updateTabLogs(get, set, tabId, (logs) => [
+      ...logs,
+      createLogEntry("error", editorSql, "该标签页未绑定数据库连接", {
+        detail: "请先为当前标签页选择数据库连接",
+        finishedAt: Date.now(),
+      }),
+    ])
     syncTabDirty(get, set, tabId)
     return
   }
 
-  const runningLog = createLogEntry("running", editorSql, "正在执行 SQL")
+  const startedAt = Date.now()
+  const runningLog = createLogEntry("running", editorSql, "正在执行 SQL", {
+    detail: "正在等待数据库返回结果",
+    startedAt,
+  })
 
   updateTabData(get, set, tabId, (current) => ({
     ...current,
@@ -291,10 +397,8 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
       running: true,
       error: undefined,
     },
-    logs: [...current.logs, runningLog],
   }))
-
-  const startedAt = Date.now()
+  updateTabLogs(get, set, tabId, (logs) => [...logs, runningLog])
 
   try {
     const result = await connApi.query(data.connection, editorSql)
@@ -322,11 +426,17 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
         error: undefined,
       },
       table: reconcileTableUiState(current.table, result.columns),
-      logs: [
-        ...current.logs.filter((entry) => entry.id !== runningLog.id),
-        createLogEntry("success", editorSql, `返回 ${rowCount} 行`, durationMs),
-      ],
     }))
+    updateTabLogs(get, set, tabId, (logs) =>
+      replaceLogEntry(logs, runningLog.id, (current) => ({
+        ...(current ?? runningLog),
+        status: "success",
+        summary: `返回 ${rowCount} 行`,
+        detail: undefined,
+        finishedAt: Date.now(),
+        durationMs,
+      })),
+    )
     syncTabDirty(get, set, tabId)
   } catch (err) {
     const durationMs = Math.max(1, Date.now() - startedAt)
@@ -350,11 +460,17 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
         executedAt: formatTime(new Date()),
         error: message,
       },
-      logs: [
-        ...current.logs.filter((entry) => entry.id !== runningLog.id),
-        createLogEntry("error", editorSql, message, durationMs),
-      ],
     }))
+    updateTabLogs(get, set, tabId, (logs) =>
+      replaceLogEntry(logs, runningLog.id, (current) => ({
+        ...(current ?? runningLog),
+        status: "error",
+        summary: message,
+        detail: message,
+        finishedAt: Date.now(),
+        durationMs,
+      })),
+    )
     syncTabDirty(get, set, tabId)
   }
 }
@@ -369,6 +485,8 @@ export const addTabAtom = atom(
     set(tabsAtom, [...get(tabsAtom), { id, label }])
     set(activeTabIdAtom, id)
     setTabData(get, set, id, createDefaultTabData(options?.connection, sql))
+    setTabLogs(get, set, id, [])
+    setTabLogUi(get, set, id, createDefaultLogUiState())
 
     if (options?.autoRun && sql) {
       await runTabSql(get, set, id)
@@ -396,6 +514,14 @@ export const closeTabAtom = atom(false, (get, set, id: string) => {
   const nextData = { ...get(tabDataAtom) }
   delete nextData[id]
   set(tabDataAtom, nextData)
+
+  const nextLogs = { ...get(tabLogsByTabIdAtom) }
+  delete nextLogs[id]
+  set(tabLogsByTabIdAtom, nextLogs)
+
+  const nextLogUi = { ...get(tabLogUiByTabIdAtom) }
+  delete nextLogUi[id]
+  set(tabLogUiByTabIdAtom, nextLogUi)
 })
 
 export const renameTabAtom = atom(
@@ -534,8 +660,32 @@ export const clearActiveTabLogsAtom = atom(false, (get, set) => {
     return
   }
 
-  updateTabData(get, set, activeId, (current) => ({
-    ...current,
-    logs: [],
-  }))
+  setTabLogs(get, set, activeId, [])
 })
+
+export const updateActiveTabLogUiAtom = atom(
+  false,
+  (
+    get,
+    set,
+    updater:
+      | Partial<TabLogUiState>
+      | ((current: TabLogUiState) => TabLogUiState),
+  ) => {
+    const activeId = get(activeTabIdAtom)
+    if (!activeId) {
+      return
+    }
+
+    const current =
+      get(tabLogUiByTabIdAtom)[activeId] ?? createDefaultLogUiState()
+    setTabLogUi(
+      get,
+      set,
+      activeId,
+      typeof updater === "function"
+        ? updater(current)
+        : { ...current, ...updater },
+    )
+  },
+)

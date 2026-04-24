@@ -14,7 +14,7 @@ const DIVIDER_SIZE = 5
 
 const MIN_TABLE_HEIGHT = 80
 const MIN_BOTTOM_HEIGHT = 120
-const MIN_LOG_WIDTH = 160
+const MIN_LOG_WIDTH = 240
 const MIN_CODE_WIDTH = 160
 
 type DragType = "h-divider" | "v-divider"

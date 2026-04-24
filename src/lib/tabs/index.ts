@@ -11,7 +11,6 @@ export interface TabData {
   connection?: Config
   sql: string
   result: TabResultState
-  logs: TabLogEntry[]
   editor: TabEditorData
   table: TabTableData
 }
@@ -82,16 +81,31 @@ export interface TabEditorSearch {
 // logs
 // ====================
 
+export type TabLogStatus = "success" | "error" | "info" | "running"
+
+export const TAB_LOG_STATUSES = [
+  "success",
+  "error",
+  "info",
+  "running",
+] as const satisfies readonly TabLogStatus[]
+
 export interface TabLogEntry {
   id: string
-  time: string
   status: TabLogStatus
   sql: string
+  summary: string
   detail?: string
-  duration?: number
+  startedAt: number
+  finishedAt?: number
+  durationMs?: number
 }
 
-export type TabLogStatus = "success" | "error" | "info" | "running"
+export interface TabLogUiState {
+  query: string
+  statuses: TabLogStatus[]
+  followTail: boolean
+}
 
 // ====================
 // others
