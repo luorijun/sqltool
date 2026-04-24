@@ -92,7 +92,7 @@ const sqlEditorTheme = EditorView.theme({
     fontSize: "0.875rem",
   },
   ".cm-panels": {
-    backgroundColor: "color-mix(in oklab, var(--background) 94%, var(--muted))",
+    backgroundColor: "color-mix(in oklab, var(--background) 92%, var(--muted))",
     borderBottom: "1px solid var(--border)",
     color: "var(--foreground)",
   },
@@ -100,57 +100,67 @@ const sqlEditorTheme = EditorView.theme({
     borderBottom: "1px solid var(--border)",
   },
   ".cm-panel.cm-search": {
-    padding: "8px 12px",
+    padding: "6px 8px",
   },
   ".cm-search": {
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: "6px 8px",
-    fontSize: "0.75rem",
+    gap: "6px",
+    fontSize: "0.6875rem",
   },
   ".cm-search label": {
     display: "inline-flex",
     alignItems: "center",
-    gap: "4px",
+    gap: "5px",
+    height: "24px",
     margin: 0,
+    borderRadius: "9999px",
+    padding: "0 8px",
+    backgroundColor: "color-mix(in oklab, var(--muted) 55%, transparent)",
     color: "var(--muted-foreground)",
   },
   ".cm-search input": {
     margin: 0,
   },
   ".cm-search .cm-textfield": {
-    height: "28px",
-    minWidth: "140px",
-    borderRadius: "9999px",
+    height: "24px",
+    minWidth: "156px",
+    borderRadius: "8px",
     border: "1px solid var(--border)",
-    backgroundColor: "color-mix(in oklab, var(--background) 92%, var(--muted))",
-    padding: "0 10px",
-    fontSize: "0.75rem",
+    backgroundColor: "var(--background)",
+    padding: "0 9px",
+    fontSize: "0.6875rem",
     color: "var(--foreground)",
     outline: "none",
   },
   ".cm-search .cm-textfield:focus": {
     borderColor: "var(--ring)",
-    boxShadow: "0 0 0 3px color-mix(in oklab, var(--ring) 20%, transparent)",
+    boxShadow: "0 0 0 3px color-mix(in oklab, var(--ring) 18%, transparent)",
   },
   ".cm-search button": {
-    height: "28px",
-    borderRadius: "9999px",
-    border: "1px solid transparent",
-    backgroundColor: "color-mix(in oklab, var(--muted) 60%, transparent)",
-    padding: "0 10px",
-    fontSize: "0.75rem",
+    height: "24px",
+    borderRadius: "8px",
+    border: "1px solid var(--border)",
+    backgroundColor: "color-mix(in oklab, var(--background) 86%, var(--muted))",
+    padding: "0 8px",
+    fontSize: "0.6875rem",
     color: "var(--foreground)",
     cursor: "pointer",
   },
   ".cm-search button:hover": {
-    backgroundColor: "color-mix(in oklab, var(--muted) 78%, transparent)",
+    backgroundColor: "color-mix(in oklab, var(--background) 76%, var(--muted))",
+  },
+  ".cm-search button[aria-pressed='true']": {
+    borderColor: "color-mix(in oklab, var(--primary) 24%, var(--border))",
+    backgroundColor:
+      "color-mix(in oklab, var(--primary) 9%, var(--background))",
   },
   ".cm-search [name='close']": {
     position: "static",
-    padding: "0 8px",
-    fontSize: "1rem",
+    minWidth: "24px",
+    padding: 0,
+    fontSize: "0.875rem",
     lineHeight: 1,
   },
   ".cm-searchMatch": {
@@ -206,14 +216,18 @@ const sqlEditorTheme = EditorView.theme({
 })
 
 function getSqlExtension(driver?: DbDriver): Extension {
+  if (!driver) {
+    return []
+  }
+
   switch (driver) {
     case "mysql":
       return sql({ dialect: MySQL })
     case "sqlite":
       return sql({ dialect: SQLite })
-    default:
-      return sql({ dialect: PostgreSQL })
   }
+
+  return sql({ dialect: PostgreSQL })
 }
 
 function getCursorPosition(state: EditorState): CursorPosition {

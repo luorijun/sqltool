@@ -5,41 +5,28 @@ import { toast } from "sonner"
 import type { SqlLanguage } from "sql-formatter"
 import { format as formatSql } from "sql-formatter"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import type { DbDriver } from "@/lib/config"
 import type { TabEditorData } from "@/lib/tabs"
 import {
   activeTabConnectionAtom,
-  activeTabDialectAtom,
   activeTabEditorStateAtom,
   activeTabIdAtom,
   activeTabResultAtom,
   activeTabSqlAtom,
   runActiveTabSqlAtom,
-  setActiveTabDialectOverrideAtom,
   updateActiveSqlAtom,
   updateTabEditorStateAtom,
 } from "@/lib/tabs/renderer"
-import { cn } from "@/lib/utils"
+import { PanelStatusBar, PanelToolbar } from "./panel-bar"
 import { SqlEditor, type SqlEditorHandle } from "./sql-editor"
-
-const DIALECT_LABELS: Record<DbDriver, string> = {
-  postgres: "PostgreSQL",
-  mysql: "MySQL",
-  sqlite: "SQLite",
-}
 
 const FORMAT_LANGUAGE_MAP: Record<DbDriver, SqlLanguage> = {
   postgres: "postgresql",
   mysql: "mysql",
   sqlite: "sqlite",
 }
+
+const DEFAULT_FORMAT_LANGUAGE: SqlLanguage = "sql"
 
 function getLineCount(sql: string): number {
   return sql ? sql.split("\n").length : 1
@@ -114,11 +101,9 @@ export function CodeArea() {
   const connection = useAtomValue(activeTabConnectionAtom)
   const editorState = useAtomValue(activeTabEditorStateAtom)
   const result = useAtomValue(activeTabResultAtom)
-  const dialect = useAtomValue(activeTabDialectAtom)
   const sql = useAtomValue(activeTabSqlAtom)
   const updateSql = useSetAtom(updateActiveSqlAtom)
   const runSql = useSetAtom(runActiveTabSqlAtom)
-  const setDialectOverride = useSetAtom(setActiveTabDialectOverrideAtom)
   const updateTabEditorState = useSetAtom(updateTabEditorStateAtom)
   const editorRef = useRef<SqlEditorHandle | null>(null)
 
@@ -165,7 +150,9 @@ export function CodeArea() {
 
     try {
       const formatted = formatSql(sql, {
-        language: FORMAT_LANGUAGE_MAP[dialect],
+        language: connection?.driver
+          ? FORMAT_LANGUAGE_MAP[connection.driver]
+          : DEFAULT_FORMAT_LANGUAGE,
         tabWidth: 2,
         keywordCase: "upper",
       })
@@ -180,7 +167,7 @@ export function CodeArea() {
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
-      <div className="flex-none flex items-center gap-1 px-2 h-9 border-b bg-muted/20 shrink-0">
+      <PanelToolbar>
         <Button
           variant="default"
           size="xs"
@@ -214,62 +201,14 @@ export function CodeArea() {
           <Search className="size-3" />
           搜索
         </Button>
-
-        <div className="flex-1" />
-
-        <span className="text-xs text-muted-foreground font-mono pr-1">
-          {editorState.cursor.line}:{editorState.cursor.col}
-        </span>
-
-        {connection ? (
-          <span
-            className={cn(
-              "text-[10px] font-medium px-1.5 py-0.5 rounded",
-              "bg-muted text-muted-foreground",
-            )}
-          >
-            {DIALECT_LABELS[dialect]}
-          </span>
-        ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="h-6 rounded-md px-1.5 text-[10px] font-medium text-muted-foreground"
-                />
-              }
-            >
-              {DIALECT_LABELS[dialect]}
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent side="bottom" align="end" className="min-w-36">
-              <DropdownMenuRadioGroup
-                value={dialect}
-                onValueChange={(value) => setDialectOverride(value as DbDriver)}
-              >
-                <DropdownMenuRadioItem value="postgres">
-                  PostgreSQL
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="mysql">
-                  MySQL
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="sqlite">
-                  SQLite
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+      </PanelToolbar>
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <SqlEditor
           key={activeTabId}
           ref={editorRef}
           value={sql}
-          driver={dialect}
+          driver={connection?.driver}
           editorState={editorState}
           onChange={updateSql}
           onEditorStateChange={handleEditorStateChange}
@@ -278,15 +217,15 @@ export function CodeArea() {
         />
       </div>
 
-      <div className="flex-none flex items-center gap-4 px-3 h-6 border-t bg-muted/10 shrink-0 text-[11px] text-muted-foreground">
+      <PanelStatusBar className="px-3 text-[11px]">
         <span>{summary.lineCount} 行</span>
         <span>
           第 {editorState.cursor.line} 行，第 {editorState.cursor.col} 列
         </span>
-        <span>{DIALECT_LABELS[dialect]}</span>
         <span>{summary.selectedChars} 个已选字符</span>
         <span>{summary.selectedLines} 个已选行</span>
-      </div>
+        {!connection && <span>未绑定连接，当前为纯文本模式</span>}
+      </PanelStatusBar>
     </div>
   )
 }

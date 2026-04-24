@@ -26,7 +26,6 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -45,6 +44,7 @@ import {
   updateActiveTabLogUiAtom,
 } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
+import { PanelStatusBar, PanelToolbar } from "./panel-bar"
 
 const STICKY_BOTTOM_OFFSET = 24
 
@@ -456,7 +456,7 @@ export default function LogArea() {
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
-      <div className="flex-none flex items-center gap-1 px-2 h-9 border-b bg-muted/20 shrink-0">
+      <PanelToolbar>
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -507,7 +507,7 @@ export default function LogArea() {
         >
           <Trash2 className="size-3.5" />
         </Button>
-      </div>
+      </PanelToolbar>
 
       <ScrollArea
         className="flex-1 min-h-0"
@@ -538,15 +538,13 @@ export default function LogArea() {
         )}
       </ScrollArea>
 
-      <div className="flex-none h-6 border-t bg-muted/10 px-2 text-[10px] text-muted-foreground">
-        <div className="flex h-full items-center gap-3 overflow-x-auto whitespace-nowrap">
-          <span>{counts.total} 条</span>
-          <span>当前 {counts.filtered} 条</span>
-          <span>成功 {counts.success}</span>
-          <span>失败 {counts.error}</span>
-          <span>运行中 {counts.running}</span>
-        </div>
-      </div>
+      <PanelStatusBar>
+        <span>{counts.total} 条</span>
+        <span>当前 {counts.filtered} 条</span>
+        <span>成功 {counts.success}</span>
+        <span>失败 {counts.error}</span>
+        <span>运行中 {counts.running}</span>
+      </PanelStatusBar>
     </div>
   )
 }

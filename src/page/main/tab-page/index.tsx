@@ -209,7 +209,7 @@ export default function TabPage() {
         className="row-3 col-2 h-full w-1.25"
       />
 
-      <div className="row-3 col-3 min-h-0 overflow-hidden border-l">
+      <div className="row-3 col-3 min-h-0 overflow-hidden">
         <LogArea />
       </div>
     </div>
