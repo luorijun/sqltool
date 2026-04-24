@@ -102,13 +102,39 @@ function createDefaultResultState(): TabResultState {
 function createDefaultTableUiState(): TabTableData {
   return {
     sorting: [],
-    visible: {},
-    sizing: {},
-    pinning: {
+    columnVisibility: {},
+    columnSizing: {},
+    columnPinning: {
       left: [],
       right: [],
     },
-    rowSelection: {},
+    activeCell: null,
+  }
+}
+
+function reconcileTableUiState(
+  table: TabTableData,
+  columns: TabResultState["columns"],
+): TabTableData {
+  const validColumnIds = new Set(columns.map((column) => column.id))
+
+  return {
+    sorting: table.sorting.filter((item) => validColumnIds.has(item.id)),
+    columnVisibility: Object.fromEntries(
+      Object.entries(table.columnVisibility).filter(([id]) =>
+        validColumnIds.has(id),
+      ),
+    ),
+    columnSizing: Object.fromEntries(
+      Object.entries(table.columnSizing).filter(([id]) =>
+        validColumnIds.has(id),
+      ),
+    ),
+    columnPinning: {
+      left: table.columnPinning.left.filter((id) => validColumnIds.has(id)),
+      right: table.columnPinning.right.filter((id) => validColumnIds.has(id)),
+    },
+    activeCell: null,
   }
 }
 
@@ -295,6 +321,7 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
         executedAt,
         error: undefined,
       },
+      table: reconcileTableUiState(current.table, result.columns),
       logs: [
         ...current.logs.filter((entry) => entry.id !== runningLog.id),
         createLogEntry("success", editorSql, `返回 ${rowCount} 行`, durationMs),
@@ -457,6 +484,40 @@ export const setActiveTabDialectOverrideAtom = atom(
     })
   },
 )
+
+export const updateActiveTabTableUiAtom = atom(
+  false,
+  (
+    get,
+    set,
+    updater: Partial<TabTableData> | ((current: TabTableData) => TabTableData),
+  ) => {
+    const activeId = get(activeTabIdAtom)
+    if (!activeId) {
+      return
+    }
+
+    updateTabData(get, set, activeId, (current) => ({
+      ...current,
+      table:
+        typeof updater === "function"
+          ? updater(current.table)
+          : { ...current.table, ...updater },
+    }))
+  },
+)
+
+export const resetActiveTabTableUiAtom = atom(false, (get, set) => {
+  const activeId = get(activeTabIdAtom)
+  if (!activeId) {
+    return
+  }
+
+  updateTabData(get, set, activeId, (current) => ({
+    ...current,
+    table: createDefaultTableUiState(),
+  }))
+})
 
 export const runActiveTabSqlAtom = atom(false, async (get, set) => {
   const activeId = get(activeTabIdAtom)

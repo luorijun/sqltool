@@ -272,7 +272,7 @@ export async function queryPostgres(
     const rows = Array.isArray(result.rows) ? result.rows : []
     const columns: QueryResultColumn[] = Array.isArray(result.fields)
       ? result.fields.map((field, index) => ({
-          id: `col_${index}`,
+          id: `${field.name || "column"}_${index}`,
           name: field.name,
         }))
       : []

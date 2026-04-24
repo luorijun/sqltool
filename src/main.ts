@@ -3,6 +3,7 @@ import { app, BrowserWindow } from "electron"
 import started from "electron-squirrel-startup"
 import { registerHandlers as registerConfigHandlers } from "./lib/config/main"
 import { registerHandlers as registerConnHandlers } from "./lib/conn/main"
+import { registerHandlers as registerSerializeHandlers } from "./lib/serialize/main"
 
 if (started) {
   app.quit()
@@ -11,6 +12,7 @@ if (started) {
 try {
   registerConfigHandlers()
   registerConnHandlers()
+  registerSerializeHandlers()
 } catch (e) {
   console.error(e)
 }

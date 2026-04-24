@@ -1,5 +1,6 @@
 import type { Config, CreateConfig, UpdateConfig } from "./config"
 import type { DbSchema, QueryResult } from "./conn"
+import type { SaveTextFileOptions } from "./serialize"
 
 export interface MainBridge {
   config: {
@@ -12,6 +13,10 @@ export interface MainBridge {
   conn: {
     inspect(config: Config): Promise<DbSchema[]>
     query(config: Config, sql: string): Promise<QueryResult>
+  }
+  serialize: {
+    writeClipboardText(text: string): Promise<void>
+    saveTextFile(options: SaveTextFileOptions): Promise<string | null>
   }
 }
 

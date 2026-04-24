@@ -1,14 +1,14 @@
 # Repository Notes
 
 - `README.md` is a Chinese backlog/V2 planning document, not an operational README. Trust `package.json`, `forge.config.ts`, and the `src/**` entrypoints for current behavior.
-- `package.json` declares `packageManager: npm@11.1.0` even though `bun.lock` exists. Default to `bun run ...` unless the user asks for Bun.
+- `package.json` declares `packageManager: npm@11.1.0` even though `bun.lock` exists. Default to `bun run ...` unless the user asks for npm.
 
 ## Commands
 
-- `npm run dev`: starts Electron Forge + Vite. `src/main.ts` always opens Chromium devtools for the main window.
-- `npm run typecheck`: runs `tsc -b` for the renderer, Forge/Vite config files, and `scripts/**`.
-- `npm run lint`: runs `biome lint --write` and mutates files.
-- Prefer `npx biome check <changed-paths>` for non-mutating verification. `npx biome check .` currently reports existing repo-wide formatting/import issues, so avoid repo-wide Biome rewrites unless the user asks.
+- `bun run dev`: starts Electron Forge + Vite. `src/main.ts` always opens Chromium devtools for the main window.
+- `bun run typecheck`: runs `tsc -b` for the renderer, Forge/Vite config files, and `scripts/**`.
+- `bun run lint`: runs `biome lint --write` and mutates files.
+- Prefer `bunx --bun biome check <changed-paths>` for non-mutating verification. `bunx --bun biome check .` currently reports existing repo-wide formatting/import issues, so avoid repo-wide Biome rewrites unless the user asks.
 - There is no configured test runner, CI workflow, or Husky hook. `scripts/knex-test.ts` is a local scratch script with a hardcoded Postgres DSN, not a supported test.
 
 ## Architecture

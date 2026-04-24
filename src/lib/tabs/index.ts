@@ -22,13 +22,18 @@ export interface TabData {
 
 export interface TabTableData {
   sorting: TabTableSorting[]
-  visible: Record<string, boolean>
-  sizing: Record<string, number>
-  pinning: {
+  columnVisibility: Record<string, boolean>
+  columnSizing: Record<string, number>
+  columnPinning: {
     left: string[]
     right: string[]
   }
-  rowSelection: Record<string, boolean>
+  activeCell: TabTableActiveCell | null
+}
+
+export interface TabTableActiveCell {
+  rowId: string
+  columnId: string
 }
 
 export interface TabTableSorting {
