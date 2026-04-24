@@ -39,6 +39,10 @@ export const activeTabEditorStateAtom = atom<TabEditorData | null>((get) => {
   return get(activeTabDataAtom)?.editor ?? null
 })
 
+export const activeTabConnectionAtom = atom<Config | undefined>((get) => {
+  return get(activeTabDataAtom)?.connection
+})
+
 export const activeTabResultAtom = atom<TabResultState | null>((get) => {
   return get(activeTabDataAtom)?.result ?? null
 })
@@ -53,7 +57,7 @@ export const activeTabTableUiAtom = atom<TabTableData | null>((get) => {
 
 export const activeTabDialectAtom = atom<DbDriver>((get) => {
   const data = get(activeTabDataAtom)
-  return data?.connection?.driver ?? "postgres"
+  return data?.connection?.driver ?? data?.editor.dialectOverride ?? "postgres"
 })
 
 function formatTime(d: Date): string {
@@ -67,15 +71,18 @@ function formatTime(d: Date): string {
 function createDefaultEditorState(): TabEditorData {
   return {
     cursor: { ...DEFAULT_CURSOR },
-    selections: [],
+    selections: [{ anchor: 0, head: 0 }],
+    mainSelectionIndex: 0,
     scroll: { top: 0, left: 0 },
     search: {
       query: "",
+      replace: "",
       caseSensitive: false,
       wholeWord: false,
       regexp: false,
       open: false,
     },
+    dialectOverride: undefined,
   }
 }
 
@@ -383,6 +390,73 @@ export const updateActiveSqlAtom = atom(false, (get, set, sql: string) => {
   }))
   syncTabDirty(get, set, activeId)
 })
+
+export const updateTabEditorStateAtom = atom(
+  false,
+  (
+    get,
+    set,
+    {
+      tabId,
+      updater,
+    }: {
+      tabId: string
+      updater:
+        | Partial<TabEditorData>
+        | ((current: TabEditorData) => TabEditorData)
+    },
+  ) => {
+    updateTabData(get, set, tabId, (current) => ({
+      ...current,
+      editor:
+        typeof updater === "function"
+          ? updater(current.editor)
+          : { ...current.editor, ...updater },
+    }))
+  },
+)
+
+export const updateActiveTabEditorStateAtom = atom(
+  false,
+  (
+    get,
+    set,
+    updater:
+      | Partial<TabEditorData>
+      | ((current: TabEditorData) => TabEditorData),
+  ) => {
+    const activeId = get(activeTabIdAtom)
+    if (!activeId) {
+      return
+    }
+
+    set(updateTabEditorStateAtom, { tabId: activeId, updater })
+  },
+)
+
+export const setActiveTabDialectOverrideAtom = atom(
+  false,
+  (get, set, dialect: DbDriver) => {
+    const activeId = get(activeTabIdAtom)
+    if (!activeId) {
+      return
+    }
+
+    updateTabData(get, set, activeId, (current) => {
+      if (current.connection) {
+        return current
+      }
+
+      return {
+        ...current,
+        editor: {
+          ...current.editor,
+          dialectOverride: dialect,
+        },
+      }
+    })
+  },
+)
 
 export const runActiveTabSqlAtom = atom(false, async (get, set) => {
   const activeId = get(activeTabIdAtom)

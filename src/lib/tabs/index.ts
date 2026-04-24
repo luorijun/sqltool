@@ -1,4 +1,4 @@
-import type { Config } from "@/lib/config"
+import type { Config, DbDriver } from "@/lib/config"
 import type { QueryResult } from "@/lib/conn"
 
 export interface Tab {
@@ -43,8 +43,10 @@ export interface TabTableSorting {
 export interface TabEditorData {
   cursor: TabEditorCursor
   selections: TabEditorSelection[]
+  mainSelectionIndex: number
   scroll: TabEditorScroll
   search: TabEditorSearch
+  dialectOverride?: DbDriver
 }
 
 export interface TabEditorCursor {
@@ -64,6 +66,7 @@ export interface TabEditorScroll {
 
 export interface TabEditorSearch {
   query: string
+  replace: string
   caseSensitive: boolean
   wholeWord: boolean
   regexp: boolean
