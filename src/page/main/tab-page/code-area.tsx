@@ -1,4 +1,3 @@
-import { useAtomValue, useSetAtom } from "jotai"
 import { AlignLeft, Play, Search } from "lucide-react"
 import { useMemo, useRef } from "react"
 import { toast } from "sonner"
@@ -7,16 +6,7 @@ import { format as formatSql } from "sql-formatter"
 import { Button } from "@/components/ui/button"
 import type { DbDriver } from "@/lib/config"
 import type { TabEditorData } from "@/lib/tabs"
-import {
-  activeTabConnectionAtom,
-  activeTabEditorStateAtom,
-  activeTabIdAtom,
-  activeTabResultAtom,
-  activeTabSqlAtom,
-  runActiveTabSqlAtom,
-  updateActiveSqlAtom,
-  updateTabEditorStateAtom,
-} from "@/lib/tabs/renderer"
+import { useActiveTabEditor } from "@/lib/tabs/hooks"
 import { AreaStatusBar, AreaToolbar } from "./bars"
 import { SqlEditor, type SqlEditorHandle } from "./sql-editor"
 
@@ -97,14 +87,16 @@ function isSameEditorState(left: TabEditorData, right: TabEditorData): boolean {
 }
 
 export function CodeArea() {
-  const activeTabId = useAtomValue(activeTabIdAtom)
-  const connection = useAtomValue(activeTabConnectionAtom)
-  const editorState = useAtomValue(activeTabEditorStateAtom)
-  const result = useAtomValue(activeTabResultAtom)
-  const sql = useAtomValue(activeTabSqlAtom)
-  const updateSql = useSetAtom(updateActiveSqlAtom)
-  const runSql = useSetAtom(runActiveTabSqlAtom)
-  const updateTabEditorState = useSetAtom(updateTabEditorStateAtom)
+  const {
+    activeTabId,
+    connection,
+    editorState,
+    result,
+    sql,
+    updateSql,
+    runSql,
+    updateEditorState,
+  } = useActiveTabEditor()
   const editorRef = useRef<SqlEditorHandle | null>(null)
 
   const summary = useMemo(() => {
@@ -124,22 +116,19 @@ export function CodeArea() {
   }
 
   const handleEditorStateChange = (nextEditorState: TabEditorData) => {
-    updateTabEditorState({
-      tabId: activeTabId,
-      updater: (current) => {
-        if (isSameEditorState(current, nextEditorState)) {
-          return current
-        }
+    updateEditorState((current) => {
+      if (isSameEditorState(current, nextEditorState)) {
+        return current
+      }
 
-        return {
-          ...current,
-          cursor: nextEditorState.cursor,
-          selections: nextEditorState.selections,
-          mainSelectionIndex: nextEditorState.mainSelectionIndex,
-          scroll: nextEditorState.scroll,
-          search: nextEditorState.search,
-        }
-      },
+      return {
+        ...current,
+        cursor: nextEditorState.cursor,
+        selections: nextEditorState.selections,
+        mainSelectionIndex: nextEditorState.mainSelectionIndex,
+        scroll: nextEditorState.scroll,
+        search: nextEditorState.search,
+      }
     })
   }
 

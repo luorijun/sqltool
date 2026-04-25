@@ -1,4 +1,3 @@
-import { useSetAtom } from "jotai"
 import {
   Braces,
   ChevronDown,
@@ -14,14 +13,14 @@ import {
 } from "lucide-react"
 import { type ReactNode, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import type { Config } from "@/lib/config"
 import type {
   DbColumn as Column,
   DbSchema as Schema,
   DbTable as Table,
 } from "@/lib/conn"
 import connApi from "@/lib/conn/renderer"
-import type { Config } from "@/lib/config"
-import { addTabAtom } from "@/lib/tabs/renderer"
+import { useCreateTab } from "@/lib/tabs/hooks"
 import { cn } from "@/lib/utils"
 
 function quoteIdent(value: string): string {
@@ -118,7 +117,9 @@ function TreeRow({
 
 function ColumnIcon({ col }: { col: Column }) {
   if (col.pk) {
-    return <Key className="size-3 text-amber-500 dark:text-amber-400 shrink-0" />
+    return (
+      <Key className="size-3 text-amber-500 dark:text-amber-400 shrink-0" />
+    )
   }
   if (col.fk) {
     return <Link className="size-3 text-blue-500 dark:text-blue-400 shrink-0" />
@@ -140,7 +141,7 @@ function TableNode({
   expanded: boolean
   onToggle: () => void
 }) {
-  const addTab = useSetAtom(addTabAtom)
+  const addTab = useCreateTab()
 
   const handleOpen = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -272,7 +273,9 @@ function SchemaSection({
       {expanded && (
         <>
           <SectionNode
-            icon={<Table2 className="size-3.5 text-muted-foreground/70 shrink-0" />}
+            icon={
+              <Table2 className="size-3.5 text-muted-foreground/70 shrink-0" />
+            }
             label="Tables"
             count={schema.tables.length}
             expanded={expandedNodes.has(tablesKey)}
@@ -294,7 +297,9 @@ function SchemaSection({
           </SectionNode>
 
           <SectionNode
-            icon={<Eye className="size-3.5 text-muted-foreground/70 shrink-0" />}
+            icon={
+              <Eye className="size-3.5 text-muted-foreground/70 shrink-0" />
+            }
             label="Views"
             count={schema.views.length}
             expanded={expandedNodes.has(viewsKey)}
@@ -304,14 +309,18 @@ function SchemaSection({
               <TreeRow
                 key={view.name}
                 depth={2}
-                icon={<Eye className="size-3.5 text-muted-foreground shrink-0" />}
+                icon={
+                  <Eye className="size-3.5 text-muted-foreground shrink-0" />
+                }
                 label={view.name}
               />
             ))}
           </SectionNode>
 
           <SectionNode
-            icon={<Braces className="size-3.5 text-muted-foreground/70 shrink-0" />}
+            icon={
+              <Braces className="size-3.5 text-muted-foreground/70 shrink-0" />
+            }
             label="Functions"
             count={schema.functions.length}
             expanded={expandedNodes.has(funcsKey)}
@@ -321,7 +330,9 @@ function SchemaSection({
               <TreeRow
                 key={fn.name}
                 depth={2}
-                icon={<Braces className="size-3.5 text-muted-foreground shrink-0" />}
+                icon={
+                  <Braces className="size-3.5 text-muted-foreground shrink-0" />
+                }
                 label={fn.name}
               />
             ))}
@@ -341,7 +352,9 @@ export function ConnExplorer({ conn, refreshKey }: ConnExplorerProps) {
   const [schemas, setSchemas] = useState<Schema[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set())
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false)
 
   useEffect(() => {

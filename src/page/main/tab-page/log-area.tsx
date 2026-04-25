@@ -1,4 +1,3 @@
-import { useAtomValue, useSetAtom } from "jotai"
 import {
   CheckCircle2,
   ChevronDown,
@@ -37,12 +36,7 @@ import {
   TAB_LOG_STATUSES,
   type TabLogStatus,
 } from "@/lib/tabs"
-import {
-  activeTabLogsAtom,
-  activeTabLogUiAtom,
-  clearActiveTabLogsAtom,
-  updateActiveTabLogUiAtom,
-} from "@/lib/tabs/renderer"
+import { useActiveTabLogs } from "@/lib/tabs/hooks"
 import { cn } from "@/lib/utils"
 import { AreaStatusBar, AreaToolbar } from "./bars"
 
@@ -323,10 +317,7 @@ function LogEntryItem({
 }
 
 export default function LogArea() {
-  const entries = useAtomValue(activeTabLogsAtom)
-  const logUi = useAtomValue(activeTabLogUiAtom)
-  const clearLogs = useSetAtom(clearActiveTabLogsAtom)
-  const updateLogUi = useSetAtom(updateActiveTabLogUiAtom)
+  const { entries, logUi, clearLogs, updateLogUi } = useActiveTabLogs()
   const [expandedEntryIds, setExpandedEntryIds] = useState<
     Record<string, boolean>
   >({})

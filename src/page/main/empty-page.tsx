@@ -1,10 +1,9 @@
-import { useSetAtom } from "jotai"
 import { FilePlus2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { addTabAtom } from "@/lib/tabs/renderer"
+import { useCreateTab } from "@/lib/tabs/hooks"
 
 export function EmptyPage() {
-  const addTab = useSetAtom(addTabAtom)
+  const addTab = useCreateTab()
 
   return (
     <div className="size-full flex flex-col items-center justify-center gap-4 select-none">

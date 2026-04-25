@@ -1,13 +1,7 @@
-import { useAtomValue, useSetAtom } from "jotai"
 import { Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Tab } from "@/lib/tabs"
-import {
-  activeTabIdAtom,
-  addTabAtom,
-  closeTabAtom,
-  tabsAtom,
-} from "@/lib/tabs/renderer"
+import { useTabBar } from "@/lib/tabs/hooks"
 import { cn } from "@/lib/utils"
 
 function TabItem({
@@ -75,11 +69,7 @@ function TabItem({
 }
 
 export function TabBar() {
-  const tabs = useAtomValue(tabsAtom)
-  const activeId = useAtomValue(activeTabIdAtom)
-  const addTab = useSetAtom(addTabAtom)
-  const closeTab = useSetAtom(closeTabAtom)
-  const selectTab = useSetAtom(activeTabIdAtom)
+  const { tabs, activeTabId, addTab, closeTab, selectTab } = useTabBar()
 
   return (
     <div className="flex-none basis-10 flex items-stretch border-b bg-sidebar overflow-hidden">
@@ -89,7 +79,7 @@ export function TabBar() {
           <TabItem
             key={tab.id}
             tab={tab}
-            active={activeId === tab.id}
+            active={activeTabId === tab.id}
             onSelect={() => selectTab(tab.id)}
             onClose={() => closeTab(tab.id)}
           />

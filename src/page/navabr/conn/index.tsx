@@ -1,7 +1,6 @@
-import { useSetAtom } from "jotai"
 import { useState } from "react"
 import type { Config } from "@/lib/config"
-import { addTabAtom } from "@/lib/tabs/renderer"
+import { useCreateTab } from "@/lib/tabs/hooks"
 import { ConnDialog } from "../config/conn-dialog"
 import { ConnExplorer } from "./explorer"
 import { ConnHeader } from "./header"
@@ -17,7 +16,7 @@ export default function ConnView({
   onBack,
   onConnChange,
 }: ConnViewProps) {
-  const addTab = useSetAtom(addTabAtom)
+  const addTab = useCreateTab()
   const [refreshKey, setRefreshKey] = useState(0)
   const [isEditing, setIsEditing] = useState(false)
 
