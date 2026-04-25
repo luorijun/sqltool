@@ -1,8 +1,20 @@
+import { useAtomValue, useSetAtom } from "jotai"
 import { Plus, X } from "lucide-react"
+import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import type { Tab } from "@/lib/tabs"
-import { useTabBar } from "@/lib/tabs/hooks"
+import {
+  activeTabIdAtom,
+  closeTabAtom,
+  createTabAtom,
+  tabsAtom,
+} from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
+
+type TabBarItem = {
+  id: string
+  label: string
+  dirty: boolean
+}
 
 function TabItem({
   tab,
@@ -10,7 +22,7 @@ function TabItem({
   onSelect,
   onClose,
 }: {
-  tab: Tab
+  tab: TabBarItem
   active: boolean
   onSelect: () => void
   onClose: () => void
@@ -69,7 +81,20 @@ function TabItem({
 }
 
 export function TabBar() {
-  const { tabs, activeTabId, addTab, closeTab, selectTab } = useTabBar()
+  const tabStates = useAtomValue(tabsAtom)
+  const activeTabId = useAtomValue(activeTabIdAtom)
+  const setActiveTabId = useSetAtom(activeTabIdAtom)
+  const createTab = useSetAtom(createTabAtom)
+  const closeTab = useSetAtom(closeTabAtom)
+  const tabs = useMemo<TabBarItem[]>(
+    () =>
+      tabStates.map((tab) => ({
+        id: tab.id,
+        label: tab.label,
+        dirty: tab.sql !== tab.result.lastRunSql,
+      })),
+    [tabStates],
+  )
 
   return (
     <div className="flex-none basis-10 flex items-stretch border-b bg-sidebar overflow-hidden">
@@ -80,7 +105,7 @@ export function TabBar() {
             key={tab.id}
             tab={tab}
             active={activeTabId === tab.id}
-            onSelect={() => selectTab(tab.id)}
+            onSelect={() => setActiveTabId(tab.id)}
             onClose={() => closeTab(tab.id)}
           />
         ))}
@@ -91,7 +116,7 @@ export function TabBar() {
         <Button
           variant="ghost"
           size="icon-xs"
-          onClick={() => addTab()}
+          onClick={() => createTab()}
           title="新建查询"
         >
           <Plus />

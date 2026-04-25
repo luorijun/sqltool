@@ -28,7 +28,7 @@ import {
   serializeValuesAsDelimitedText,
 } from "@/lib/query-result"
 import serializeApi from "@/lib/serialize/renderer"
-import type { TabTableData } from "@/lib/tabs"
+import type { TabTableState } from "@/lib/tabs"
 import {
   type ResultRow,
   type ResultTableInstance,
@@ -153,7 +153,7 @@ export function CopyMenu({
   disabled,
 }: {
   table: ResultTableInstance
-  activeCell: TabTableData["activeCell"]
+  activeCell: TabTableState["activeCell"]
   disabled?: boolean
 }) {
   const activeRow = activeCell

@@ -1,11 +1,12 @@
-import { useHasTabs } from "@/lib/tabs/hooks"
+import { useAtomValue } from "jotai"
+import { hasTabsAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import { EmptyPage } from "./empty-page"
 import { TabBar } from "./tab-bar"
 import TabPage from "./tab-page"
 
 export default function Main(props: { className?: string }) {
-  const hasTabs = useHasTabs()
+  const hasTabs = useAtomValue(hasTabsAtom)
   return (
     <main
       className={cn(

@@ -1,3 +1,4 @@
+import { useSetAtom } from "jotai"
 import {
   Braces,
   ChevronDown,
@@ -20,7 +21,7 @@ import type {
   DbTable as Table,
 } from "@/lib/conn"
 import connApi from "@/lib/conn/renderer"
-import { useCreateTab } from "@/lib/tabs/hooks"
+import { createTabAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 
 function quoteIdent(value: string): string {
@@ -141,11 +142,11 @@ function TableNode({
   expanded: boolean
   onToggle: () => void
 }) {
-  const addTab = useCreateTab()
+  const createTab = useSetAtom(createTabAtom)
 
   const handleOpen = (e: React.MouseEvent) => {
     e.stopPropagation()
-    addTab({
+    createTab({
       label: table.name,
       sql: `SELECT *\nFROM ${quoteIdent(schemaName)}.${quoteIdent(table.name)}\nLIMIT 100;`,
       connection: conn,

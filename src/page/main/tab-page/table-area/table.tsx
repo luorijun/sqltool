@@ -12,6 +12,7 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table"
+import { useSetAtom } from "jotai"
 import { ArrowDownAZ, ArrowUpAZ, RotateCcw } from "lucide-react"
 import { type CSSProperties, useMemo } from "react"
 import { Button } from "@/components/ui/button"
@@ -21,8 +22,11 @@ import {
   getQueryValueDisplay,
   serializeQueryValue,
 } from "@/lib/query-result"
-import type { TabResultState, TabTableData } from "@/lib/tabs"
-import { useActiveTabTableActions } from "@/lib/tabs/hooks"
+import type { TabResultState, TabTableState } from "@/lib/tabs"
+import {
+  activeTabTableStateAtom,
+  resetActiveTabTableStateAtom,
+} from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import { AreaStatusBar, AreaToolbar } from "../bars"
 import { EmptyState } from "./empty"
@@ -33,9 +37,10 @@ export function ResultTable({
   tableUi,
 }: {
   result: TabResultState
-  tableUi: TabTableData
+  tableUi: TabTableState
 }) {
-  const { updateTableUi, resetTableUi } = useActiveTabTableActions()
+  const updateTableUi = useSetAtom(activeTabTableStateAtom)
+  const resetTableUi = useSetAtom(resetActiveTabTableStateAtom)
 
   const data = useMemo<ResultRow[]>(
     () => result.rows.map((values, index) => ({ id: String(index), values })),
@@ -149,7 +154,7 @@ export function ResultTable({
     }))
   }
 
-  const exportName = `query-result-${result.executedAt.replaceAll(":", "-") || "latest"}`
+  const exportName = `query-result-${result.lastRunAt ? new Date(result.lastRunAt).toISOString().slice(11, 19).replaceAll(":", "-") : "latest"}`
   const hasDataColumns = result.columns.length > 0
   const hasRows = table.getRowModel().rows.length > 0
   const visibleDataColumnCount = table
@@ -204,7 +209,7 @@ export function ResultTable({
           </span>{" "}
           列
         </span>
-        <span>耗时 {result.durationMs} ms</span>
+        <span>耗时 {result.durationMs ?? 0} ms</span>
         <span>当前排序: {sortingSummary}</span>
         <span>{statusText}</span>
         {!hasRows && result.columns.length > 0 && (
@@ -494,7 +499,7 @@ function getCellClassName(
 
 function normalizeColumnPinning(
   pinning: ColumnPinningState,
-): TabTableData["columnPinning"] {
+): TabTableState["columnPinning"] {
   const left = Array.from(
     new Set([
       ROW_NUMBER_COLUMN_ID,

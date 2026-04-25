@@ -29,7 +29,7 @@ import {
   useState,
 } from "react"
 import type { DbDriver } from "@/lib/config"
-import type { TabEditorData, TabEditorSelection } from "@/lib/tabs"
+import type { TabEditorState } from "@/lib/tabs"
 
 export interface CursorPosition {
   line: number
@@ -49,9 +49,9 @@ export interface SqlEditorHandle {
 interface SqlEditorProps {
   value: string
   driver?: DbDriver
-  editorState: TabEditorData
+  editorState: TabEditorState
   onChange: (value: string) => void
-  onEditorStateChange: (editorState: TabEditorData) => void
+  onEditorStateChange: (editorState: TabEditorState) => void
   onRun: () => void
   onFormat: () => void
 }
@@ -240,7 +240,9 @@ function getCursorPosition(state: EditorState): CursorPosition {
   }
 }
 
-function toSelectionRanges(selections: TabEditorSelection[]): EditorSelection {
+function toSelectionRanges(
+  selections: TabEditorState["selections"],
+): EditorSelection {
   if (selections.length === 0) {
     return EditorSelection.single(0)
   }
@@ -251,9 +253,9 @@ function toSelectionRanges(selections: TabEditorSelection[]): EditorSelection {
 }
 
 function clampSelection(
-  selection: TabEditorSelection,
+  selection: TabEditorState["selections"][number],
   length: number,
-): TabEditorSelection {
+): TabEditorState["selections"][number] {
   return {
     anchor: Math.min(Math.max(selection.anchor, 0), length),
     head: Math.min(Math.max(selection.head, 0), length),
@@ -287,9 +289,9 @@ function getSelectionStats(state: EditorState): EditorSelectionStats {
 }
 
 function getSelectionRanges(
-  selections: TabEditorSelection[],
+  selections: TabEditorState["selections"],
   length: number,
-): TabEditorSelection[] {
+): TabEditorState["selections"] {
   if (selections.length === 0) {
     return [{ anchor: 0, head: 0 }]
   }
@@ -300,7 +302,7 @@ function getSelectionRanges(
 function getEditorSnapshot(
   state: EditorState,
   view: EditorView,
-): TabEditorData {
+): TabEditorState {
   const query = getSearchQuery(state)
 
   return {
@@ -356,7 +358,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
     })
 
     const handleEditorStateChange = useEffectEvent(
-      (nextEditorState: TabEditorData) => {
+      (nextEditorState: TabEditorState) => {
         onEditorStateChange(nextEditorState)
       },
     )

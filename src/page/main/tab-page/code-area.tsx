@@ -1,3 +1,4 @@
+import { useAtomValue, useSetAtom } from "jotai"
 import { AlignLeft, Play, Search } from "lucide-react"
 import { useMemo, useRef } from "react"
 import { toast } from "sonner"
@@ -5,8 +6,15 @@ import type { SqlLanguage } from "sql-formatter"
 import { format as formatSql } from "sql-formatter"
 import { Button } from "@/components/ui/button"
 import type { DbDriver } from "@/lib/config"
-import type { TabEditorData } from "@/lib/tabs"
-import { useActiveTabEditor } from "@/lib/tabs/hooks"
+import type { TabEditorState } from "@/lib/tabs"
+import {
+  activeTabConnectionAtom,
+  activeTabEditorStateAtom,
+  activeTabIdAtom,
+  activeTabResultAtom,
+  activeTabSqlAtom,
+  runActiveTabSqlAtom,
+} from "@/lib/tabs/renderer"
 import { AreaStatusBar, AreaToolbar } from "./bars"
 import { SqlEditor, type SqlEditorHandle } from "./sql-editor"
 
@@ -35,7 +43,7 @@ function getLineNumberAt(sql: string, pos: number): number {
   return line
 }
 
-function getEditorSummary(editorState: TabEditorData, sql: string) {
+function getEditorSummary(editorState: TabEditorState, sql: string) {
   let selectedChars = 0
   const selectedLines = new Set<number>()
 
@@ -64,7 +72,10 @@ function getEditorSummary(editorState: TabEditorData, sql: string) {
   }
 }
 
-function isSameEditorState(left: TabEditorData, right: TabEditorData): boolean {
+function isSameEditorState(
+  left: TabEditorState,
+  right: TabEditorState,
+): boolean {
   return (
     left.cursor.line === right.cursor.line &&
     left.cursor.col === right.cursor.col &&
@@ -87,16 +98,14 @@ function isSameEditorState(left: TabEditorData, right: TabEditorData): boolean {
 }
 
 export function CodeArea() {
-  const {
-    activeTabId,
-    connection,
-    editorState,
-    result,
-    sql,
-    updateSql,
-    runSql,
-    updateEditorState,
-  } = useActiveTabEditor()
+  const activeTabId = useAtomValue(activeTabIdAtom)
+  const connection = useAtomValue(activeTabConnectionAtom)
+  const editorState = useAtomValue(activeTabEditorStateAtom)
+  const result = useAtomValue(activeTabResultAtom)
+  const sql = useAtomValue(activeTabSqlAtom)
+  const updateSql = useSetAtom(activeTabSqlAtom)
+  const runSql = useSetAtom(runActiveTabSqlAtom)
+  const updateEditorState = useSetAtom(activeTabEditorStateAtom)
   const editorRef = useRef<SqlEditorHandle | null>(null)
 
   const summary = useMemo(() => {
@@ -115,7 +124,7 @@ export function CodeArea() {
     return <div className="size-full" />
   }
 
-  const handleEditorStateChange = (nextEditorState: TabEditorData) => {
+  const handleEditorStateChange = (nextEditorState: TabEditorState) => {
     updateEditorState((current) => {
       if (isSameEditorState(current, nextEditorState)) {
         return current
@@ -162,7 +171,7 @@ export function CodeArea() {
           size="xs"
           className="gap-1.5"
           onClick={() => runSql()}
-          disabled={result?.running}
+          disabled={result?.status === "running"}
           title="运行 SQL (Ctrl/Cmd + Enter)"
         >
           <Play className="size-3" />

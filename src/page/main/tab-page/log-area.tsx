@@ -1,3 +1,4 @@
+import { useAtomValue, useSetAtom } from "jotai"
 import {
   CheckCircle2,
   ChevronDown,
@@ -5,7 +6,6 @@ import {
   CircleX,
   Copy,
   Filter,
-  Info,
   Loader2,
   Search,
   Trash2,
@@ -31,16 +31,16 @@ import {
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import serializeApi from "@/lib/serialize/renderer"
+import type { TabLogEntry as LogEntry, TabLogStatus } from "@/lib/tabs"
 import {
-  type TabLogEntry as LogEntry,
-  TAB_LOG_STATUSES,
-  type TabLogStatus,
-} from "@/lib/tabs"
-import { useActiveTabLogs } from "@/lib/tabs/hooks"
+  activeTabLogEntriesAtom,
+  activeTabLogViewAtom,
+} from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import { AreaStatusBar, AreaToolbar } from "./bars"
 
 const STICKY_BOTTOM_OFFSET = 24
+const TAB_LOG_STATUSES: TabLogStatus[] = ["success", "error", "running"]
 
 const STATUS_META: Record<
   TabLogStatus,
@@ -64,11 +64,6 @@ const STATUS_META: Record<
     label: "执行中",
     badgeClassName: "bg-primary/10 text-primary",
     iconClassName: "text-primary",
-  },
-  info: {
-    label: "信息",
-    badgeClassName: "bg-muted text-muted-foreground",
-    iconClassName: "text-muted-foreground",
   },
 }
 
@@ -136,12 +131,6 @@ function StatusIcon({ status }: { status: LogEntry["status"] }) {
             "size-3.5 shrink-0 animate-spin",
             STATUS_META[status].iconClassName,
           )}
-        />
-      )
-    default:
-      return (
-        <Info
-          className={cn("size-3.5 shrink-0", STATUS_META[status].iconClassName)}
         />
       )
   }
@@ -317,7 +306,10 @@ function LogEntryItem({
 }
 
 export default function LogArea() {
-  const { entries, logUi, clearLogs, updateLogUi } = useActiveTabLogs()
+  const entries = useAtomValue(activeTabLogEntriesAtom)
+  const logUi = useAtomValue(activeTabLogViewAtom)
+  const clearLogs = useSetAtom(activeTabLogEntriesAtom)
+  const updateLogUi = useSetAtom(activeTabLogViewAtom)
   const [expandedEntryIds, setExpandedEntryIds] = useState<
     Record<string, boolean>
   >({})
@@ -493,7 +485,7 @@ export default function LogArea() {
           size="icon-xs"
           title="清空日志"
           className="text-muted-foreground"
-          onClick={() => clearLogs()}
+          onClick={() => clearLogs([])}
           disabled={entries.length === 0}
         >
           <Trash2 className="size-3.5" />

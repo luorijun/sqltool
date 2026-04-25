@@ -1,94 +1,53 @@
-import type { Config, DbDriver } from "@/lib/config"
 import type { QueryResult } from "@/lib/conn"
 
-export interface Tab {
-  id: string
-  label: string
-  dirty?: boolean
+export interface TabEditorState {
+  cursor: {
+    line: number
+    col: number
+  }
+  selections: Array<{
+    anchor: number
+    head: number
+  }>
+  mainSelectionIndex: number
+  scroll: {
+    top: number
+    left: number
+  }
+  search: {
+    query: string
+    replace: string
+    caseSensitive: boolean
+    wholeWord: boolean
+    regexp: boolean
+    open: boolean
+  }
 }
 
-export interface TabData {
-  connection?: Config
-  sql: string
-  result: TabResultState
-  editor: TabEditorData
-  table: TabTableData
-}
-
-// ====================
-// table
-// ====================
-
-export interface TabTableData {
-  sorting: TabTableSorting[]
+export interface TabTableState {
+  sorting: Array<{
+    id: string
+    desc: boolean
+  }>
   columnVisibility: Record<string, boolean>
   columnSizing: Record<string, number>
   columnPinning: {
     left: string[]
     right: string[]
   }
-  activeCell: TabTableActiveCell | null
+  activeCell: {
+    rowId: string
+    columnId: string
+  } | null
 }
 
-export interface TabTableActiveCell {
-  rowId: string
-  columnId: string
-}
-
-export interface TabTableSorting {
-  id: string
-  desc: boolean
-}
-
-// ====================
-// editor
-// ====================
-
-export interface TabEditorData {
-  cursor: TabEditorCursor
-  selections: TabEditorSelection[]
-  mainSelectionIndex: number
-  scroll: TabEditorScroll
-  search: TabEditorSearch
-  dialectOverride?: DbDriver
-}
-
-export interface TabEditorCursor {
-  line: number
-  col: number
-}
-
-export interface TabEditorSelection {
-  anchor: number
-  head: number
-}
-
-export interface TabEditorScroll {
-  top: number
-  left: number
-}
-
-export interface TabEditorSearch {
+export interface TabLogViewState {
   query: string
-  replace: string
-  caseSensitive: boolean
-  wholeWord: boolean
-  regexp: boolean
-  open: boolean
+  statuses: TabLogStatus[]
+  followTail: boolean
 }
 
-// ====================
-// logs
-// ====================
-
-export type TabLogStatus = "success" | "error" | "info" | "running"
-
-export const TAB_LOG_STATUSES = [
-  "success",
-  "error",
-  "info",
-  "running",
-] as const satisfies readonly TabLogStatus[]
+export type TabLogStatus = "success" | "error" | "running"
 
 export interface TabLogEntry {
   id: string
@@ -101,31 +60,15 @@ export interface TabLogEntry {
   durationMs?: number
 }
 
-export interface TabLogUiState {
-  query: string
-  statuses: TabLogStatus[]
-  followTail: boolean
-}
-
-// ====================
-// others
-// ====================
+export type TabResultStatus = "idle" | "running" | "success" | "error"
 
 export interface TabResultState {
-  executedSql: string
-  executed: boolean
-  running: boolean
+  status: TabResultStatus
+  lastRunSql: string
+  lastRunAt: number | null
+  durationMs: number | null
   columns: QueryResult["columns"]
   rows: QueryResult["rows"]
   rowCount: number
-  durationMs: number
-  executedAt: string
-  error?: string
-}
-
-export interface AddTabOptions {
-  label?: string
-  sql?: string
-  connection?: Config
-  autoRun?: boolean
+  error: string | null
 }

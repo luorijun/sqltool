@@ -1,9 +1,10 @@
+import { useSetAtom } from "jotai"
 import { FilePlus2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useCreateTab } from "@/lib/tabs/hooks"
+import { createTabAtom } from "@/lib/tabs/renderer"
 
 export function EmptyPage() {
-  const addTab = useCreateTab()
+  const createTab = useSetAtom(createTabAtom)
 
   return (
     <div className="size-full flex flex-col items-center justify-center gap-4 select-none">
@@ -24,7 +25,7 @@ export function EmptyPage() {
         variant="outline"
         size="sm"
         className="gap-1.5"
-        onClick={() => addTab()}
+        onClick={() => createTab()}
       >
         <FilePlus2 className="size-3.5" />
         新建查询
