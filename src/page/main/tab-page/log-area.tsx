@@ -44,7 +44,7 @@ import {
   updateActiveTabLogUiAtom,
 } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
-import { PanelStatusBar, PanelToolbar } from "./panel-bar"
+import { AreaStatusBar, AreaToolbar } from "./bars"
 
 const STICKY_BOTTOM_OFFSET = 24
 
@@ -456,7 +456,7 @@ export default function LogArea() {
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
-      <PanelToolbar>
+      <AreaToolbar>
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -507,7 +507,15 @@ export default function LogArea() {
         >
           <Trash2 className="size-3.5" />
         </Button>
-      </PanelToolbar>
+      </AreaToolbar>
+
+      <AreaStatusBar>
+        <span>{counts.total} 条</span>
+        <span>当前 {counts.filtered} 条</span>
+        <span>成功 {counts.success}</span>
+        <span>失败 {counts.error}</span>
+        <span>运行中 {counts.running}</span>
+      </AreaStatusBar>
 
       <ScrollArea
         className="flex-1 min-h-0"
@@ -537,14 +545,6 @@ export default function LogArea() {
           </ul>
         )}
       </ScrollArea>
-
-      <PanelStatusBar>
-        <span>{counts.total} 条</span>
-        <span>当前 {counts.filtered} 条</span>
-        <span>成功 {counts.success}</span>
-        <span>失败 {counts.error}</span>
-        <span>运行中 {counts.running}</span>
-      </PanelStatusBar>
     </div>
   )
 }

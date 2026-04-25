@@ -60,7 +60,7 @@ import {
   updateActiveTabTableUiAtom,
 } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
-import { PanelStatusBar, PanelToolbar } from "./panel-bar"
+import { AreaStatusBar, AreaToolbar } from "./bars"
 
 const ROW_NUMBER_COLUMN_ID = "__rownum__"
 const MIN_DATA_COLUMN_WIDTH = 96
@@ -255,7 +255,7 @@ function TableStatusBar({
   hasRows: boolean
 }) {
   return (
-    <PanelStatusBar className="px-3 text-[11px]">
+    <AreaStatusBar className="px-3 text-[11px]">
       <span>
         <span className="text-foreground font-medium">{result.rowCount}</span>{" "}
         行
@@ -272,7 +272,7 @@ function TableStatusBar({
       {!hasRows && result.columns.length > 0 && (
         <span>暂无可复制的当前单元格/行</span>
       )}
-    </PanelStatusBar>
+    </AreaStatusBar>
   )
 }
 
@@ -733,7 +733,7 @@ function ResultTable({
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
-      <PanelToolbar>
+      <AreaToolbar>
         <ColumnVisibilityMenu
           table={table}
           dataColumnCount={result.columns.length}
@@ -760,7 +760,14 @@ function ResultTable({
           <RotateCcw className="size-3" />
           重置布局
         </Button>
-      </PanelToolbar>
+      </AreaToolbar>
+
+      <TableStatusBar
+        result={result}
+        sortingSummary={sortingSummary}
+        statusText={statusText}
+        hasRows={hasRows}
+      />
 
       <div className="flex-1 min-h-0 overflow-auto bg-background">
         {!hasDataColumns ? (
@@ -937,13 +944,6 @@ function ResultTable({
           </table>
         )}
       </div>
-
-      <TableStatusBar
-        result={result}
-        sortingSummary={sortingSummary}
-        statusText={statusText}
-        hasRows={hasRows}
-      />
     </div>
   )
 }

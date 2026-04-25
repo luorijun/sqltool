@@ -17,7 +17,7 @@ import {
   updateActiveSqlAtom,
   updateTabEditorStateAtom,
 } from "@/lib/tabs/renderer"
-import { PanelStatusBar, PanelToolbar } from "./panel-bar"
+import { AreaStatusBar, AreaToolbar } from "./bars"
 import { SqlEditor, type SqlEditorHandle } from "./sql-editor"
 
 const FORMAT_LANGUAGE_MAP: Record<DbDriver, SqlLanguage> = {
@@ -167,7 +167,7 @@ export function CodeArea() {
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
-      <PanelToolbar>
+      <AreaToolbar>
         <Button
           variant="default"
           size="xs"
@@ -201,7 +201,17 @@ export function CodeArea() {
           <Search className="size-3" />
           搜索
         </Button>
-      </PanelToolbar>
+      </AreaToolbar>
+
+      <AreaStatusBar className="px-3 text-[11px]">
+        <span>{summary.lineCount} 行</span>
+        <span>
+          第 {editorState.cursor.line} 行，第 {editorState.cursor.col} 列
+        </span>
+        <span>{summary.selectedChars} 个已选字符</span>
+        <span>{summary.selectedLines} 个已选行</span>
+        {!connection && <span>未绑定连接，当前为纯文本模式</span>}
+      </AreaStatusBar>
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <SqlEditor
@@ -216,16 +226,6 @@ export function CodeArea() {
           onFormat={handleFormat}
         />
       </div>
-
-      <PanelStatusBar className="px-3 text-[11px]">
-        <span>{summary.lineCount} 行</span>
-        <span>
-          第 {editorState.cursor.line} 行，第 {editorState.cursor.col} 列
-        </span>
-        <span>{summary.selectedChars} 个已选字符</span>
-        <span>{summary.selectedLines} 个已选行</span>
-        {!connection && <span>未绑定连接，当前为纯文本模式</span>}
-      </PanelStatusBar>
     </div>
   )
 }

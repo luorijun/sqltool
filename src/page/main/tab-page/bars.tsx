@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils"
 
 type PanelBarProps = ComponentProps<"div">
 
-export function PanelToolbar({ className, ...props }: PanelBarProps) {
+export function AreaToolbar({ className, ...props }: PanelBarProps) {
   return (
     <div
       className={cn(
@@ -15,11 +15,11 @@ export function PanelToolbar({ className, ...props }: PanelBarProps) {
   )
 }
 
-export function PanelStatusBar({ className, ...props }: PanelBarProps) {
+export function AreaStatusBar({ className, ...props }: PanelBarProps) {
   return (
     <div
       className={cn(
-        "flex h-6 min-w-0 shrink-0 items-center gap-3 overflow-x-auto whitespace-nowrap border-t px-2 text-[10px] text-muted-foreground",
+        "flex h-6 min-w-0 shrink-0 items-center gap-3 overflow-x-auto bg-muted/50 whitespace-nowrap border-b px-2 text-[10px] text-muted-foreground",
         className,
       )}
       {...props}
