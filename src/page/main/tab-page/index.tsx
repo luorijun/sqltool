@@ -1,7 +1,7 @@
 import { ResizeContainer } from "@/components/ui/resizer"
-import { CodeArea } from "./code-area"
-import LogArea from "./log-area"
-import { TableArea } from "./table-area"
+import EditorArea from "./editor-area"
+import LoggerArea from "./logger-area"
+import TableArea from "./table-area"
 
 const MIN_TABLE_HEIGHT = 80
 const MIN_BOTTOM_HEIGHT = 120
@@ -28,8 +28,8 @@ export default function TabPage() {
           minRemainingSize={MIN_CODE_WIDTH}
           className="size-full min-h-0"
           dividerLabel="左右拖拽调节日志区宽度"
-          first={<CodeArea />}
-          second={<LogArea />}
+          first={<EditorArea />}
+          second={<LoggerArea />}
         />
       }
     />

@@ -1,4 +1,4 @@
-import { useAtomValue, useSetAtom } from "jotai"
+import { useAtom } from "jotai"
 import {
   CheckCircle2,
   ChevronDown,
@@ -32,10 +32,7 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import serializeApi from "@/lib/serialize/renderer"
 import type { TabLogEntry as LogEntry, TabLogStatus } from "@/lib/tabs"
-import {
-  activeTabLogEntriesAtom,
-  activeTabLogViewAtom,
-} from "@/lib/tabs/renderer"
+import { activeTabLoggerAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import { AreaStatusBar, AreaToolbar } from "./bars"
 
@@ -305,27 +302,22 @@ function LogEntryItem({
   )
 }
 
-export default function LogArea() {
-  const entries = useAtomValue(activeTabLogEntriesAtom)
-  const logUi = useAtomValue(activeTabLogViewAtom)
-  const clearLogs = useSetAtom(activeTabLogEntriesAtom)
-  const updateLogUi = useSetAtom(activeTabLogViewAtom)
+export default function LoggerArea() {
+  const [state, setState] = useAtom(activeTabLoggerAtom)
+
   const [expandedEntryIds, setExpandedEntryIds] = useState<
     Record<string, boolean>
   >({})
+
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
 
   const filteredEntries = useMemo(() => {
-    if (!logUi) {
-      return entries
-    }
+    const query = state.query.trim().toLocaleLowerCase()
+    const hasStatusFilter = state.statuses.length > 0
 
-    const query = logUi.query.trim().toLocaleLowerCase()
-    const hasStatusFilter = logUi.statuses.length > 0
-
-    return entries.filter((entry) => {
-      if (hasStatusFilter && !logUi.statuses.includes(entry.status)) {
+    return state.logs.filter((entry) => {
+      if (hasStatusFilter && !state.statuses.includes(entry.status)) {
         return false
       }
 
@@ -336,17 +328,17 @@ export default function LogArea() {
       const haystack = `${entry.sql}\n${entry.summary}\n${entry.detail ?? ""}`
       return haystack.toLocaleLowerCase().includes(query)
     })
-  }, [entries, logUi])
+  }, [state])
 
   const counts = useMemo(
     () => ({
-      total: entries.length,
+      total: state.logs.length,
       filtered: filteredEntries.length,
-      success: entries.filter((entry) => entry.status === "success").length,
-      error: entries.filter((entry) => entry.status === "error").length,
-      running: entries.filter((entry) => entry.status === "running").length,
+      success: state.logs.filter((entry) => entry.status === "success").length,
+      error: state.logs.filter((entry) => entry.status === "error").length,
+      running: state.logs.filter((entry) => entry.status === "running").length,
     }),
-    [entries, filteredEntries.length],
+    [state.logs, filteredEntries.length],
   )
   const lastVisibleEntry = filteredEntries.at(-1)
 
@@ -362,7 +354,7 @@ export default function LogArea() {
   useEffect(() => {
     if (
       !lastVisibleEntry ||
-      !logUi?.followTail ||
+      !state.followTail ||
       !shouldStickToBottomRef.current
     ) {
       return
@@ -375,10 +367,10 @@ export default function LogArea() {
     return () => {
       window.cancelAnimationFrame(frameId)
     }
-  }, [lastVisibleEntry, logUi?.followTail, scrollToBottom])
+  }, [lastVisibleEntry, state.followTail, scrollToBottom])
 
   useEffect(() => {
-    if (!logUi?.followTail) {
+    if (!state.followTail) {
       return
     }
 
@@ -390,7 +382,7 @@ export default function LogArea() {
     return () => {
       window.cancelAnimationFrame(frameId)
     }
-  }, [logUi?.followTail, scrollToBottom])
+  }, [state.followTail, scrollToBottom])
 
   const handleCopy = async (text: string, successMessage: string) => {
     try {
@@ -401,13 +393,8 @@ export default function LogArea() {
     }
   }
 
-  if (!logUi) {
-    return <div className="size-full" />
-  }
-
   const handleToggleStatus = (status: TabLogStatus) => {
-    updateLogUi((current) => ({
-      ...current,
+    setState((current) => ({
       statuses: current.statuses.includes(status)
         ? current.statuses.filter((item) => item !== status)
         : [...current.statuses, status],
@@ -443,8 +430,8 @@ export default function LogArea() {
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-muted-foreground" />
           <Input
-            value={logUi.query}
-            onChange={(event) => updateLogUi({ query: event.target.value })}
+            value={state.query}
+            onChange={(event) => setState({ query: event.target.value })}
             className="h-7 rounded-md pr-2 pl-7 text-xs"
             placeholder="搜索 SQL / 摘要 / 详情"
             aria-label="搜索日志"
@@ -452,19 +439,19 @@ export default function LogArea() {
         </div>
 
         <StatusFilterMenu
-          selected={logUi.statuses}
+          selected={state.statuses}
           onToggle={handleToggleStatus}
-          onClear={() => updateLogUi({ statuses: [] })}
+          onClear={() => setState({ statuses: [] })}
         />
 
         <Button
-          variant={logUi.followTail ? "secondary" : "ghost"}
+          variant={state.followTail ? "secondary" : "ghost"}
           size="icon-xs"
           className="text-muted-foreground"
           title={
-            logUi.followTail ? "已开启自动跟随最新日志" : "开启自动跟随最新日志"
+            state.followTail ? "已开启自动跟随最新日志" : "开启自动跟随最新日志"
           }
-          onClick={() => updateLogUi({ followTail: !logUi.followTail })}
+          onClick={() => setState({ followTail: !state.followTail })}
         >
           <ChevronDown className="size-3.5" />
         </Button>
@@ -485,8 +472,13 @@ export default function LogArea() {
           size="icon-xs"
           title="清空日志"
           className="text-muted-foreground"
-          onClick={() => clearLogs([])}
-          disabled={entries.length === 0}
+          onClick={() =>
+            setState((state) => ({
+              ...state,
+              logs: [],
+            }))
+          }
+          disabled={state.logs.length === 0}
         >
           <Trash2 className="size-3.5" />
         </Button>
@@ -505,7 +497,7 @@ export default function LogArea() {
         viewportRef={viewportRef}
         viewportProps={{ onScroll: handleViewportScroll }}
       >
-        {entries.length === 0 ? (
+        {state.logs.length === 0 ? (
           <EmptyState message="暂无执行记录" />
         ) : filteredEntries.length === 0 ? (
           <EmptyState message="没有符合当前筛选条件的日志" />

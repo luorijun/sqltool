@@ -1,4 +1,4 @@
-import { useAtomValue, useSetAtom } from "jotai"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { AlignLeft, Play, Search } from "lucide-react"
 import { useMemo, useRef } from "react"
 import { toast } from "sonner"
@@ -8,11 +8,9 @@ import { Button } from "@/components/ui/button"
 import type { DbDriver } from "@/lib/config"
 import type { TabEditorState } from "@/lib/tabs"
 import {
-  activeTabConnectionAtom,
+  activeTabConfigAtom,
   activeTabEditorStateAtom,
   activeTabIdAtom,
-  activeTabResultAtom,
-  activeTabSqlAtom,
   runActiveTabSqlAtom,
 } from "@/lib/tabs/renderer"
 import { AreaStatusBar, AreaToolbar } from "./bars"
@@ -43,11 +41,11 @@ function getLineNumberAt(sql: string, pos: number): number {
   return line
 }
 
-function getEditorSummary(editorState: TabEditorState, sql: string) {
+function getEditorSummary(state: TabEditorState) {
   let selectedChars = 0
   const selectedLines = new Set<number>()
 
-  for (const selection of editorState.selections) {
+  for (const selection of state.selections) {
     const start = Math.min(selection.anchor, selection.head)
     const end = Math.max(selection.anchor, selection.head)
 
@@ -57,8 +55,8 @@ function getEditorSummary(editorState: TabEditorState, sql: string) {
 
     selectedChars += end - start
 
-    const firstLine = getLineNumberAt(sql, start)
-    const lastLine = getLineNumberAt(sql, Math.max(end - 1, start))
+    const firstLine = getLineNumberAt(state.text, start)
+    const lastLine = getLineNumberAt(state.text, Math.max(end - 1, start))
 
     for (let line = firstLine; line <= lastLine; line += 1) {
       selectedLines.add(line)
@@ -66,7 +64,7 @@ function getEditorSummary(editorState: TabEditorState, sql: string) {
   }
 
   return {
-    lineCount: getLineCount(sql),
+    lineCount: getLineCount(state.text),
     selectedChars,
     selectedLines: selectedLines.size,
   }
@@ -97,41 +95,26 @@ function isSameEditorState(
   )
 }
 
-export function CodeArea() {
-  const activeTabId = useAtomValue(activeTabIdAtom)
-  const connection = useAtomValue(activeTabConnectionAtom)
-  const editorState = useAtomValue(activeTabEditorStateAtom)
-  const result = useAtomValue(activeTabResultAtom)
-  const sql = useAtomValue(activeTabSqlAtom)
-  const updateSql = useSetAtom(activeTabSqlAtom)
+export default function EditorArea() {
+  const tabId = useAtomValue(activeTabIdAtom)
+  const config = useAtomValue(activeTabConfigAtom)
+
+  const [state, setState] = useAtom(activeTabEditorStateAtom)
+
   const runSql = useSetAtom(runActiveTabSqlAtom)
-  const updateEditorState = useSetAtom(activeTabEditorStateAtom)
+
   const editorRef = useRef<SqlEditorHandle | null>(null)
 
-  const summary = useMemo(() => {
-    if (!editorState) {
-      return {
-        lineCount: 1,
-        selectedChars: 0,
-        selectedLines: 0,
-      }
-    }
-
-    return getEditorSummary(editorState, sql)
-  }, [editorState, sql])
-
-  if (!activeTabId || !editorState) {
-    return <div className="size-full" />
-  }
+  const summary = useMemo(() => getEditorSummary(state), [state])
 
   const handleEditorStateChange = (nextEditorState: TabEditorState) => {
-    updateEditorState((current) => {
+    setState((current) => {
       if (isSameEditorState(current, nextEditorState)) {
-        return current
+        return null
       }
 
       return {
-        ...current,
+        text: current.text,
         cursor: nextEditorState.cursor,
         selections: nextEditorState.selections,
         mainSelectionIndex: nextEditorState.mainSelectionIndex,
@@ -142,21 +125,24 @@ export function CodeArea() {
   }
 
   const handleFormat = () => {
-    if (!sql.trim()) {
+    if (!state.text.trim()) {
       return
     }
 
     try {
-      const formatted = formatSql(sql, {
-        language: connection?.driver
-          ? FORMAT_LANGUAGE_MAP[connection.driver]
+      const formatted = formatSql(state.text, {
+        language: config?.driver
+          ? FORMAT_LANGUAGE_MAP[config.driver]
           : DEFAULT_FORMAT_LANGUAGE,
         tabWidth: 2,
         keywordCase: "upper",
       })
 
-      if (formatted !== sql) {
-        updateSql(formatted)
+      if (formatted !== state.text) {
+        setState((current) => ({
+          ...current,
+          text: formatted,
+        }))
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "SQL 格式化失败")
@@ -171,7 +157,7 @@ export function CodeArea() {
           size="xs"
           className="gap-1.5"
           onClick={() => runSql()}
-          disabled={result?.status === "running"}
+          disabled={state.status === "running"}
           title="运行 SQL (Ctrl/Cmd + Enter)"
         >
           <Play className="size-3" />
@@ -204,21 +190,26 @@ export function CodeArea() {
       <AreaStatusBar className="px-3 text-[11px]">
         <span>{summary.lineCount} 行</span>
         <span>
-          第 {editorState.cursor.line} 行，第 {editorState.cursor.col} 列
+          第 {state.cursor.line} 行，第 {state.cursor.col} 列
         </span>
         <span>{summary.selectedChars} 个已选字符</span>
         <span>{summary.selectedLines} 个已选行</span>
-        {!connection && <span>未绑定连接，当前为纯文本模式</span>}
+        {!config && <span>未绑定连接，当前为纯文本模式</span>}
       </AreaStatusBar>
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <SqlEditor
-          key={activeTabId}
+          key={tabId}
           ref={editorRef}
-          value={sql}
-          driver={connection?.driver}
-          editorState={editorState}
-          onChange={updateSql}
+          value={state.text}
+          driver={config?.driver}
+          editorState={state}
+          onChange={(text) =>
+            setState((current) => ({
+              ...current,
+              text,
+            }))
+          }
           onEditorStateChange={handleEditorStateChange}
           onRun={() => runSql()}
           onFormat={handleFormat}

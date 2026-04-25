@@ -1,12 +1,15 @@
 ## TODO
 
+### 问题
+
+- table 高亮选中行时，正常cell的文字会显示在pinned文字的上方
+
 ### 整体功能
 
 - 检查并自动更新
+- tab 栏允许拖动排序
 - 自定义外壳
 - 快捷键管理
-- 表格联动编辑器，排序或筛选字段时更新编辑器语句
-- tab 栏允许拖动排序
 
 ### Code Area
 
@@ -31,3 +34,7 @@
 建议依赖：
 
 - `@tanstack/react-virtual`
+
+### 低优先级
+
+- tabs 的 TabResultState 中可以复用 conn 的 QueryResult

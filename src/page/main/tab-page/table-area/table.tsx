@@ -12,17 +12,16 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table"
-import { useSetAtom } from "jotai"
+import { useAtom, useSetAtom } from "jotai"
 import { ArrowDownAZ, ArrowUpAZ, RotateCcw } from "lucide-react"
 import { type CSSProperties, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import type { QueryResultRow } from "@/lib/conn"
 import {
   compareQueryValues,
   getQueryValueDisplay,
   serializeQueryValue,
 } from "@/lib/query-result"
-import type { TabResultState, TabTableState } from "@/lib/tabs"
+import type { TabTableState } from "@/lib/tabs"
 import {
   activeTabTableStateAtom,
   resetActiveTabTableStateAtom,
@@ -32,27 +31,15 @@ import { AreaStatusBar, AreaToolbar } from "../bars"
 import { EmptyState } from "./empty"
 import { ColumnVisibilityMenu, CopyMenu, ExportMenu, HeaderMenu } from "./menus"
 
-export function ResultTable({
-  result,
-  tableUi,
-}: {
-  result: TabResultState
-  tableUi: TabTableState
-}) {
-  const updateTableUi = useSetAtom(activeTabTableStateAtom)
-  const resetTableUi = useSetAtom(resetActiveTabTableStateAtom)
+export function ResultTable() {
+  const [tableState, setTableState] = useAtom(activeTabTableStateAtom)
+  const resetTabState = useSetAtom(resetActiveTabTableStateAtom)
 
-  const data = useMemo<ResultRow[]>(
-    () => result.rows.map((values, index) => ({ id: String(index), values })),
-    [result.rows],
-  )
-
-  const columns = useMemo<ColumnDef<ResultRow>[]>(
+  const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(
     () => [
       {
         id: ROW_NUMBER_COLUMN_ID,
         header: "#",
-        accessorFn: (_row, index) => index + 1,
         size: ROW_NUMBER_COLUMN_WIDTH,
         minSize: ROW_NUMBER_COLUMN_WIDTH,
         maxSize: ROW_NUMBER_COLUMN_WIDTH,
@@ -62,10 +49,10 @@ export function ResultTable({
         enablePinning: true,
         cell: ({ row }) => row.index + 1,
       },
-      ...result.columns.map((column, columnIndex) => ({
+      ...tableState.columns.map((column) => ({
         id: column.id,
         header: column.name,
-        accessorFn: (row: ResultRow) => row.values[columnIndex],
+        accessorKey: column.id,
         size: Math.min(Math.max(column.name.length * 16, 140), 280),
         minSize: MIN_DATA_COLUMN_WIDTH,
         sortingFn: (left, right, columnId) =>
@@ -73,26 +60,26 @@ export function ResultTable({
         cell: ({ getValue }) => <CellValue value={getValue()} />,
       })),
     ],
-    [result.columns],
+    [tableState.columns],
   )
 
   const state = useMemo(
     () => ({
-      sorting: tableUi.sorting as SortingState,
-      columnVisibility: tableUi.columnVisibility as VisibilityState,
-      columnSizing: tableUi.columnSizing as ColumnSizingState,
+      sorting: tableState.sorting as SortingState,
+      columnVisibility: tableState.visibility as VisibilityState,
+      columnSizing: tableState.sizing as ColumnSizingState,
       columnPinning: normalizeColumnPinning(
-        tableUi.columnPinning as ColumnPinningState,
+        tableState.pinning as ColumnPinningState,
       ) as ColumnPinningState,
     }),
-    [tableUi],
+    [tableState],
   )
 
   const table = useReactTable({
-    data,
+    data: tableState.data,
     columns,
     state,
-    getRowId: (row) => row.id,
+    getRowId: (_, i) => String(i),
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     enableMultiSort: false,
@@ -103,59 +90,51 @@ export function ResultTable({
       minSize: MIN_DATA_COLUMN_WIDTH,
     },
     onSortingChange: (updater: Updater<SortingState>) => {
-      updateTableUi((current) => ({
-        ...current,
+      setTableState((current) => ({
         sorting: functionalUpdate(updater, current.sorting as SortingState),
       }))
     },
     onColumnVisibilityChange: (updater: Updater<VisibilityState>) => {
-      updateTableUi((current) => ({
-        ...current,
-        columnVisibility: functionalUpdate(
+      setTableState((current) => ({
+        visibility: functionalUpdate(
           updater,
-          current.columnVisibility as VisibilityState,
+          current.visibility as VisibilityState,
         ),
       }))
     },
     onColumnSizingChange: (updater: Updater<ColumnSizingState>) => {
-      updateTableUi((current) => ({
-        ...current,
-        columnSizing: functionalUpdate(
-          updater,
-          current.columnSizing as ColumnSizingState,
-        ),
+      setTableState((current) => ({
+        sizing: functionalUpdate(updater, current.sizing as ColumnSizingState),
       }))
     },
     onColumnPinningChange: (updater: Updater<ColumnPinningState>) => {
-      updateTableUi((current) => ({
-        ...current,
-        columnPinning: normalizeColumnPinning(
-          functionalUpdate(
-            updater,
-            current.columnPinning as ColumnPinningState,
-          ),
+      setTableState((current) => ({
+        pinning: normalizeColumnPinning(
+          functionalUpdate(updater, current.pinning as ColumnPinningState),
         ),
       }))
     },
   })
 
   const handleResetLayout = () => {
-    resetTableUi()
+    resetTabState()
   }
 
   const handleCellClick = (rowId: string, columnId: string) => {
-    updateTableUi((current) => ({
-      ...current,
-      activeCell:
-        current.activeCell?.rowId === rowId &&
-        current.activeCell.columnId === columnId
-          ? current.activeCell
-          : { rowId, columnId },
-    }))
+    setTableState((current) => {
+      if (
+        current.selected?.rowId === rowId &&
+        current.selected.colId === columnId
+      ) {
+        return null
+      }
+
+      return { selected: { rowId, colId: columnId } }
+    })
   }
 
-  const exportName = `query-result-${result.lastRunAt ? new Date(result.lastRunAt).toISOString().slice(11, 19).replaceAll(":", "-") : "latest"}`
-  const hasDataColumns = result.columns.length > 0
+  const exportName = `query-result-${tableState.dataAt ? new Date(tableState.dataAt).toISOString().slice(11, 19).replaceAll(":", "-") : "latest"}`
+  const hasDataColumns = tableState.columns.length > 0
   const hasRows = table.getRowModel().rows.length > 0
   const visibleDataColumnCount = table
     .getVisibleLeafColumns()
@@ -172,12 +151,12 @@ export function ResultTable({
       <AreaToolbar>
         <ColumnVisibilityMenu
           table={table}
-          dataColumnCount={result.columns.length}
+          dataColumnCount={tableState.columns.length}
           disabled={!hasDataColumns}
         />
         <CopyMenu
           table={table}
-          activeCell={tableUi.activeCell}
+          activeCell={tableState.selected}
           disabled={!hasDataColumns}
         />
         <ExportMenu
@@ -200,19 +179,20 @@ export function ResultTable({
 
       <AreaStatusBar className="px-3 text-[11px]">
         <span>
-          <span className="text-foreground font-medium">{result.rowCount}</span>{" "}
+          <span className="text-foreground font-medium">
+            {tableState.data.length}
+          </span>{" "}
           行
         </span>
         <span>
           <span className="text-foreground font-medium">
-            {result.columns.length}
+            {tableState.columns.length}
           </span>{" "}
           列
         </span>
-        <span>耗时 {result.durationMs ?? 0} ms</span>
         <span>当前排序: {sortingSummary}</span>
         <span>{statusText}</span>
-        {!hasRows && result.columns.length > 0 && (
+        {!hasRows && tableState.columns.length > 0 && (
           <span>暂无可复制的当前单元格/行</span>
         )}
       </AreaStatusBar>
@@ -230,18 +210,17 @@ export function ResultTable({
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
                     const column = header.column
-                    const isRowNumber = column.id === ROW_NUMBER_COLUMN_ID
+                    const serial = column.id === ROW_NUMBER_COLUMN_ID
                     const sorted = column.getIsSorted()
+                    const painned = column.getIsPinned()
 
                     return (
                       <th
                         key={header.id}
                         className={cn(
-                          getCellClassName(column, true),
-                          isRowNumber
-                            ? "w-13 px-2 py-1.5 text-right text-xs font-mono font-normal text-muted-foreground select-none"
-                            : "group relative px-3 py-1.5 text-left text-xs font-semibold tracking-wide",
-                          !isRowNumber && sorted && "text-foreground",
+                          "group sticky top-0 z-10 h-8 px-2 text-xs font-mono tracking-wide border-b border-r last:border-r-0 bg-sidebar",
+                          painned && "z-20",
+                          serial && "text-muted-foreground",
                         )}
                         style={{
                           ...getPinnedStyles(column),
@@ -269,15 +248,15 @@ export function ResultTable({
                                   header.getContext(),
                                 )}
                               </span>
-                              {!isRowNumber && sorted === "asc" && (
+                              {!serial && sorted === "asc" && (
                                 <ArrowUpAZ className="size-3 shrink-0 text-primary" />
                               )}
-                              {!isRowNumber && sorted === "desc" && (
+                              {!serial && sorted === "desc" && (
                                 <ArrowDownAZ className="size-3 shrink-0 text-primary" />
                               )}
                             </button>
 
-                            {!isRowNumber && (
+                            {!serial && (
                               <HeaderMenu
                                 column={column}
                                 disableHide={visibleDataColumnCount <= 1}
@@ -286,7 +265,7 @@ export function ResultTable({
                           </div>
                         )}
 
-                        {column.getCanResize() && !isRowNumber && (
+                        {column.getCanResize() && !serial && (
                           <button
                             type="button"
                             aria-label={`调整 ${String(column.columnDef.header ?? column.id)} 列宽`}
@@ -309,7 +288,7 @@ export function ResultTable({
             <tbody>
               {hasRows ? (
                 table.getRowModel().rows.map((row) => {
-                  const isActiveRow = tableUi.activeCell?.rowId === row.id
+                  const isActiveRow = tableState.selected?.rowId === row.id
 
                   return (
                     <tr
@@ -321,22 +300,20 @@ export function ResultTable({
                     >
                       {row.getVisibleCells().map((cell) => {
                         const column = cell.column
-                        const isRowNumber = column.id === ROW_NUMBER_COLUMN_ID
+                        const serial = column.id === ROW_NUMBER_COLUMN_ID
                         const isActiveCell =
-                          tableUi.activeCell?.rowId === row.id &&
-                          tableUi.activeCell.columnId === column.id
+                          tableState.selected?.rowId === row.id &&
+                          tableState.selected.colId === column.id
                         const rawValue = cell.getValue()
                         const display = getQueryValueDisplay(rawValue)
-
+                        const pinned = column.getIsPinned()
                         return (
                           <td
                             key={cell.id}
                             className={cn(
-                              getCellClassName(column),
-                              isRowNumber
-                                ? "px-2 py-1 text-right text-xs font-mono text-muted-foreground select-none group-hover:text-foreground/60 transition-colors"
-                                : "px-3 py-1",
-                              "group-hover:bg-accent/40",
+                              "h-8 px-2 font-mono border-b border-r last:border-r-0 bg-background group-hover:bg-accent/40",
+                              pinned && "sticky z-10",
+                              serial && "text-right text-muted-foreground",
                               isActiveRow && "bg-accent/20",
                               display.kind === "number" && "text-right",
                               isActiveCell &&
@@ -347,7 +324,7 @@ export function ResultTable({
                               width: column.getSize(),
                             }}
                           >
-                            {isRowNumber ? (
+                            {serial ? (
                               flexRender(
                                 cell.column.columnDef.cell,
                                 cell.getContext(),
@@ -440,10 +417,7 @@ export const ROW_NUMBER_COLUMN_ID = "__rownum__"
 const MIN_DATA_COLUMN_WIDTH = 96
 const ROW_NUMBER_COLUMN_WIDTH = 52
 
-export interface ResultRow {
-  id: string
-  values: QueryResultRow
-}
+export type ResultRow = Record<string, unknown>
 
 export type ResultTableInstance = ReturnType<typeof useReactTable<ResultRow>>
 
@@ -462,44 +436,22 @@ function getSortLabel(column: Column<ResultRow, unknown>): string {
 
 function getPinnedStyles(column: Column<ResultRow, unknown>): CSSProperties {
   const pinned = column.getIsPinned()
-
   if (pinned === "left") {
     return {
       left: `${column.getStart("left")}px`,
-      boxShadow: column.getIsLastColumn("left")
-        ? "2px 0 0 0 var(--border)"
-        : undefined,
     }
   }
-
   if (pinned === "right") {
     return {
       right: `${column.getAfter("right")}px`,
-      boxShadow: column.getIsFirstColumn("right")
-        ? "-2px 0 0 0 var(--border)"
-        : undefined,
     }
   }
-
   return {}
-}
-
-function getCellClassName(
-  column: Column<ResultRow, unknown>,
-  isHeader = false,
-): string {
-  const pinned = column.getIsPinned()
-
-  return cn(
-    "border-border border-b border-r align-top last:border-r-0",
-    pinned && "sticky",
-    isHeader ? "top-0 z-30 bg-sidebar" : pinned && "z-20 bg-background",
-  )
 }
 
 function normalizeColumnPinning(
   pinning: ColumnPinningState,
-): TabTableState["columnPinning"] {
+): TabTableState["pinning"] {
   const left = Array.from(
     new Set([
       ROW_NUMBER_COLUMN_ID,

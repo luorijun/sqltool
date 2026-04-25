@@ -153,16 +153,14 @@ export function CopyMenu({
   disabled,
 }: {
   table: ResultTableInstance
-  activeCell: TabTableState["activeCell"]
+  activeCell: TabTableState["selected"]
   disabled?: boolean
 }) {
   const activeRow = activeCell
     ? table.getRowModel().rowsById[activeCell.rowId]
     : undefined
   const activeColumn = activeCell
-    ? table
-        .getAllLeafColumns()
-        .find((column) => column.id === activeCell.columnId)
+    ? table.getAllLeafColumns().find((column) => column.id === activeCell.colId)
     : undefined
 
   const handleCopy = async (mode: "cell" | "row" | "result") => {

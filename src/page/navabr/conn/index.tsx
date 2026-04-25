@@ -26,7 +26,7 @@ export default function ConnView({
       <ConnHeader
         conn={conn}
         onBack={onBack}
-        onNewQuery={() => createTab({ connection: conn })}
+        onNewQuery={() => createTab({ config: conn })}
         onRefresh={() => setRefreshKey((prev) => prev + 1)}
         onDisconnect={onBack}
         onEditConn={() => setIsEditing(true)}

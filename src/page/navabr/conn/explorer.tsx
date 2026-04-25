@@ -148,8 +148,8 @@ function TableNode({
     e.stopPropagation()
     createTab({
       label: table.name,
-      sql: `SELECT *\nFROM ${quoteIdent(schemaName)}.${quoteIdent(table.name)}\nLIMIT 100;`,
-      connection: conn,
+      text: `SELECT *\nFROM ${quoteIdent(schemaName)}.${quoteIdent(table.name)}\nLIMIT 100;`,
+      config: conn,
       autoRun: true,
     })
   }

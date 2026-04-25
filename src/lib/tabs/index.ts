@@ -1,6 +1,32 @@
-import type { QueryResult } from "@/lib/conn"
+import type { Config } from "../config"
+
+export type Tab = {
+  id: string
+  label: string
+  config?: Config
+  table: TabTableState
+  editor: TabEditorState
+  logger: TabLoggerState
+}
+
+export interface TabTableState {
+  status: "idle" | "running" | "success" | "error"
+  error: string | null
+  dataAt: number | null
+
+  data: Record<string, unknown>[]
+  columns: { id: string; name: string }[]
+
+  visibility: Record<string, boolean>
+  sizing: Record<string, number>
+  sorting: Array<{ id: string; desc: boolean }>
+  pinning: { left: string[]; right: string[] }
+  selected: { rowId: string; colId: string } | null
+}
 
 export interface TabEditorState {
+  status: "idle" | "running"
+  text: string
   cursor: {
     line: number
     col: number
@@ -24,30 +50,13 @@ export interface TabEditorState {
   }
 }
 
-export interface TabTableState {
-  sorting: Array<{
-    id: string
-    desc: boolean
-  }>
-  columnVisibility: Record<string, boolean>
-  columnSizing: Record<string, number>
-  columnPinning: {
-    left: string[]
-    right: string[]
-  }
-  activeCell: {
-    rowId: string
-    columnId: string
-  } | null
-}
-
-export interface TabLogViewState {
+export type TabLogStatus = "success" | "error" | "running"
+export interface TabLoggerState {
   query: string
   statuses: TabLogStatus[]
   followTail: boolean
+  logs: TabLogEntry[]
 }
-
-export type TabLogStatus = "success" | "error" | "running"
 
 export interface TabLogEntry {
   id: string
@@ -58,17 +67,4 @@ export interface TabLogEntry {
   startedAt: number
   finishedAt?: number
   durationMs?: number
-}
-
-export type TabResultStatus = "idle" | "running" | "success" | "error"
-
-export interface TabResultState {
-  status: TabResultStatus
-  lastRunSql: string
-  lastRunAt: number | null
-  durationMs: number | null
-  columns: QueryResult["columns"]
-  rows: QueryResult["rows"]
-  rowCount: number
-  error: string | null
 }

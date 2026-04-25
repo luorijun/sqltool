@@ -1,6 +1,5 @@
-import { useAtomValue, useSetAtom } from "jotai"
+import { atom, useAtomValue, useSetAtom } from "jotai"
 import { Plus, X } from "lucide-react"
-import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import {
   activeTabIdAtom,
@@ -14,6 +13,51 @@ type TabBarItem = {
   id: string
   label: string
   dirty: boolean
+}
+
+const tabsViewAtom = atom((get) =>
+  get(tabsAtom).map((tab) => ({
+    id: tab.id,
+    label: tab.label,
+    dirty: false,
+  })),
+)
+
+export function TabBar() {
+  const tabs = useAtomValue(tabsViewAtom)
+  const activeTabId = useAtomValue(activeTabIdAtom)
+  const setActiveTabId = useSetAtom(activeTabIdAtom)
+  const createTab = useSetAtom(createTabAtom)
+  const closeTab = useSetAtom(closeTabAtom)
+
+  return (
+    <div className="flex-none basis-10 flex items-stretch border-b bg-sidebar overflow-hidden">
+      {/* Scrollable tab list */}
+      <div className="flex items-stretch flex-1 min-w-0 overflow-x-auto overflow-y-hidden scrollbar-none">
+        {tabs.map((tab) => (
+          <TabItem
+            key={tab.id}
+            tab={tab}
+            active={activeTabId === tab.id}
+            onSelect={() => setActiveTabId(tab.id)}
+            onClose={() => closeTab(tab.id)}
+          />
+        ))}
+      </div>
+
+      {/* New tab button */}
+      <div className="flex items-center px-1 shrink-0">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => createTab()}
+          title="新建查询"
+        >
+          <Plus />
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 function TabItem({
@@ -77,51 +121,5 @@ function TabItem({
         <X className="size-3" />
       </span>
     </button>
-  )
-}
-
-export function TabBar() {
-  const tabStates = useAtomValue(tabsAtom)
-  const activeTabId = useAtomValue(activeTabIdAtom)
-  const setActiveTabId = useSetAtom(activeTabIdAtom)
-  const createTab = useSetAtom(createTabAtom)
-  const closeTab = useSetAtom(closeTabAtom)
-  const tabs = useMemo<TabBarItem[]>(
-    () =>
-      tabStates.map((tab) => ({
-        id: tab.id,
-        label: tab.label,
-        dirty: tab.sql !== tab.result.lastRunSql,
-      })),
-    [tabStates],
-  )
-
-  return (
-    <div className="flex-none basis-10 flex items-stretch border-b bg-sidebar overflow-hidden">
-      {/* Scrollable tab list */}
-      <div className="flex items-stretch flex-1 min-w-0 overflow-x-auto overflow-y-hidden scrollbar-none">
-        {tabs.map((tab) => (
-          <TabItem
-            key={tab.id}
-            tab={tab}
-            active={activeTabId === tab.id}
-            onSelect={() => setActiveTabId(tab.id)}
-            onClose={() => closeTab(tab.id)}
-          />
-        ))}
-      </div>
-
-      {/* New tab button */}
-      <div className="flex items-center px-1 shrink-0">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={() => createTab()}
-          title="新建查询"
-        >
-          <Plus />
-        </Button>
-      </div>
-    </div>
   )
 }

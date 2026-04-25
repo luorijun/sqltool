@@ -121,3 +121,7 @@
     @apply bg-background text-foreground;
   }
 }
+
+@utility trans {
+  @apply duration-250 ease-in-out;
+}

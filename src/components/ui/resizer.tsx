@@ -54,14 +54,15 @@ export function ResizeDivider({
     <div
       className={cn(
         "group relative z-40 shrink-0 overflow-visible self-stretch",
-        isHorizontal ? "h-px" : "w-px",
+        // isHorizontal ? "h-px" : "w-px",
         className,
       )}
     >
-      <span
+      <div
         className={cn(
-          "pointer-events-none absolute inset-0 bg-border transition-colors",
-          active ? "bg-border" : "group-hover:bg-primary",
+          "trans transition-colors",
+          active ? "border-border" : "group-hover:border-primary",
+          isHorizontal ? "border-b w-full" : "border-r h-full",
         )}
       />
 

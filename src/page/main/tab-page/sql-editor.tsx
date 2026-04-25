@@ -306,6 +306,8 @@ function getEditorSnapshot(
   const query = getSearchQuery(state)
 
   return {
+    status: "idle",
+    text: state.doc.toString(),
     cursor: getCursorPosition(state),
     selections: state.selection.ranges.map((range) => ({
       anchor: range.anchor,
@@ -513,13 +515,6 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
       handleEditorStateChange(getEditorSnapshot(view.state, view))
 
       return () => {
-        const snapshotView = viewRef.current
-        if (snapshotView) {
-          handleEditorStateChange(
-            getEditorSnapshot(snapshotView.state, snapshotView),
-          )
-        }
-
         view.scrollDOM.removeEventListener("scroll", handleScroll)
         languageRef.current = null
         viewRef.current = null
