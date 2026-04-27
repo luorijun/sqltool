@@ -6,10 +6,10 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       external: [
-        "knex",
         "pg",
         "pg-query-stream",
         "mysql2",
+        "ssh2",
         // "better-sqlite3",
         // "sqlite3",
         // "mysql",

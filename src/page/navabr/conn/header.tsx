@@ -52,6 +52,11 @@ export function ConnHeader({
         <span className="truncate text-sm font-medium">
           {conn.name ?? "未命名"}
         </span>
+        {conn.ssh && (
+          <span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">
+            SSH
+          </span>
+        )}
       </div>
 
       <Button

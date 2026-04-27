@@ -1,4 +1,6 @@
-import knex, { type Knex } from "knex"
+import { Duplex, type Duplex as DuplexStream } from "node:stream"
+import { Client as PgClient } from "pg"
+import { Client as SshClient } from "ssh2"
 import type { Config } from "../config"
 import type {
   DbSchema,
@@ -48,13 +50,152 @@ interface FunctionRow {
   function_name: string
 }
 
-function excludeSystemSchemas(column: string): string {
-  return `${column} NOT IN ('pg_catalog', 'information_schema') AND ${column} NOT LIKE 'pg_toast%' AND ${column} NOT LIKE 'pg_temp_%'`
+interface ConnectedPostgresClient {
+  client: PgClient
+  close: () => Promise<void>
 }
 
-async function queryRows<T>(db: Knex, sql: string): Promise<T[]> {
-  const result = (await db.raw(sql)) as { rows?: T[] }
-  return Array.isArray(result.rows) ? result.rows : []
+class SshTunnelStream extends Duplex {
+  #ssh: SshClient
+  #channel: DuplexStream | null = null
+  #connected = false
+  #connecting = false
+
+  constructor(ssh: SshClient) {
+    super()
+    this.#ssh = ssh
+  }
+
+  connect(port: number, host: string): this {
+    if (this.#connected || this.#connecting) {
+      throw new Error("数据库连接已初始化")
+    }
+
+    this.#connecting = true
+
+    this.#ssh.forwardOut("127.0.0.1", 0, host, port, (error, channel) => {
+      if (error) {
+        this.#connecting = false
+        this.destroy(error)
+        return
+      }
+
+      if (!channel) {
+        this.#connecting = false
+        this.destroy(new Error("SSH 隧道创建失败"))
+        return
+      }
+
+      this.#channel = channel
+      this.#connecting = false
+      this.#connected = true
+
+      channel.on("data", (chunk) => {
+        if (!this.push(chunk)) {
+          channel.pause()
+        }
+      })
+
+      channel.on("end", () => {
+        this.push(null)
+      })
+
+      channel.on("close", () => {
+        this.push(null)
+      })
+
+      channel.on("error", (channelError) => {
+        this.destroy(channelError)
+      })
+
+      this.emit("connect")
+    })
+
+    return this
+  }
+
+  _read(): void {
+    this.#channel?.resume()
+  }
+
+  _write(
+    chunk: string | Buffer,
+    encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ): void {
+    const channel = this.#channel
+    if (!channel) {
+      callback(new Error("SSH 隧道尚未建立"))
+      return
+    }
+
+    const drain = () => {
+      channel.off("error", onError)
+      callback()
+    }
+
+    const onError = (error: Error) => {
+      channel.off("drain", drain)
+      callback(error)
+    }
+
+    channel.once("error", onError)
+    const writable = channel.write(chunk, encoding)
+
+    if (writable) {
+      drain()
+      return
+    }
+
+    channel.once("drain", drain)
+  }
+
+  _final(callback: (error?: Error | null) => void): void {
+    const channel = this.#channel
+    if (!channel || channel.destroyed || channel.writableEnded) {
+      callback()
+      return
+    }
+
+    channel.once("close", () => {
+      callback()
+    })
+    channel.end()
+  }
+
+  _destroy(
+    error: Error | null,
+    callback: (error?: Error | null) => void,
+  ): void {
+    const channel = this.#channel
+    this.#channel = null
+
+    if (channel && !channel.destroyed) {
+      channel.destroy(error ?? undefined)
+    }
+
+    callback(error)
+  }
+
+  setNoDelay(): this {
+    return this
+  }
+
+  setKeepAlive(): this {
+    return this
+  }
+
+  ref(): this {
+    return this
+  }
+
+  unref(): this {
+    return this
+  }
+}
+
+function excludeSystemSchemas(column: string): string {
+  return `${column} NOT IN ('pg_catalog', 'information_schema') AND ${column} NOT LIKE 'pg_toast%' AND ${column} NOT LIKE 'pg_temp_%'`
 }
 
 function toQueryRowCount(value: number | null | undefined): number | undefined {
@@ -78,36 +219,132 @@ function toRowCount(value: number | string | null): number | undefined {
   return Math.max(0, Math.trunc(count))
 }
 
-function createClient(conn: Config): Knex {
-  const port = Number(conn.port)
+function parsePort(value: string, label: string): number {
+  const port = Number(value)
   if (!Number.isInteger(port) || port <= 0) {
-    throw new Error(`无效的端口: ${conn.port}`)
+    throw new Error(`无效的${label}: ${value}`)
   }
 
-  return knex({
-    client: "pg",
-    connection: {
-      host: conn.host,
-      port,
-      user: conn.username,
-      password: conn.password,
-      database: conn.database,
+  return port
+}
+
+async function connectDirectPostgres(
+  conn: Config,
+): Promise<ConnectedPostgresClient> {
+  const client = new PgClient({
+    host: conn.host,
+    port: parsePort(conn.port, "数据库端口"),
+    user: conn.username,
+    password: conn.password,
+    database: conn.database,
+  })
+
+  await client.connect()
+
+  return {
+    client,
+    close: async () => {
+      await client.end()
     },
-    pool: {
-      min: 0,
-      max: 1,
-    },
+  }
+}
+
+function connectSsh(conn: Config): Promise<SshClient> {
+  const sshConfig = conn.ssh
+  if (!sshConfig) {
+    throw new Error("缺少 SSH 配置")
+  }
+
+  return new Promise((resolve, reject) => {
+    const ssh = new SshClient()
+    let settled = false
+
+    const cleanup = () => {
+      ssh.removeAllListeners("ready")
+      ssh.removeAllListeners("error")
+    }
+
+    ssh.once("ready", () => {
+      settled = true
+      cleanup()
+      resolve(ssh)
+    })
+
+    ssh.once("error", (error) => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      cleanup()
+      reject(error)
+    })
+
+    ssh.connect({
+      host: sshConfig.host,
+      port: parsePort(sshConfig.port, "SSH 端口"),
+      username: sshConfig.username,
+      password: sshConfig.password,
+      keepaliveInterval: 10_000,
+      keepaliveCountMax: 3,
+      readyTimeout: 20_000,
+    })
   })
 }
 
+async function connectPostgresViaSsh(
+  conn: Config,
+): Promise<ConnectedPostgresClient> {
+  const ssh = await connectSsh(conn)
+  const stream = new SshTunnelStream(ssh)
+
+  const client = new PgClient({
+    host: conn.host,
+    port: parsePort(conn.port, "数据库端口"),
+    user: conn.username,
+    password: conn.password,
+    database: conn.database,
+    stream: () => stream,
+  })
+
+  try {
+    await client.connect()
+
+    return {
+      client,
+      close: async () => {
+        await client.end().catch(() => undefined)
+        ssh.end()
+      },
+    }
+  } catch (error) {
+    stream.destroy(error instanceof Error ? error : undefined)
+    ssh.end()
+    throw error
+  }
+}
+
+async function connectPostgres(conn: Config): Promise<ConnectedPostgresClient> {
+  if (!conn.ssh) {
+    return connectDirectPostgres(conn)
+  }
+
+  return connectPostgresViaSsh(conn)
+}
+
+async function queryRows<T>(client: PgClient, sql: string): Promise<T[]> {
+  const result = await client.query<T>(sql)
+  return Array.isArray(result.rows) ? result.rows : []
+}
+
 export async function inspectPostgres(conn: Config): Promise<DbSchema[]> {
-  const db = createClient(conn)
+  const connected = await connectPostgres(conn)
   const schemaFilter = excludeSystemSchemas("n.nspname")
   const viewSchemaFilter = excludeSystemSchemas("table_schema")
 
   try {
     const schemas = await queryRows<SchemaRow>(
-      db,
+      connected.client,
       `
         SELECT n.nspname AS schema_name
         FROM pg_namespace n
@@ -117,7 +354,7 @@ export async function inspectPostgres(conn: Config): Promise<DbSchema[]> {
     )
 
     const tables = await queryRows<TableRow>(
-      db,
+      connected.client,
       `
         SELECT
           n.nspname AS schema_name,
@@ -133,7 +370,7 @@ export async function inspectPostgres(conn: Config): Promise<DbSchema[]> {
     )
 
     const columns = await queryRows<ColumnRow>(
-      db,
+      connected.client,
       `
         SELECT
           n.nspname AS schema_name,
@@ -167,7 +404,7 @@ export async function inspectPostgres(conn: Config): Promise<DbSchema[]> {
     )
 
     const views = await queryRows<ViewRow>(
-      db,
+      connected.client,
       `
         SELECT
           table_schema AS schema_name,
@@ -179,7 +416,7 @@ export async function inspectPostgres(conn: Config): Promise<DbSchema[]> {
     )
 
     const functions = await queryRows<FunctionRow>(
-      db,
+      connected.client,
       `
         SELECT
           n.nspname AS schema_name,
@@ -254,7 +491,7 @@ export async function inspectPostgres(conn: Config): Promise<DbSchema[]> {
 
     return Array.from(schemaMap.values())
   } finally {
-    await db.destroy()
+    await connected.close()
   }
 }
 
@@ -262,12 +499,13 @@ export async function queryPostgres(
   conn: Config,
   sql: string,
 ): Promise<QueryResult> {
-  const db = createClient(conn)
+  const connected = await connectPostgres(conn)
 
   try {
-    const result = (await db
-      .raw(sql)
-      .options({ rowMode: "array" })) as PostgresQueryResult
+    const result = (await connected.client.query({
+      text: sql,
+      rowMode: "array",
+    })) as PostgresQueryResult
 
     const rows = Array.isArray(result.rows) ? result.rows : []
     const columns: QueryResultColumn[] = Array.isArray(result.fields)
@@ -283,6 +521,6 @@ export async function queryPostgres(
       rowCount: toQueryRowCount(result.rowCount),
     }
   } finally {
-    await db.destroy()
+    await connected.close()
   }
 }

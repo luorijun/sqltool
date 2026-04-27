@@ -34,7 +34,3 @@
 建议依赖：
 
 - `@tanstack/react-virtual`
-
-### 低优先级
-
-- tabs 的 TabResultState 中可以复用 conn 的 QueryResult

@@ -1,4 +1,11 @@
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import {
+  Database,
+  HardDrive,
+  MoreHorizontal,
+  Pencil,
+  Server,
+  Trash2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -9,8 +16,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Config } from "@/lib/config"
-
-import { Database, HardDrive, Server } from "lucide-react"
 
 export const driverLabel: Record<string, string> = {
   postgres: "PostgreSQL",
@@ -54,6 +59,7 @@ function ConnectionItem({
           </p>
           <p className="text-xs leading-tight text-muted-foreground">
             {driverLabel[conn.driver] ?? conn.driver}
+            {conn.ssh ? " · SSH" : ""}
           </p>
         </div>
       </button>

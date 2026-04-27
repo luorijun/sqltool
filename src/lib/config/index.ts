@@ -6,6 +6,13 @@ export const REMOVE = "config:remove"
 
 export type DbDriver = "postgres" | "mysql" | "sqlite"
 
+export type SshConfig = {
+  host: string
+  port: string
+  username: string
+  password: string
+}
+
 export type Config = {
   id: string
   name?: string
@@ -15,6 +22,7 @@ export type Config = {
   username: string
   password: string
   database: string
+  ssh?: SshConfig
   createdAt: number
   updatedAt: number
 }
