@@ -332,6 +332,12 @@ async function connectPostgres(conn: Config): Promise<ConnectedPostgresClient> {
   return connectPostgresViaSsh(conn)
 }
 
+export async function testPostgres(conn: Config): Promise<void> {
+  const connected = await connectPostgres(conn)
+
+  await connected.close()
+}
+
 async function queryRows<T>(client: PgClient, sql: string): Promise<T[]> {
   const result = await client.query<T>(sql)
   return Array.isArray(result.rows) ? result.rows : []

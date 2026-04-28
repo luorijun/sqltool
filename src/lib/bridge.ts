@@ -11,6 +11,7 @@ export interface MainBridge {
     remove(id: string): Promise<void>
   }
   conn: {
+    test(config: CreateConfig): Promise<void>
     inspect(config: Config): Promise<DbSchema[]>
     query(config: Config, sql: string): Promise<QueryResult>
   }

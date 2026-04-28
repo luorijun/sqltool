@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Database, HardDrive, Server } from "lucide-react"
-import { useEffect, useId } from "react"
+import { useEffect, useId, useState } from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -20,6 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Config, CreateConfig, DbDriver } from "@/lib/config"
 import configApi from "@/lib/config/renderer"
+import connApi from "@/lib/conn/renderer"
 import { cn } from "@/lib/utils"
 import z from "@/lib/zod"
 
@@ -98,12 +99,33 @@ const schema = z
 type Schema = z.infer<typeof schema>
 type ConnDialogMode = "create" | "edit"
 
+function getDriverDefaults(driver: DbDriver) {
+  if (driver === "mysql") {
+    return {
+      host: "127.0.0.1",
+      port: "3306",
+    }
+  }
+
+  if (driver === "sqlite") {
+    return {
+      host: "数据库文件路径",
+      port: "",
+    }
+  }
+
+  return {
+    host: "127.0.0.1",
+    port: "5432",
+  }
+}
+
 function getDefaultValues(conn?: Config | null): Schema {
   return {
     name: conn?.name ?? "新连接",
     driver: (conn?.driver ?? "postgres") as DbDriver,
-    host: conn?.host,
-    port: conn?.port,
+    host: conn?.host ?? "",
+    port: conn?.port ?? "",
     username: conn?.username ?? "",
     password: conn?.password ?? "",
     database: conn?.database ?? "",
@@ -115,6 +137,7 @@ function getDefaultValues(conn?: Config | null): Schema {
 }
 
 function toCreateConfig(data: Schema): CreateConfig {
+  const defaults = getDriverDefaults(data.driver)
   const hasSshValue = [
     data.sshHost,
     data.sshPort,
@@ -125,15 +148,15 @@ function toCreateConfig(data: Schema): CreateConfig {
   return {
     name: data.name,
     driver: data.driver,
-    host: data.host ?? "127.0.0.1",
-    port: data.port ?? "5432",
+    host: data.host || defaults.host,
+    port: data.port || defaults.port,
     username: data.username,
     password: data.password,
     database: data.database,
     ssh: hasSshValue
       ? {
           host: data.sshHost,
-          port: data.sshPort ?? "22",
+          port: data.sshPort || "22",
           username: data.sshUsername,
           password: data.sshPassword,
         }
@@ -189,7 +212,6 @@ export function ConnDialog({
   }
 
   const save = async (data: Schema) => {
-    console.log("Saving config with data:", data)
     try {
       const payload = toCreateConfig(data)
       const saved =
@@ -214,6 +236,21 @@ export function ConnDialog({
     sshUsername,
     sshPassword,
   })
+
+  const testConnection = async () => {
+    const valid = await form.trigger()
+    if (!valid) {
+      return
+    }
+
+    try {
+      const payload = toCreateConfig(form.getValues())
+      await connApi.test(payload)
+      toast.success("连接测试成功")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "连接测试失败")
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -272,11 +309,17 @@ export function ConnDialog({
           </form>
         </ScrollArea>
 
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline">取消</Button>} />
-          <Button type="submit" form={formId}>
-            保存
+        <DialogFooter className="justify-between">
+          <Button type="button" variant="outline" onClick={testConnection}>
+            测试连接
           </Button>
+
+          <div className="flex gap-2">
+            <DialogClose render={<Button variant="outline">取消</Button>} />
+            <Button type="submit" form={formId}>
+              保存
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -284,16 +327,19 @@ export function ConnDialog({
 }
 
 function DatabasePanel(props: { form: ReturnType<typeof useForm<Schema>> }) {
+  const driver = props.form.watch("driver")
+  const defaults = getDriverDefaults(driver)
+
   return (
     <FieldSet className="border rounded-xl p-5">
       <FieldLegend>数据库连接</FieldLegend>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField control={props.form.control} name="host" label="数据库主机">
-          {(fProps) => <Input {...fProps.field} placeholder="127.0.0.1" />}
+          {(fProps) => <Input {...fProps.field} placeholder={defaults.host} />}
         </FormField>
         <FormField control={props.form.control} name="port" label="数据库端口">
-          {(fProps) => <Input {...fProps.field} placeholder="5432" />}
+          {(fProps) => <Input {...fProps.field} placeholder={defaults.port} />}
         </FormField>
       </div>
 

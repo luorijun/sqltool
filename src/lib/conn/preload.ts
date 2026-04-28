@@ -1,8 +1,11 @@
 import { ipcRenderer } from "electron"
 import type { Config } from "../config"
-import { INSPECT, QUERY } from "."
+import { INSPECT, QUERY, TEST } from "."
 
 export const bridge = {
+  test: (conn: Config) => {
+    return ipcRenderer.invoke(TEST, conn)
+  },
   inspect: (conn: Config) => {
     return ipcRenderer.invoke(INSPECT, conn)
   },

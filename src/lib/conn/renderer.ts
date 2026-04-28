@@ -1,7 +1,10 @@
-import type { Config } from "../config/index"
+import type { Config, CreateConfig } from "../config"
 import type { DbSchema, QueryResult } from "./index"
 
 const conn = {
+  test(config: CreateConfig): Promise<void> {
+    return window.main.conn.test(config)
+  },
   inspect(config: Config): Promise<DbSchema[]> {
     return window.main.conn.inspect(config)
   },

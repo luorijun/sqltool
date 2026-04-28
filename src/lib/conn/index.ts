@@ -1,3 +1,4 @@
+export const TEST = "conn:test"
 export const INSPECT = "conn:inspect"
 export const QUERY = "conn:query"
 
