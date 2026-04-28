@@ -1,6 +1,8 @@
 import { atom } from "jotai"
+import { unwrap } from "jotai/utils"
 import type { Getter, Setter } from "jotai/vanilla"
 import type { Config } from "@/lib/config"
+import configApi from "@/lib/config/renderer"
 import type { QueryResult } from "@/lib/conn"
 import connApi from "@/lib/conn/renderer"
 import type {
@@ -51,9 +53,15 @@ const activeTabAtom = atom<Tab>((get) => {
 })
 
 // 连接配置
-export const activeTabConfigAtom = atom<Config | undefined>((get) => {
-  return get(activeTabAtom).config
+const _activeTabConfigAtom = atom<Promise<Config>>(async (get) => {
+  const id = get(activeTabAtom).configId
+  const config = await configApi.get(id)
+  if (!config) {
+    throw new Error("活动标签页绑定的数据库连接不存在")
+  }
+  return config
 })
+export const activeTabConfigAtom = unwrap(_activeTabConfigAtom)
 
 // 表格 ui 状态
 export const activeTabTableStateAtom = atom(
@@ -99,7 +107,7 @@ export const createTabAtom = atom(
     set,
     opts?: {
       label?: string
-      config?: Config
+      configId?: string
       text?: string
       autoRun?: boolean
     },
@@ -108,7 +116,7 @@ export const createTabAtom = atom(
     const tab = {
       id,
       label: opts?.label ?? `查询 ${id}`,
-      config: opts?.config,
+      configId: opts?.configId,
       table: createDefaultTableState(),
       editor: createDefaultEditorState(opts?.text),
       logger: createDefaultLoggerState(),
@@ -330,7 +338,7 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
     return
   }
 
-  if (!tab.config) {
+  if (!tab.configId) {
     updateTabById(set, tabId, (currentTab) => ({
       ...currentTab,
       table: {
@@ -380,8 +388,9 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
     },
   }))
 
+  const config = await configApi.get(tab.configId)
   try {
-    const result = await connApi.query(tab.config, sql)
+    const result = await connApi.query(config, sql)
     const rowCount = getQueryResultRowCount(result)
     const durationMs = Math.max(1, Date.now() - startedAt)
     const finishedAt = Date.now()

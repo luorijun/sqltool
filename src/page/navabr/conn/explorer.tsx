@@ -149,7 +149,7 @@ function TableNode({
     createTab({
       label: table.name,
       text: `SELECT *\nFROM ${quoteIdent(schemaName)}.${quoteIdent(table.name)}\nLIMIT 100;`,
-      config: conn,
+      configId: conn.id,
       autoRun: true,
     })
   }

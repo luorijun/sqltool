@@ -1,9 +1,7 @@
-import type { Config } from "../config"
-
 export type Tab = {
   id: string
   label: string
-  config?: Config
+  configId?: string
   table: TabTableState
   editor: TabEditorState
   logger: TabLoggerState
