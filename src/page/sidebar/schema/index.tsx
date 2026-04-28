@@ -13,6 +13,7 @@ import {
   Table2,
 } from "lucide-react"
 import { type ReactNode, useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Config } from "@/lib/config"
 import type {
@@ -20,12 +21,15 @@ import type {
   DbSchema as Schema,
   DbTable as Table,
 } from "@/lib/conn"
-import connApi from "@/lib/conn/renderer"
 import { createTabAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 
 function quoteIdent(value: string): string {
   return `"${value.replaceAll('"', '""')}"`
+}
+
+function createPreviewSql(schemaName: string, tableName: string): string {
+  return `SELECT *\nFROM ${quoteIdent(schemaName)}.${quoteIdent(tableName)}\nLIMIT 100;`
 }
 
 function createDefaultExpandedNodes(schemas: Schema[]): Set<string> {
@@ -90,7 +94,7 @@ function TreeRow({
 
       {meta && (
         <span className="font-mono text-[10.5px] text-muted-foreground/55 pl-2 shrink-0">
-          {meta}
+          {meta === "timestamp with time zone" ? "timestamptz" : meta}
         </span>
       )}
     </>
@@ -148,7 +152,7 @@ function TableNode({
     e.stopPropagation()
     createTab({
       label: table.name,
-      text: `SELECT *\nFROM ${quoteIdent(schemaName)}.${quoteIdent(table.name)}\nLIMIT 100;`,
+      text: createPreviewSql(schemaName, table.name),
       configId: conn.id,
       autoRun: true,
     })
@@ -344,55 +348,43 @@ function SchemaSection({
   )
 }
 
-export interface ConnExplorerProps {
+export interface SchemaPanelProps {
   conn: Config
-  refreshKey?: number
+  status: "idle" | "connecting" | "connected" | "error"
+  schemaStatus: "idle" | "loading" | "success" | "error"
+  error: string | null
+  schemas: Schema[] | null
+  onConnect: () => void
+  onRefresh: () => void
+  onNewQuery: () => void
 }
 
-export function ConnExplorer({ conn, refreshKey }: ConnExplorerProps) {
-  const [schemas, setSchemas] = useState<Schema[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export function SchemaPanel({
+  conn,
+  status,
+  schemaStatus,
+  error,
+  schemas,
+  onConnect,
+  onRefresh,
+  onNewQuery,
+}: SchemaPanelProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(
     () => new Set(),
   )
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
-
-    async function loadSchemas(connection: Config, _refreshTrigger?: unknown) {
-      setLoading(true)
-      setError(null)
-      setSchemas([])
-
-      try {
-        const nextSchemas = await connApi.inspect(connection)
-        if (cancelled) {
-          return
-        }
-        setSchemas(nextSchemas)
-      } catch (err) {
-        if (cancelled) {
-          return
-        }
-        setError(err instanceof Error ? err.message : "加载数据库结构失败")
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
+    if (schemas && schemas.length > 0) {
+      return
     }
 
-    loadSchemas(conn, refreshKey)
-
-    return () => {
-      cancelled = true
-    }
-  }, [conn, refreshKey])
+    setExpandedNodes(new Set())
+    setHasInitializedExpansion(false)
+  }, [schemas])
 
   useEffect(() => {
-    if (hasInitializedExpansion || schemas.length === 0) {
+    if (hasInitializedExpansion || !schemas || schemas.length === 0) {
       return
     }
 
@@ -423,15 +415,35 @@ export function ConnExplorer({ conn, refreshKey }: ConnExplorerProps) {
 
       <ScrollArea className="flex-1 overflow-auto">
         <div className="p-1.5 space-y-px">
-          {loading ? (
+          {status === "connecting" || schemaStatus === "loading" ? (
             <div className="px-3 py-8 text-center text-xs text-muted-foreground">
               正在加载数据库结构...
             </div>
-          ) : error ? (
-            <div className="px-3 py-8 text-center text-xs text-destructive">
-              {error}
+          ) : status !== "connected" ? (
+            <div className="flex flex-col items-center gap-3 px-3 py-8 text-center text-xs text-muted-foreground">
+              <p>当前连接尚未建立，连接后即可浏览数据库结构</p>
+              <div className="flex items-center gap-2">
+                <Button size="xs" onClick={onConnect}>
+                  连接
+                </Button>
+                <Button size="xs" variant="outline" onClick={onNewQuery}>
+                  新建查询
+                </Button>
+              </div>
             </div>
-          ) : schemas.length === 0 ? (
+          ) : error && (!schemas || schemas.length === 0) ? (
+            <div className="px-3 py-8 text-center text-xs text-destructive">
+              <p>{error}</p>
+              <Button
+                size="xs"
+                variant="outline"
+                className="mt-3"
+                onClick={onRefresh}
+              >
+                重试
+              </Button>
+            </div>
+          ) : !schemas || schemas.length === 0 ? (
             <div className="px-3 py-8 text-center text-xs text-muted-foreground">
               当前数据库没有可显示的结构
             </div>

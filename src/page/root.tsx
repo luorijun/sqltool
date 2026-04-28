@@ -1,7 +1,7 @@
 import { ResizeContainer } from "@/components/ui/resizer"
 import { Toaster } from "@/components/ui/sonner"
 import Main from "./main"
-import Nav from "./navabr"
+import Sidebar from "./sidebar"
 
 const DEFAULT_NAV_WIDTH = 256
 const MIN_NAV_WIDTH = 100
@@ -19,7 +19,7 @@ export default function Root() {
           minRemainingSize={MIN_MAIN_WIDTH}
           className="size-full"
           dividerLabel="左右拖拽调节导航栏宽度"
-          first={<Nav className="size-full" />}
+          first={<Sidebar className="size-full" />}
           second={<Main className="size-full min-w-0" />}
         />
       </div>

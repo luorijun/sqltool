@@ -195,6 +195,8 @@ export function ConnDialog({
   onSaved: (conn: Config) => void
 }) {
   const open = mode !== null
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
   const form = useForm<Schema>({
     resolver: zodResolver(schema),
     defaultValues: getDefaultValues(conn),
@@ -204,14 +206,18 @@ export function ConnDialog({
     form.reset(getDefaultValues(mode === "edit" ? conn : null))
   }, [conn, form, mode])
 
-  const handleClose = (nextOpen: boolean) => {
+  const close = (nextOpen: boolean) => {
     if (!nextOpen) {
       form.reset(getDefaultValues(mode === "edit" ? conn : null))
+      setSaving(false)
+      setTesting(false)
       onClose()
     }
   }
 
   const save = async (data: Schema) => {
+    setSaving(true)
+
     try {
       const payload = toCreateConfig(data)
       const saved =
@@ -223,6 +229,27 @@ export function ConnDialog({
       onSaved(saved)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "保存失败")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const test = async () => {
+    const valid = await form.trigger()
+    if (!valid) {
+      return
+    }
+
+    setTesting(true)
+
+    try {
+      const payload = toCreateConfig(form.getValues())
+      await connApi.test(payload)
+      toast.success("连接测试成功")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "连接测试失败")
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -237,29 +264,14 @@ export function ConnDialog({
     sshPassword,
   })
 
-  const testConnection = async () => {
-    const valid = await form.trigger()
-    if (!valid) {
-      return
-    }
-
-    try {
-      const payload = toCreateConfig(form.getValues())
-      await connApi.test(payload)
-      toast.success("连接测试成功")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "连接测试失败")
-    }
-  }
-
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={close}>
       <DialogContent className="w-150">
         <DialogHeader>
           <DialogTitle>{mode === "edit" ? "编辑连接" : "新连接"}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="overflow-hidden">
+        <ScrollArea viewportClassName="p-3">
           <form id={formId} onSubmit={form.handleSubmit(save)}>
             <FieldGroup>
               <FormInput<Schema>
@@ -310,14 +322,19 @@ export function ConnDialog({
         </ScrollArea>
 
         <DialogFooter className="justify-between">
-          <Button type="button" variant="outline" onClick={testConnection}>
-            测试连接
+          <Button
+            type="button"
+            variant="outline"
+            onClick={test}
+            disabled={saving || testing}
+          >
+            {testing ? "测试中..." : "测试连接"}
           </Button>
 
           <div className="flex gap-2">
             <DialogClose render={<Button variant="outline">取消</Button>} />
-            <Button type="submit" form={formId}>
-              保存
+            <Button type="submit" form={formId} disabled={saving || testing}>
+              {saving ? "保存中..." : "保存"}
             </Button>
           </div>
         </DialogFooter>

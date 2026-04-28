@@ -1,9 +1,12 @@
+import { useSetAtom } from "jotai"
 import { useState } from "react"
 import { buttonVariants } from "@/components/ui/button"
-import { ConnDialog } from "@/page/navabr/config/conn-dialog"
+import { upsertConnectionConfigAtom } from "@/lib/conn/state"
+import { ConnDialog } from "@/page/sidebar/dialog"
 
 export default function NewConn({ onSaved }: { onSaved?: () => void } = {}) {
   const [mode, setMode] = useState<"create" | null>(null)
+  const upsertConnectionConfig = useSetAtom(upsertConnectionConfigAtom)
 
   return (
     <>
@@ -18,7 +21,8 @@ export default function NewConn({ onSaved }: { onSaved?: () => void } = {}) {
       <ConnDialog
         mode={mode}
         onClose={() => setMode(null)}
-        onSaved={() => {
+        onSaved={(conn) => {
+          upsertConnectionConfig(conn)
           setMode(null)
           onSaved?.()
         }}
