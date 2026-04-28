@@ -1,55 +1,77 @@
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useEffect } from "react"
+import { Database, HardDrive, Server } from "lucide-react"
+import { useEffect, useId } from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { FieldDescription, FieldGroup } from "@/components/ui/field"
-import { FormField } from "@/components/ui/form"
+import { FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field"
+import { FormField, FormInput } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Config, CreateConfig, DbDriver } from "@/lib/config"
 import configApi from "@/lib/config/renderer"
 import { cn } from "@/lib/utils"
 import z from "@/lib/zod"
 
-const connectionModeOptions = [
+const driverOptions = [
   {
-    value: "direct",
-    label: "直连",
-    description: "直接连接数据库主机和端口",
+    value: "postgres",
+    label: "PostgreSQL",
+    icon: Database,
+    available: true,
   },
   {
-    value: "ssh",
-    label: "SSH 隧道",
-    description: "先连接 SSH 服务器，再转发到数据库",
+    value: "mysql",
+    label: "MySQL",
+    icon: Server,
+    available: false,
   },
-] as const
+  {
+    value: "sqlite",
+    label: "SQLite",
+    icon: HardDrive,
+    available: false,
+  },
+] as const satisfies ReadonlyArray<{
+  value: DbDriver
+  label: string
+  icon: typeof Database
+  available: boolean
+}>
 
 const schema = z
   .object({
-    name: z.string().nonempty(),
     driver: z.enum(["postgres", "mysql", "sqlite"]),
-    host: z.string().nonempty(),
-    port: z.string().nonempty(),
+    name: z.string().nonempty(),
+    host: z.string(),
+    port: z.string(),
     username: z.string().nonempty(),
     password: z.string().nonempty(),
     database: z.string().nonempty(),
-    connectionMode: z.enum(["direct", "ssh"]),
     sshHost: z.string(),
     sshPort: z.string(),
     sshUsername: z.string(),
     sshPassword: z.string(),
   })
   .superRefine((data, ctx) => {
-    if (data.connectionMode !== "ssh") {
+    const hasSshValue = [
+      data.sshHost,
+      data.sshPort,
+      data.sshUsername,
+      data.sshPassword,
+    ].some((value) => value.trim().length > 0)
+
+    if (!hasSshValue) {
       return
     }
 
@@ -80,80 +102,75 @@ function getDefaultValues(conn?: Config | null): Schema {
   return {
     name: conn?.name ?? "新连接",
     driver: (conn?.driver ?? "postgres") as DbDriver,
-    host: conn?.host ?? "127.0.0.1",
-    port: conn?.port ?? "5432",
+    host: conn?.host,
+    port: conn?.port,
     username: conn?.username ?? "",
     password: conn?.password ?? "",
     database: conn?.database ?? "",
-    connectionMode: conn?.ssh ? "ssh" : "direct",
     sshHost: conn?.ssh?.host ?? "",
-    sshPort: conn?.ssh?.port ?? "22",
+    sshPort: conn?.ssh?.port ?? "",
     sshUsername: conn?.ssh?.username ?? "",
     sshPassword: conn?.ssh?.password ?? "",
   }
 }
 
 function toCreateConfig(data: Schema): CreateConfig {
+  const hasSshValue = [
+    data.sshHost,
+    data.sshPort,
+    data.sshUsername,
+    data.sshPassword,
+  ].some((value) => value.trim().length > 0)
+
   return {
     name: data.name,
     driver: data.driver,
-    host: data.host,
-    port: data.port,
+    host: data.host ?? "127.0.0.1",
+    port: data.port ?? "5432",
     username: data.username,
     password: data.password,
     database: data.database,
-    ssh:
-      data.connectionMode === "ssh"
-        ? {
-            host: data.sshHost,
-            port: data.sshPort,
-            username: data.sshUsername,
-            password: data.sshPassword,
-          }
-        : undefined,
+    ssh: hasSshValue
+      ? {
+          host: data.sshHost,
+          port: data.sshPort ?? "22",
+          username: data.sshUsername,
+          password: data.sshPassword,
+        }
+      : undefined,
   }
 }
 
-function ConnectionModeField(props: {
-  value: Schema["connectionMode"]
-  onChange: (value: Schema["connectionMode"]) => void
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      {connectionModeOptions.map((option) => {
-        const active = props.value === option.value
+function getSshState(
+  values: Pick<Schema, "sshHost" | "sshUsername" | "sshPassword">,
+) {
+  const sshValues = [values.sshHost, values.sshUsername, values.sshPassword]
 
-        return (
-          <button
-            key={option.value}
-            type="button"
-            className={cn(
-              "rounded-3xl border px-3 py-3 text-left transition-colors",
-              active
-                ? "border-primary bg-primary/5"
-                : "border-border bg-muted/20 hover:bg-muted/40",
-            )}
-            onClick={() => props.onChange(option.value)}
-          >
-            <div className="text-sm font-medium">{option.label}</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {option.description}
-            </div>
-          </button>
-        )
-      })}
-    </div>
-  )
+  const filledCount = sshValues.filter(
+    (value) => value.trim().length > 0,
+  ).length
+
+  if (filledCount === 0) {
+    return { hasConfig: false, complete: false }
+  }
+
+  return {
+    hasConfig: true,
+    complete: filledCount === sshValues.length,
+  }
 }
 
-export interface ConnDialogProps {
+export function ConnDialog({
+  mode,
+  conn,
+  onClose,
+  onSaved,
+}: {
   mode: ConnDialogMode | null
   conn?: Config | null
   onClose: () => void
   onSaved: (conn: Config) => void
-}
-
-export function ConnDialog({ mode, conn, onClose, onSaved }: ConnDialogProps) {
+}) {
   const open = mode !== null
   const form = useForm<Schema>({
     resolver: zodResolver(schema),
@@ -172,6 +189,7 @@ export function ConnDialog({ mode, conn, onClose, onSaved }: ConnDialogProps) {
   }
 
   const save = async (data: Schema) => {
+    console.log("Saving config with data:", data)
     try {
       const payload = toCreateConfig(data)
       const saved =
@@ -186,140 +204,75 @@ export function ConnDialog({ mode, conn, onClose, onSaved }: ConnDialogProps) {
     }
   }
 
-  const formId = mode === "edit" ? "edit-conn-form" : "create-conn-form"
-  const connectionMode = form.watch("connectionMode")
+  const formId = useId()
+  const driver = form.watch("driver")
+  const sshHost = form.watch("sshHost")
+  const sshUsername = form.watch("sshUsername")
+  const sshPassword = form.watch("sshPassword")
+  const sshState = getSshState({
+    sshHost,
+    sshUsername,
+    sshPassword,
+  })
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent>
+      <DialogContent className="w-150">
         <DialogHeader>
           <DialogTitle>{mode === "edit" ? "编辑连接" : "新连接"}</DialogTitle>
-          <DialogDescription>
-            {mode === "edit" ? "修改数据库连接配置" : "创建一个新的数据库连接"}
-          </DialogDescription>
         </DialogHeader>
 
-        <form id={formId} onSubmit={form.handleSubmit(save)}>
-          <FieldGroup>
-            <FormField control={form.control} name="name" label="连接名称">
-              {(fProps) => <Input {...fProps.field} />}
-            </FormField>
-
-            <FormField control={form.control} name="driver" label="数据库">
-              {(fProps) => <Input {...fProps.field} />}
-            </FormField>
-
-            <FormField
-              control={form.control}
-              name="connectionMode"
-              label="连接方式"
-              description="直连适用于数据库可直接访问；SSH 隧道适用于数据库只开放内网地址"
-            >
-              {(fProps) => (
-                <ConnectionModeField
-                  value={fProps.field.value as Schema["connectionMode"]}
-                  onChange={(value) => fProps.field.onChange(value)}
+        <ScrollArea className="overflow-hidden">
+          <form id={formId} onSubmit={form.handleSubmit(save)}>
+            <FieldGroup>
+              <FormInput<Schema>
+                name="driver"
+                label="数据库"
+                errors={[form.formState.errors.driver]}
+              >
+                <DriverChoiceGroup
+                  value={driver}
+                  onChange={(value) => form.setValue("driver", value)}
                 />
-              )}
-            </FormField>
+              </FormInput>
 
-            <FieldGroup className="gap-4 rounded-3xl border bg-muted/10 p-4">
-              <div>
-                <div className="text-sm font-medium">数据库连接</div>
-                <FieldDescription className="mt-1 text-xs">
-                  {connectionMode === "ssh"
-                    ? "填写 SSH 服务器内可访问的数据库地址"
-                    : "填写可直接访问的数据库地址"}
-                </FieldDescription>
-              </div>
-
-              <FieldGroup className="flex-row">
-                <FormField
-                  control={form.control}
-                  name="host"
-                  label="数据库主机"
-                >
-                  {(fProps) => <Input {...fProps.field} />}
-                </FormField>
-                <FormField
-                  control={form.control}
-                  name="port"
-                  label="数据库端口"
-                >
-                  {(fProps) => <Input {...fProps.field} />}
-                </FormField>
-              </FieldGroup>
-
-              <FieldGroup className="flex-row">
-                <FormField
-                  control={form.control}
-                  name="username"
-                  label="数据库账号"
-                >
-                  {(fProps) => <Input {...fProps.field} />}
-                </FormField>
-                <FormField
-                  control={form.control}
-                  name="password"
-                  label="数据库密码"
-                >
-                  {(fProps) => <Input {...fProps.field} type="password" />}
-                </FormField>
-              </FieldGroup>
-
-              <FormField control={form.control} name="database" label="库名">
+              <FormField control={form.control} name="name" label="连接名称">
                 {(fProps) => <Input {...fProps.field} />}
               </FormField>
+
+              <Tabs defaultValue="database">
+                <TabsList className="h-12">
+                  <TabsTrigger className="px-5" value="database">
+                    数据库连接
+                  </TabsTrigger>
+
+                  <TabsTrigger className="px-5" value="ssh">
+                    <span>SSH 隧道</span>
+                    {sshState.complete ? (
+                      <Badge variant="success">启用</Badge>
+                    ) : sshState.hasConfig ? (
+                      <Badge variant="warning">未完成</Badge>
+                    ) : null}
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="database">
+                  <DatabasePanel form={form} />
+                </TabsContent>
+
+                <TabsContent value="ssh">
+                  <SSHPanel
+                    form={form}
+                    hasConfig={sshState.hasConfig}
+                    complete={sshState.complete}
+                  />
+                </TabsContent>
+              </Tabs>
             </FieldGroup>
+          </form>
+        </ScrollArea>
 
-            {connectionMode === "ssh" && (
-              <FieldGroup className="gap-4 rounded-3xl border bg-muted/10 p-4">
-                <div>
-                  <div className="text-sm font-medium">SSH 隧道</div>
-                  <FieldDescription className="mt-1 text-xs">
-                    首版支持 SSH 用户名和密码登录
-                  </FieldDescription>
-                </div>
-
-                <FieldGroup className="flex-row">
-                  <FormField
-                    control={form.control}
-                    name="sshHost"
-                    label="SSH 主机"
-                  >
-                    {(fProps) => <Input {...fProps.field} />}
-                  </FormField>
-                  <FormField
-                    control={form.control}
-                    name="sshPort"
-                    label="SSH 端口"
-                  >
-                    {(fProps) => <Input {...fProps.field} />}
-                  </FormField>
-                </FieldGroup>
-
-                <FieldGroup className="flex-row">
-                  <FormField
-                    control={form.control}
-                    name="sshUsername"
-                    label="SSH 账号"
-                  >
-                    {(fProps) => <Input {...fProps.field} />}
-                  </FormField>
-                  <FormField
-                    control={form.control}
-                    name="sshPassword"
-                    label="SSH 密码"
-                  >
-                    {(fProps) => <Input {...fProps.field} type="password" />}
-                  </FormField>
-                </FieldGroup>
-              </FieldGroup>
-            )}
-          </FieldGroup>
-        </form>
-
-        <DialogFooter className="flex justify-between">
+        <DialogFooter>
           <DialogClose render={<Button variant="outline">取消</Button>} />
           <Button type="submit" form={formId}>
             保存
@@ -327,5 +280,125 @@ export function ConnDialog({ mode, conn, onClose, onSaved }: ConnDialogProps) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function DatabasePanel(props: { form: ReturnType<typeof useForm<Schema>> }) {
+  return (
+    <FieldSet className="border rounded-xl p-5">
+      <FieldLegend>数据库连接</FieldLegend>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField control={props.form.control} name="host" label="数据库主机">
+          {(fProps) => <Input {...fProps.field} placeholder="127.0.0.1" />}
+        </FormField>
+        <FormField control={props.form.control} name="port" label="数据库端口">
+          {(fProps) => <Input {...fProps.field} placeholder="5432" />}
+        </FormField>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField
+          control={props.form.control}
+          name="username"
+          label="数据库账号"
+        >
+          {(fProps) => <Input {...fProps.field} />}
+        </FormField>
+        <FormField
+          control={props.form.control}
+          name="password"
+          label="数据库密码"
+        >
+          {(fProps) => <Input {...fProps.field} type="password" />}
+        </FormField>
+      </div>
+
+      <FormField control={props.form.control} name="database" label="库名">
+        {(fProps) => <Input {...fProps.field} />}
+      </FormField>
+    </FieldSet>
+  )
+}
+
+function SSHPanel(props: {
+  form: ReturnType<typeof useForm<Schema>>
+  complete: boolean
+  hasConfig: boolean
+}) {
+  return (
+    <FieldSet className="rounded-xl border p-5">
+      <FieldLegend>SSH 隧道</FieldLegend>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField control={props.form.control} name="sshHost" label="SSH 主机">
+          {(fProps) => <Input {...fProps.field} />}
+        </FormField>
+        <FormField control={props.form.control} name="sshPort" label="SSH 端口">
+          {(fProps) => <Input {...fProps.field} placeholder="22" />}
+        </FormField>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField
+          control={props.form.control}
+          name="sshUsername"
+          label="SSH 账号"
+        >
+          {(fProps) => <Input {...fProps.field} />}
+        </FormField>
+        <FormField
+          control={props.form.control}
+          name="sshPassword"
+          label="SSH 密码"
+        >
+          {(fProps) => <Input {...fProps.field} type="password" />}
+        </FormField>
+      </div>
+    </FieldSet>
+  )
+}
+
+function DriverChoiceGroup(props: {
+  value: DbDriver
+  onChange: (value: DbDriver) => void
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {driverOptions.map((option) => {
+        const active = props.value === option.value
+        const Icon = option.icon
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            disabled={!option.available}
+            aria-pressed={active}
+            className={cn(
+              "rounded-xl border p-4 text-left transition-colors",
+              "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
+              active && option.available
+                ? "border-primary bg-primary/5"
+                : "border-border bg-card",
+              option.available
+                ? "hover:bg-accent/40"
+                : "cursor-not-allowed opacity-55 saturate-0",
+            )}
+            onClick={() => {
+              if (!option.available) {
+                return
+              }
+              props.onChange(option.value)
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span className="text-sm font-medium">{option.label}</span>
+            </div>
+          </button>
+        )
+      })}
+    </div>
   )
 }
