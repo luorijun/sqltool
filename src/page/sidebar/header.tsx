@@ -15,7 +15,7 @@ export function SidebarHeader({ onCreate }: { onCreate: () => void }) {
   }
 
   return (
-    <div className="flex-none basis-10 overflow-hidden border-b px-2 py-2 flex items-center justify-between shrink-0">
+    <header className="flex-none basis-10 overflow-hidden border-b px-2 py-2 flex items-center justify-between shrink-0">
       <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         连接
       </span>
@@ -39,6 +39,6 @@ export function SidebarHeader({ onCreate }: { onCreate: () => void }) {
           <RefreshCw />
         </Button>
       </div>
-    </div>
+    </header>
   )
 }

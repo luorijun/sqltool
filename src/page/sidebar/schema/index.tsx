@@ -214,34 +214,127 @@ function TableNode({
   )
 }
 
-function SectionNode({
-  icon,
-  label,
-  count,
-  expanded,
-  onToggle,
-  children,
-}: {
-  icon: ReactNode
-  label: string
-  count: number
-  expanded: boolean
-  onToggle: () => void
-  children: ReactNode
-}) {
+export interface SchemaPanelProps {
+  conn: Config
+  status: "idle" | "connecting" | "connected" | "error"
+  schemaStatus: "idle" | "loading" | "success" | "error"
+  error: string | null
+  schemas: Schema[] | null
+  onConnect: () => void
+  onRefresh: () => void
+  onNewQuery: () => void
+}
+
+export function SchemaPanel({
+  conn,
+  status,
+  schemaStatus,
+  error,
+  schemas,
+  onConnect,
+  onRefresh,
+  onNewQuery,
+}: SchemaPanelProps) {
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false)
+
+  useEffect(() => {
+    if (schemas && schemas.length > 0) {
+      return
+    }
+
+    setExpandedNodes(new Set())
+    setHasInitializedExpansion(false)
+  }, [schemas])
+
+  useEffect(() => {
+    if (hasInitializedExpansion || !schemas || schemas.length === 0) {
+      return
+    }
+
+    setExpandedNodes(createDefaultExpandedNodes(schemas))
+    setHasInitializedExpansion(true)
+  }, [hasInitializedExpansion, schemas])
+
+  const toggleNode = (key: string) => {
+    setExpandedNodes((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
   return (
-    <>
-      <TreeRow
-        depth={1}
-        icon={icon}
-        label={label}
-        meta={`(${count})`}
-        expandable
-        expanded={expanded}
-        onToggle={onToggle}
-      />
-      {expanded && children}
-    </>
+    <div
+      data-slot="schema-panel"
+      className="flex-1 flex flex-col overflow-hidden min-h-0"
+    >
+      <div className="flex-none flex items-center gap-2 px-3 h-8 border-b bg-muted/20 shrink-0">
+        <Database className="size-3.5 text-muted-foreground shrink-0" />
+        <span className="text-xs text-muted-foreground font-medium truncate">
+          {conn.database}
+        </span>
+      </div>
+
+      <ScrollArea className="flex-1 overflow-auto">
+        <div className="p-1.5 space-y-px">
+          {status === "connecting" || schemaStatus === "loading" ? (
+            <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+              正在加载数据库结构...
+            </div>
+          ) : status !== "connected" ? (
+            <div className="flex flex-col items-center gap-3 px-3 py-8 text-center text-xs text-muted-foreground">
+              <p>当前连接尚未建立，连接后即可浏览数据库结构</p>
+              <div className="flex items-center gap-2">
+                <Button size="xs" onClick={onConnect}>
+                  连接
+                </Button>
+                <Button size="xs" variant="outline" onClick={onNewQuery}>
+                  新建查询
+                </Button>
+              </div>
+            </div>
+          ) : error && (!schemas || schemas.length === 0) ? (
+            <div className="px-3 py-8 text-center text-xs text-destructive">
+              <p>{error}</p>
+              <Button
+                size="xs"
+                variant="outline"
+                className="mt-3"
+                onClick={onRefresh}
+              >
+                重试
+              </Button>
+            </div>
+          ) : !schemas || schemas.length === 0 ? (
+            <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+              当前数据库没有可显示的结构
+            </div>
+          ) : (
+            schemas.map((schema) => {
+              const schemaKey = `schema:${schema.name}`
+              return (
+                <SchemaSection
+                  key={schemaKey}
+                  conn={conn}
+                  schema={schema}
+                  expanded={expandedNodes.has(schemaKey)}
+                  onToggle={() => toggleNode(schemaKey)}
+                  expandedNodes={expandedNodes}
+                  toggleNode={toggleNode}
+                />
+              )
+            })
+          )}
+        </div>
+      </ScrollArea>
+    </div>
   )
 }
 
@@ -348,123 +441,33 @@ function SchemaSection({
   )
 }
 
-export interface SchemaPanelProps {
-  conn: Config
-  status: "idle" | "connecting" | "connected" | "error"
-  schemaStatus: "idle" | "loading" | "success" | "error"
-  error: string | null
-  schemas: Schema[] | null
-  onConnect: () => void
-  onRefresh: () => void
-  onNewQuery: () => void
-}
-
-export function SchemaPanel({
-  conn,
-  status,
-  schemaStatus,
-  error,
-  schemas,
-  onConnect,
-  onRefresh,
-  onNewQuery,
-}: SchemaPanelProps) {
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(
-    () => new Set(),
-  )
-  const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false)
-
-  useEffect(() => {
-    if (schemas && schemas.length > 0) {
-      return
-    }
-
-    setExpandedNodes(new Set())
-    setHasInitializedExpansion(false)
-  }, [schemas])
-
-  useEffect(() => {
-    if (hasInitializedExpansion || !schemas || schemas.length === 0) {
-      return
-    }
-
-    setExpandedNodes(createDefaultExpandedNodes(schemas))
-    setHasInitializedExpansion(true)
-  }, [hasInitializedExpansion, schemas])
-
-  const toggleNode = (key: string) => {
-    setExpandedNodes((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
-      return next
-    })
-  }
-
+function SectionNode({
+  icon,
+  label,
+  count,
+  expanded,
+  onToggle,
+  children,
+}: {
+  icon: ReactNode
+  label: string
+  count: number
+  expanded: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="flex-none flex items-center gap-2 px-3 h-8 border-b bg-muted/20 shrink-0">
-        <Database className="size-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs text-muted-foreground font-medium truncate">
-          {conn.database}
-        </span>
-      </div>
-
-      <ScrollArea className="flex-1 overflow-auto">
-        <div className="p-1.5 space-y-px">
-          {status === "connecting" || schemaStatus === "loading" ? (
-            <div className="px-3 py-8 text-center text-xs text-muted-foreground">
-              正在加载数据库结构...
-            </div>
-          ) : status !== "connected" ? (
-            <div className="flex flex-col items-center gap-3 px-3 py-8 text-center text-xs text-muted-foreground">
-              <p>当前连接尚未建立，连接后即可浏览数据库结构</p>
-              <div className="flex items-center gap-2">
-                <Button size="xs" onClick={onConnect}>
-                  连接
-                </Button>
-                <Button size="xs" variant="outline" onClick={onNewQuery}>
-                  新建查询
-                </Button>
-              </div>
-            </div>
-          ) : error && (!schemas || schemas.length === 0) ? (
-            <div className="px-3 py-8 text-center text-xs text-destructive">
-              <p>{error}</p>
-              <Button
-                size="xs"
-                variant="outline"
-                className="mt-3"
-                onClick={onRefresh}
-              >
-                重试
-              </Button>
-            </div>
-          ) : !schemas || schemas.length === 0 ? (
-            <div className="px-3 py-8 text-center text-xs text-muted-foreground">
-              当前数据库没有可显示的结构
-            </div>
-          ) : (
-            schemas.map((schema) => {
-              const schemaKey = `schema:${schema.name}`
-              return (
-                <SchemaSection
-                  key={schemaKey}
-                  conn={conn}
-                  schema={schema}
-                  expanded={expandedNodes.has(schemaKey)}
-                  onToggle={() => toggleNode(schemaKey)}
-                  expandedNodes={expandedNodes}
-                  toggleNode={toggleNode}
-                />
-              )
-            })
-          )}
-        </div>
-      </ScrollArea>
-    </div>
+    <>
+      <TreeRow
+        depth={1}
+        icon={icon}
+        label={label}
+        meta={`(${count})`}
+        expandable
+        expanded={expanded}
+        onToggle={onToggle}
+      />
+      {expanded && children}
+    </>
   )
 }

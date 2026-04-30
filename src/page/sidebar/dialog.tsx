@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod"
+import { atom, useAtom, useSetAtom } from "jotai"
 import { Database, HardDrive, Server } from "lucide-react"
 import { useEffect, useId, useState } from "react"
 import { useForm } from "react-hook-form"
@@ -202,9 +203,9 @@ export function ConnDialog({
     defaultValues: getDefaultValues(conn),
   })
 
-  useEffect(() => {
-    form.reset(getDefaultValues(mode === "edit" ? conn : null))
-  }, [conn, form, mode])
+  // useEffect(() => {
+  //   form.reset(getDefaultValues(mode === "edit" ? conn : null))
+  // }, [conn, form, mode])
 
   const close = (nextOpen: boolean) => {
     if (!nextOpen) {

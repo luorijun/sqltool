@@ -1,6 +1,7 @@
 import { useSetAtom } from "jotai"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Config } from "@/lib/config"
 import {
   ensureConnectionsLoadedAtom,
@@ -54,7 +55,10 @@ export default function Sidebar(props: { className?: string }) {
       )}
     >
       <SidebarHeader onCreate={openCreateDialog} />
-      <ConnList onEdit={openEditDialog} />
+
+      <ScrollArea>
+        <ConnList onEdit={openEditDialog} />
+      </ScrollArea>
 
       <ConnDialog
         mode={dialogMode}
