@@ -46,6 +46,7 @@
         "react-hook-form": "^7.72.0",
         "sonner": "^2.0.7",
         "sql-formatter": "^15.7.3",
+        "ssh-config": "^5.1.0",
         "ssh2": "^1.17.0",
         "tailwind-merge": "^3.4.0",
         "tailwindcss": "^4.1.18",
@@ -1212,6 +1213,8 @@
     "sql-escaper": ["sql-escaper@1.3.3", "https://registry.npmmirror.com/sql-escaper/-/sql-escaper-1.3.3.tgz", {}, "sha512-BsTCV265VpTp8tm1wyIm1xqQCS+Q9NHx2Sr+WcnUrgLrQ6yiDIvHYJV5gHxsj1lMBy2zm5twLaZao8Jd+S8JJw=="],
 
     "sql-formatter": ["sql-formatter@15.7.3", "https://registry.npmmirror.com/sql-formatter/-/sql-formatter-15.7.3.tgz", { "dependencies": { "argparse": "^2.0.1", "nearley": "^2.20.1" }, "bin": { "sql-formatter": "bin/sql-formatter-cli.cjs" } }, "sha512-5+zl9Nqg5aNjss0tb1G+StpC4dJKbjv3+g8CL/+V+00PfZop+2RKGyi53ScFl0dr+Dkx1LjmUO54Q3N7K3EtMw=="],
+
+    "ssh-config": ["ssh-config@5.1.0", "https://registry.npmmirror.com/ssh-config/-/ssh-config-5.1.0.tgz", {}, "sha512-z4fFE4MgCja706ajwYOg6uptS3BIu0TWSUj08UWLuwNB/awVktEA5LyOgIAmgazyDjyTULhlL2GaBv37k4zoxQ=="],
 
     "ssh2": ["ssh2@1.17.0", "https://registry.npmmirror.com/ssh2/-/ssh2-1.17.0.tgz", { "dependencies": { "asn1": "^0.2.6", "bcrypt-pbkdf": "^1.0.2" }, "optionalDependencies": { "cpu-features": "~0.0.10", "nan": "^2.23.0" } }, "sha512-wPldCk3asibAjQ/kziWQQt1Wh3PgDFpC0XpwclzKcdT1vql6KeYxf5LIt4nlFkUeR8WuphYMKqUA56X4rjbfgQ=="],
 

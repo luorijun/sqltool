@@ -5,8 +5,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Config } from "@/lib/config"
 import {
   ensureConnectionsLoadedAtom,
-  upsertConnectionConfigAtom,
-} from "@/lib/conn/state"
+  refreshConnectionsAtom,
+} from "@/lib/conn/renderer"
 import { cn } from "@/lib/utils"
 import { ConnList } from "./conn"
 import { ConnDialog } from "./dialog"
@@ -16,7 +16,7 @@ type DialogMode = "create" | "edit" | null
 
 export default function Sidebar(props: { className?: string }) {
   const ensureConnectionsLoaded = useSetAtom(ensureConnectionsLoadedAtom)
-  const upsertConnectionConfig = useSetAtom(upsertConnectionConfigAtom)
+  const refreshConnections = useSetAtom(refreshConnectionsAtom)
 
   const [dialogMode, setDialogMode] = useState<DialogMode>(null)
   const [dialogTarget, setDialogTarget] = useState<Config | null>(null)
@@ -42,8 +42,8 @@ export default function Sidebar(props: { className?: string }) {
     setDialogTarget(null)
   }
 
-  const handleSaved = (conn: Config) => {
-    upsertConnectionConfig(conn)
+  const handleSaved = async (_conn: Config) => {
+    await refreshConnections()
     closeDialog()
   }
 
@@ -64,7 +64,11 @@ export default function Sidebar(props: { className?: string }) {
         mode={dialogMode}
         conn={dialogTarget}
         onClose={closeDialog}
-        onSaved={handleSaved}
+        onSaved={(conn) => {
+          handleSaved(conn).catch(() => {
+            toast.error("刷新连接列表失败")
+          })
+        }}
       />
     </nav>
   )

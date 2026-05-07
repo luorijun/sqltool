@@ -1,15 +1,24 @@
 import { ipcRenderer } from "electron"
-import type { Config } from "../config"
-import { INSPECT, QUERY, TEST } from "."
+import type { ConfigProfile } from "../config"
+import { CONNECT, DISCONNECT, INSPECT, LIST, QUERY, TEST } from "."
 
 export const bridge = {
-  test: (conn: Config) => {
-    return ipcRenderer.invoke(TEST, conn)
+  test: (profile: ConfigProfile) => {
+    return ipcRenderer.invoke(TEST, profile)
   },
-  inspect: (conn: Config) => {
-    return ipcRenderer.invoke(INSPECT, conn)
+  list: () => {
+    return ipcRenderer.invoke(LIST)
   },
-  query: (conn: Config, sql: string) => {
-    return ipcRenderer.invoke(QUERY, conn, sql)
+  connect: (configId: string) => {
+    return ipcRenderer.invoke(CONNECT, configId)
+  },
+  disconnect: (configId: string) => {
+    return ipcRenderer.invoke(DISCONNECT, configId)
+  },
+  inspect: (configId: string) => {
+    return ipcRenderer.invoke(INSPECT, configId)
+  },
+  query: (configId: string, sql: string) => {
+    return ipcRenderer.invoke(QUERY, configId, sql)
   },
 }

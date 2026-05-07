@@ -1,8 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod"
-import { atom, useAtom, useSetAtom } from "jotai"
-import { Database, HardDrive, Server } from "lucide-react"
+import { Database, KeyRound, LockKeyhole, Server } from "lucide-react"
 import { useEffect, useId, useState } from "react"
-import { useForm } from "react-hook-form"
+import { type UseFormReturn, useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,91 +13,120 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field"
+import {
+  FieldDescription,
+  FieldGroup,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field"
 import { FormField, FormInput } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { Config, CreateConfig, DbDriver } from "@/lib/config"
+import type { Config, CreateConfig, DbDriver, SshAuth } from "@/lib/config"
 import configApi from "@/lib/config/renderer"
 import connApi from "@/lib/conn/renderer"
 import { cn } from "@/lib/utils"
 import z from "@/lib/zod"
+
+type SshAuthType = "password" | "privateKey"
 
 const driverOptions = [
   {
     value: "postgres",
     label: "PostgreSQL",
     icon: Database,
-    available: true,
   },
   {
     value: "mysql",
-    label: "MySQL",
+    label: "MySQL / MariaDB",
     icon: Server,
-    available: false,
-  },
-  {
-    value: "sqlite",
-    label: "SQLite",
-    icon: HardDrive,
-    available: false,
   },
 ] as const satisfies ReadonlyArray<{
   value: DbDriver
   label: string
   icon: typeof Database
-  available: boolean
+}>
+
+const sshAuthOptions = [
+  {
+    value: "password",
+    label: "密码",
+    description: "使用 SSH 密码或 keyboard-interactive 方式认证。",
+    icon: LockKeyhole,
+  },
+  {
+    value: "privateKey",
+    label: "私钥",
+    description: "通过本地 SSH 配置、agent 或默认私钥文件解析认证信息。",
+    icon: KeyRound,
+  },
+] as const satisfies ReadonlyArray<{
+  value: SshAuthType
+  label: string
+  description: string
+  icon: typeof KeyRound
 }>
 
 const schema = z
   .object({
-    driver: z.enum(["postgres", "mysql", "sqlite"]),
-    name: z.string().nonempty(),
+    driver: z.enum(["postgres", "mysql"]),
+    name: z.string().trim().min(1, "连接名称不能为空"),
     host: z.string(),
     port: z.string(),
-    username: z.string().nonempty(),
-    password: z.string().nonempty(),
-    database: z.string().nonempty(),
-    sshHost: z.string(),
-    sshPort: z.string(),
-    sshUsername: z.string(),
-    sshPassword: z.string(),
+    username: z.string().trim().min(1, "数据库账号不能为空"),
+    password: z.string().min(1, "数据库密码不能为空"),
+    database: z.string().trim().min(1, "库名不能为空"),
+    ssh: z.object({
+      host: z.string(),
+      port: z.string(),
+      username: z.string(),
+      authType: z.enum(["password", "privateKey"] satisfies [
+        SshAuthType,
+        SshAuthType,
+      ]),
+      secret: z.string(),
+    }),
   })
   .superRefine((data, ctx) => {
-    const hasSshValue = [
-      data.sshHost,
-      data.sshPort,
-      data.sshUsername,
-      data.sshPassword,
-    ].some((value) => value.trim().length > 0)
-
-    if (!hasSshValue) {
+    const sshState = getSshState(data.ssh)
+    if (!sshState.hasConfig) {
       return
     }
 
     const requiredFields = [
-      ["sshHost", "SSH 主机不能为空"],
-      ["sshPort", "SSH 端口不能为空"],
-      ["sshUsername", "SSH 账号不能为空"],
-      ["sshPassword", "SSH 密码不能为空"],
+      ["host", "SSH 主机不能为空"],
+      ["port", "SSH 端口不能为空"],
+      ["username", "SSH 账号不能为空"],
     ] as const
 
-    for (const [path, message] of requiredFields) {
-      if (data[path].trim()) {
+    for (const [field, message] of requiredFields) {
+      if (data.ssh[field].trim()) {
         continue
       }
 
       ctx.addIssue({
         code: "custom",
-        path: [path],
+        path: ["ssh", field],
         message,
+      })
+    }
+
+    if (
+      data.ssh.authType === "password" &&
+      data.ssh.secret.trim().length === 0
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ssh", "secret"],
+        message: "SSH 密码不能为空",
       })
     }
   })
 
 type Schema = z.infer<typeof schema>
 type ConnDialogMode = "create" | "edit"
+type ConnForm = UseFormReturn<Schema>
 
 function getDriverDefaults(driver: DbDriver) {
   if (driver === "mysql") {
@@ -108,79 +136,102 @@ function getDriverDefaults(driver: DbDriver) {
     }
   }
 
-  if (driver === "sqlite") {
-    return {
-      host: "数据库文件路径",
-      port: "",
-    }
-  }
-
   return {
     host: "127.0.0.1",
     port: "5432",
   }
 }
 
+function getDefaultSshValues(auth?: SshAuth): Schema["ssh"] {
+  return {
+    host: "",
+    port: "22",
+    username: "",
+    authType: auth?.type ?? "privateKey",
+    secret:
+      auth?.type === "password"
+        ? auth.password
+        : auth?.type === "privateKey"
+          ? (auth.passphrase ?? "")
+          : "",
+  }
+}
+
 function getDefaultValues(conn?: Config | null): Schema {
   return {
     name: conn?.name ?? "新连接",
-    driver: (conn?.driver ?? "postgres") as DbDriver,
+    driver: conn?.driver ?? "postgres",
     host: conn?.host ?? "",
     port: conn?.port ?? "",
     username: conn?.username ?? "",
     password: conn?.password ?? "",
     database: conn?.database ?? "",
-    sshHost: conn?.ssh?.host ?? "",
-    sshPort: conn?.ssh?.port ?? "",
-    sshUsername: conn?.ssh?.username ?? "",
-    sshPassword: conn?.ssh?.password ?? "",
+    ssh: {
+      ...getDefaultSshValues(conn?.ssh?.auth),
+      host: conn?.ssh?.host ?? "",
+      port: conn?.ssh?.port ?? "22",
+      username: conn?.ssh?.username ?? "",
+    },
+  }
+}
+
+function getSshState(values: Schema["ssh"]) {
+  const fields = [values.host, values.port, values.username, values.secret]
+  const hasConfig = fields.some((value) => value.trim().length > 0)
+
+  if (!hasConfig) {
+    return {
+      hasConfig: false,
+      complete: false,
+    }
+  }
+
+  const baseComplete =
+    values.host.trim().length > 0 && values.port.trim().length > 0
+
+  const authComplete =
+    values.authType === "password" ? values.secret.trim().length > 0 : true
+
+  return {
+    hasConfig: true,
+    complete: baseComplete && authComplete,
+  }
+}
+
+function toSshAuth(data: Schema["ssh"]): SshAuth {
+  if (data.authType === "password") {
+    return {
+      type: "password",
+      password: data.secret,
+    }
+  }
+
+  return {
+    type: "privateKey",
+    passphrase: data.secret.trim() || undefined,
   }
 }
 
 function toCreateConfig(data: Schema): CreateConfig {
   const defaults = getDriverDefaults(data.driver)
-  const hasSshValue = [
-    data.sshHost,
-    data.sshPort,
-    data.sshUsername,
-    data.sshPassword,
-  ].some((value) => value.trim().length > 0)
+  const sshState = getSshState(data.ssh)
 
   return {
-    name: data.name,
+    name: data.name.trim(),
     driver: data.driver,
-    host: data.host || defaults.host,
-    port: data.port || defaults.port,
-    username: data.username,
+    host: data.host.trim() || defaults.host,
+    port: data.port.trim() || defaults.port,
+    username: data.username.trim(),
     password: data.password,
-    database: data.database,
-    ssh: hasSshValue
+    database: data.database.trim(),
+    ssh: sshState.hasConfig
       ? {
-          host: data.sshHost,
-          port: data.sshPort || "22",
-          username: data.sshUsername,
-          password: data.sshPassword,
+          host: data.ssh.host.trim(),
+          port: data.ssh.port.trim() || "22",
+          username: data.ssh.username.trim(),
+          auth: toSshAuth(data.ssh),
         }
       : undefined,
-  }
-}
-
-function getSshState(
-  values: Pick<Schema, "sshHost" | "sshUsername" | "sshPassword">,
-) {
-  const sshValues = [values.sshHost, values.sshUsername, values.sshPassword]
-
-  const filledCount = sshValues.filter(
-    (value) => value.trim().length > 0,
-  ).length
-
-  if (filledCount === 0) {
-    return { hasConfig: false, complete: false }
-  }
-
-  return {
-    hasConfig: true,
-    complete: filledCount === sshValues.length,
   }
 }
 
@@ -203,9 +254,9 @@ export function ConnDialog({
     defaultValues: getDefaultValues(conn),
   })
 
-  // useEffect(() => {
-  //   form.reset(getDefaultValues(mode === "edit" ? conn : null))
-  // }, [conn, form, mode])
+  useEffect(() => {
+    form.reset(getDefaultValues(mode === "edit" ? conn : null))
+  }, [conn, form, mode])
 
   const close = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -256,14 +307,8 @@ export function ConnDialog({
 
   const formId = useId()
   const driver = form.watch("driver")
-  const sshHost = form.watch("sshHost")
-  const sshUsername = form.watch("sshUsername")
-  const sshPassword = form.watch("sshPassword")
-  const sshState = getSshState({
-    sshHost,
-    sshUsername,
-    sshPassword,
-  })
+  const sshValues = form.watch("ssh")
+  const sshState = getSshState(sshValues)
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -275,7 +320,7 @@ export function ConnDialog({
         <ScrollArea viewportClassName="p-3">
           <form id={formId} onSubmit={form.handleSubmit(save)}>
             <FieldGroup>
-              <FormInput<Schema>
+              <FormInput
                 name="driver"
                 label="数据库"
                 errors={[form.formState.errors.driver]}
@@ -311,11 +356,7 @@ export function ConnDialog({
                 </TabsContent>
 
                 <TabsContent value="ssh">
-                  <SSHPanel
-                    form={form}
-                    hasConfig={sshState.hasConfig}
-                    complete={sshState.complete}
-                  />
+                  <SSHPanel form={form} />
                 </TabsContent>
               </Tabs>
             </FieldGroup>
@@ -344,7 +385,7 @@ export function ConnDialog({
   )
 }
 
-function DatabasePanel(props: { form: ReturnType<typeof useForm<Schema>> }) {
+function DatabasePanel(props: { form: ConnForm }) {
   const driver = props.form.watch("driver")
   const defaults = getDriverDefaults(driver)
 
@@ -385,40 +426,95 @@ function DatabasePanel(props: { form: ReturnType<typeof useForm<Schema>> }) {
   )
 }
 
-function SSHPanel(props: {
-  form: ReturnType<typeof useForm<Schema>>
-  complete: boolean
-  hasConfig: boolean
-}) {
+function SSHPanel(props: { form: ConnForm }) {
+  const authType = props.form.watch("ssh.authType")
+  const secretLabel = authType === "password" ? "SSH 密码" : "私钥口令"
+  const secretDescription =
+    authType === "password"
+      ? "密码模式下会优先使用 password，并回退到 keyboard-interactive。"
+      : "私钥模式下，当前版本会先尝试本地 SSH 配置骨架，随后回退到默认私钥文件。"
+
   return (
     <FieldSet className="rounded-xl border p-5">
       <FieldLegend>SSH 隧道</FieldLegend>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField control={props.form.control} name="sshHost" label="SSH 主机">
+        <FormField
+          control={props.form.control}
+          name="ssh.host"
+          label="SSH 主机"
+        >
           {(fProps) => <Input {...fProps.field} />}
         </FormField>
-        <FormField control={props.form.control} name="sshPort" label="SSH 端口">
+        <FormField
+          control={props.form.control}
+          name="ssh.port"
+          label="SSH 端口"
+        >
           {(fProps) => <Input {...fProps.field} placeholder="22" />}
         </FormField>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField
-          control={props.form.control}
-          name="sshUsername"
-          label="SSH 账号"
-        >
-          {(fProps) => <Input {...fProps.field} />}
-        </FormField>
-        <FormField
-          control={props.form.control}
-          name="sshPassword"
-          label="SSH 密码"
-        >
-          {(fProps) => <Input {...fProps.field} type="password" />}
-        </FormField>
-      </div>
+      <FormField
+        control={props.form.control}
+        name="ssh.username"
+        label="SSH 账号"
+      >
+        {(fProps) => <Input {...fProps.field} />}
+      </FormField>
+
+      <FormInput
+        name="ssh.authType"
+        label="认证方式"
+        description="当前版本支持 SSH 密码和私钥认证两种方式。"
+        errors={[props.form.formState.errors.ssh?.authType]}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          {sshAuthOptions.map((option) => {
+            const active = authType === option.value
+            const Icon = option.icon
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={active}
+                className={cn(
+                  "rounded-xl border p-4 text-left transition-colors",
+                  "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
+                  active
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-card hover:bg-accent/40",
+                )}
+                onClick={() =>
+                  props.form.setValue("ssh.authType", option.value)
+                }
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="text-sm font-medium">{option.label}</span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {option.description}
+                </p>
+              </button>
+            )
+          })}
+        </div>
+      </FormInput>
+
+      <FormField
+        control={props.form.control}
+        name="ssh.secret"
+        label={secretLabel}
+        description={secretDescription}
+      >
+        {(fProps) => <Input {...fProps.field} type="password" />}
+      </FormField>
+
+      <FieldDescription>
+        只要 SSH 字段中任意一项有值，就会按 SSH 隧道方式连接数据库。
+      </FieldDescription>
     </FieldSet>
   )
 }
@@ -428,7 +524,7 @@ function DriverChoiceGroup(props: {
   onChange: (value: DbDriver) => void
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2">
       {driverOptions.map((option) => {
         const active = props.value === option.value
         const Icon = option.icon
@@ -437,24 +533,15 @@ function DriverChoiceGroup(props: {
           <button
             key={option.value}
             type="button"
-            disabled={!option.available}
             aria-pressed={active}
             className={cn(
               "rounded-xl border p-4 text-left transition-colors",
               "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
-              active && option.available
+              active
                 ? "border-primary bg-primary/5"
-                : "border-border bg-card",
-              option.available
-                ? "hover:bg-accent/40"
-                : "cursor-not-allowed opacity-55 saturate-0",
+                : "border-border bg-card hover:bg-accent/40",
             )}
-            onClick={() => {
-              if (!option.available) {
-                return
-              }
-              props.onChange(option.value)
-            }}
+            onClick={() => props.onChange(option.value)}
           >
             <div className="flex items-center gap-3">
               <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />

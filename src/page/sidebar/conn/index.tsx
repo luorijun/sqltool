@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Database,
   FilePlus2,
-  HardDrive,
   LoaderCircle,
   LogIn,
   LogOut,
@@ -35,19 +34,17 @@ import {
   disconnectConnectionAtom,
   hasLoadedConnectionsAtom,
   refreshConnectionSchemaAtom,
-} from "@/lib/conn/state"
+} from "@/lib/conn/renderer"
 import { createTabAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import { SchemaPanel } from "../schema"
 
 export const driverLabel: Record<string, string> = {
   postgres: "PostgreSQL",
-  mysql: "MySQL",
-  sqlite: "SQLite",
+  mysql: "MySQL / MariaDB",
 }
 
 export function DriverIcon({ driver }: { driver: string }) {
-  if (driver === "sqlite") return <HardDrive className="size-4 shrink-0" />
   if (driver === "mysql") return <Server className="size-4 shrink-0" />
   return <Database className="size-4 shrink-0" />
 }
@@ -102,8 +99,8 @@ function ConnectionItem(props: {
   }
 
   const disconnectConnection = useSetAtom(disconnectConnectionAtom)
-  const handleDisconnect = () => {
-    disconnectConnection(props.conn.id)
+  const handleDisconnect = async () => {
+    await disconnectConnection(props.conn.id)
     toast.success(`"${name}" 已断开`)
   }
 
@@ -181,7 +178,11 @@ function ConnectionItem(props: {
             onClick={(e) => {
               e.stopPropagation()
               if (isConnected) {
-                handleDisconnect()
+                handleDisconnect().catch((err) => {
+                  toast.error(
+                    err instanceof Error ? err.message : "断开连接失败",
+                  )
+                })
               } else {
                 handleConnect()
               }
@@ -211,7 +212,11 @@ function ConnectionItem(props: {
                 onClick={(e) => {
                   e.stopPropagation()
                   if (isConnected) {
-                    handleDisconnect()
+                    handleDisconnect().catch((err) => {
+                      toast.error(
+                        err instanceof Error ? err.message : "断开连接失败",
+                      )
+                    })
                   } else {
                     handleConnect()
                   }

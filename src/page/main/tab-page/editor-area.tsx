@@ -19,7 +19,6 @@ import { SqlEditor, type SqlEditorHandle } from "./sql-editor"
 const FORMAT_LANGUAGE_MAP: Record<DbDriver, SqlLanguage> = {
   postgres: "postgresql",
   mysql: "mysql",
-  sqlite: "sqlite",
 }
 
 const DEFAULT_FORMAT_LANGUAGE: SqlLanguage = "sql"

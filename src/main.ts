@@ -1,7 +1,11 @@
 import path from "node:path"
 import { app, BrowserWindow } from "electron"
 import started from "electron-squirrel-startup"
-import { registerHandlers as registerConfigHandlers } from "./lib/config/main"
+import {
+  getConnectionConfig,
+  listConnectionConfigs,
+  registerHandlers as registerConfigHandlers,
+} from "./lib/config/main"
 import { registerHandlers as registerConnHandlers } from "./lib/conn/main"
 import { registerHandlers as registerSerializeHandlers } from "./lib/serialize/main"
 
@@ -10,8 +14,17 @@ if (started) {
 }
 
 try {
-  registerConfigHandlers()
-  registerConnHandlers()
+  const connRuntime = registerConnHandlers({
+    getConnectionConfig,
+    listConnectionConfigs,
+  })
+  registerConfigHandlers({
+    afterUpdate: (id) => connRuntime.disconnectConnection(id),
+    afterRemove: async (id) => {
+      await connRuntime.disconnectConnection(id)
+      connRuntime.deleteConnectionState(id)
+    },
+  })
   registerSerializeHandlers()
 } catch (e) {
   console.error(e)

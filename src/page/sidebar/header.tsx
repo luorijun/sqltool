@@ -2,7 +2,7 @@ import { useSetAtom } from "jotai"
 import { Plus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { refreshConnectionsAtom } from "@/lib/conn/state"
+import { refreshConnectionsAtom } from "@/lib/conn/renderer"
 
 export function SidebarHeader({ onCreate }: { onCreate: () => void }) {
   const refreshConnections = useSetAtom(refreshConnectionsAtom)

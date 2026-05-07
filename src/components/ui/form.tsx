@@ -8,12 +8,15 @@ import {
 } from "react-hook-form"
 import { Field, FieldDescription, FieldError, FieldLabel } from "./field"
 
-export function FormField<F extends FieldValues>(props: {
+export function FormField<
+  F extends FieldValues,
+  N extends FieldPath<F>,
+>(props: {
   control: Control<F>
-  name: FieldPath<F>
+  name: N
   label: ReactNode
   description?: ReactNode
-  children: ControllerProps<F>["render"]
+  children: ControllerProps<F, N>["render"]
 }) {
   return (
     <Controller
@@ -33,8 +36,11 @@ export function FormField<F extends FieldValues>(props: {
   )
 }
 
-export function FormInput<F extends FieldValues>(props: {
-  name: FieldPath<F>
+export function FormInput<
+  F extends FieldValues,
+  N extends FieldPath<F>,
+>(props: {
+  name: N
   label: ReactNode
   description?: ReactNode
   errors?: { message?: string }[]

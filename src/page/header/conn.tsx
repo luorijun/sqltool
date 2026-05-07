@@ -1,12 +1,19 @@
 import { useSetAtom } from "jotai"
 import { useState } from "react"
 import { buttonVariants } from "@/components/ui/button"
-import { upsertConnectionConfigAtom } from "@/lib/conn/state"
+import type { Config } from "@/lib/config"
+import { refreshConnectionsAtom } from "@/lib/conn/renderer"
 import { ConnDialog } from "@/page/sidebar/dialog"
 
 export default function NewConn({ onSaved }: { onSaved?: () => void } = {}) {
   const [mode, setMode] = useState<"create" | null>(null)
-  const upsertConnectionConfig = useSetAtom(upsertConnectionConfigAtom)
+  const refreshConnections = useSetAtom(refreshConnectionsAtom)
+
+  const handleSaved = async (_conn: Config) => {
+    await refreshConnections()
+    setMode(null)
+    onSaved?.()
+  }
 
   return (
     <>
@@ -21,10 +28,8 @@ export default function NewConn({ onSaved }: { onSaved?: () => void } = {}) {
       <ConnDialog
         mode={mode}
         onClose={() => setMode(null)}
-        onSaved={(conn) => {
-          upsertConnectionConfig(conn)
-          setMode(null)
-          onSaved?.()
+        onSaved={(conn: Config) => {
+          handleSaved(conn)
         }}
       />
     </>

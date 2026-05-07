@@ -8,6 +8,11 @@ type ConfigStore = {
   configs: Record<string, Config>
 }
 
+export interface RegisterConfigHandlersOptions {
+  afterUpdate?: (id: string, config: Config) => void | Promise<void>
+  afterRemove?: (id: string) => void | Promise<void>
+}
+
 let _store: Store<ConfigStore> | null = null
 
 function store(): Store<ConfigStore> {
@@ -23,15 +28,25 @@ function configs(): Record<string, Config> {
   return store().get("configs", {})
 }
 
-function list(): Config[] {
+async function runHandler(
+  handler: (() => void | Promise<void>) | undefined,
+): Promise<void> {
+  if (!handler) {
+    return
+  }
+
+  await Promise.resolve(handler()).catch(() => undefined)
+}
+
+export function listConnectionConfigs(): Config[] {
   return Object.values(configs())
 }
 
-function get(id: string): Config | undefined {
+export function getConnectionConfig(id: string): Config | undefined {
   return configs()[id]
 }
 
-function create(input: CreateConfig): Config {
+export function createConnectionConfig(input: CreateConfig): Config {
   const now = Date.now()
   const config: Config = {
     ...input,
@@ -44,8 +59,11 @@ function create(input: CreateConfig): Config {
   return config
 }
 
-function update(id: string, input: UpdateConfig): Config {
-  const existing = get(id)
+export function updateConnectionConfig(
+  id: string,
+  input: UpdateConfig,
+): Config {
+  const existing = getConnectionConfig(id)
   if (!existing) {
     throw new Error(`Config not found: ${id}`)
   }
@@ -60,26 +78,31 @@ function update(id: string, input: UpdateConfig): Config {
   return updated
 }
 
-function remove(id: string): void {
-  const _configs = configs()
-  delete _configs[id]
-  store().set("configs", _configs)
+export function removeConnectionConfig(id: string): void {
+  const nextConfigs = configs()
+  delete nextConfigs[id]
+  store().set("configs", nextConfigs)
 }
 
-export function registerHandlers(): void {
+export function registerHandlers(
+  options: RegisterConfigHandlersOptions = {},
+): void {
   ipcMain.handle(LIST, () => {
-    return list()
+    return listConnectionConfigs()
   })
   ipcMain.handle(GET, (_e, id: string) => {
-    return get(id)
+    return getConnectionConfig(id)
   })
   ipcMain.handle(CREATE, (_e, input: CreateConfig) => {
-    return create(input)
+    return createConnectionConfig(input)
   })
-  ipcMain.handle(UPDATE, (_e, id: string, input: UpdateConfig) => {
-    return update(id, input)
+  ipcMain.handle(UPDATE, async (_e, id: string, input: UpdateConfig) => {
+    const config = updateConnectionConfig(id, input)
+    await runHandler(() => options.afterUpdate?.(id, config))
+    return config
   })
-  ipcMain.handle(REMOVE, (_e, id: string) => {
-    return remove(id)
+  ipcMain.handle(REMOVE, async (_e, id: string) => {
+    removeConnectionConfig(id)
+    await runHandler(() => options.afterRemove?.(id))
   })
 }

@@ -1,4 +1,4 @@
-import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql"
+import { MySQL, PostgreSQL, sql } from "@codemirror/lang-sql"
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import {
   closeSearchPanel,
@@ -223,8 +223,6 @@ function getSqlExtension(driver?: DbDriver): Extension {
   switch (driver) {
     case "mysql":
       return sql({ dialect: MySQL })
-    case "sqlite":
-      return sql({ dialect: SQLite })
   }
 
   return sql({ dialect: PostgreSQL })

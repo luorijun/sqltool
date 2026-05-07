@@ -55,6 +55,9 @@ const activeTabAtom = atom<Tab>((get) => {
 // 连接配置
 const _activeTabConfigAtom = atom<Promise<Config>>(async (get) => {
   const id = get(activeTabAtom).configId
+  if (!id) {
+    throw new Error("活动标签页未绑定数据库连接")
+  }
   const config = await configApi.get(id)
   if (!config) {
     throw new Error("活动标签页绑定的数据库连接不存在")
@@ -387,10 +390,8 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
       logs: trimLogs([...currentTab.logger.logs, runningLog]),
     },
   }))
-
-  const config = await configApi.get(tab.configId)
   try {
-    const result = await connApi.query(config, sql)
+    const result = await connApi.query(tab.configId, sql)
     const rowCount = getQueryResultRowCount(result)
     const durationMs = Math.max(1, Date.now() - startedAt)
     const finishedAt = Date.now()
