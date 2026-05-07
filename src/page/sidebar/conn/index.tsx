@@ -84,10 +84,7 @@ export function ConnList(props: { onEdit: (conn: Config) => void }) {
 function ConnectionItem(props: {
   conn: Config
   state: ConnectionState
-  onRefreshSchema: () => void
-  onNewQuery: () => void
   onEdit: () => void
-  onDelete: () => void
 }) {
   const name = props.conn.name ?? "未命名"
   const [expanded, setExpanded] = useState(false)
@@ -251,7 +248,7 @@ function ConnectionItem(props: {
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation()
-                  onEdit()
+                  props.onEdit()
                 }}
               >
                 <Pencil />
