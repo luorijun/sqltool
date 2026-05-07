@@ -287,7 +287,7 @@ function ConnectionItem(props: {
               )}
             >
               <TriangleAlert className="size-3.5 shrink-0" />
-              <span className="truncate">{props.state.error}</span>
+              <span>{props.state.error}</span>
             </div>
           ) : null}
 
