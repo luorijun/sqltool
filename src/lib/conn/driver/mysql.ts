@@ -4,17 +4,17 @@ import mysql, {
   type Connection as MySqlConnection,
   type ResultSetHeader,
 } from "mysql2/promise"
-import type { ConfigProfile } from "../config"
-import type { ConnectionSession } from "./driver"
+import type { ConfigProfile } from "../../config"
+import type { DbSchema, DbTable, QueryResult } from "../index"
+import { connectSshClient, SshTunnelStream } from "../ssh"
+import type { ConnectionSession } from "."
 import {
-  createCloseNotifier,
+  createConnectionSession,
   createQueryColumns,
   parsePort,
   toQueryRowCount,
   toRowCount,
-} from "./driver"
-import type { DbSchema, DbTable, QueryResult } from "./index"
-import { connectSshClient, SshTunnelStream } from "./ssh"
+} from "."
 
 interface TableRow extends RowDataPacket {
   schema_name: string
@@ -44,24 +44,22 @@ interface FunctionRow extends RowDataPacket {
 
 interface ConnectedMySqlClient {
   client: MySqlConnection
-  closeTransport: () => Promise<void>
+  closeTransport?: () => void
 }
 
 async function connectDirectMySql(
   profile: ConfigProfile,
 ): Promise<ConnectedMySqlClient> {
+  const port = parsePort(profile.port, "数据库端口")
   const client = await mysql.createConnection({
     host: profile.host,
-    port: parsePort(profile.port, "数据库端口"),
+    port,
     user: profile.username,
     password: profile.password,
     database: profile.database,
   })
 
-  return {
-    client,
-    closeTransport: async () => undefined,
-  }
+  return { client }
 }
 
 async function connectMySqlViaSsh(
@@ -72,24 +70,21 @@ async function connectMySqlViaSsh(
   }
 
   const ssh = await connectSshClient(profile.ssh)
+  const port = parsePort(profile.port, "数据库端口")
 
   try {
     const client = await mysql.createConnection({
       host: profile.host,
-      port: parsePort(profile.port, "数据库端口"),
+      port,
       user: profile.username,
       password: profile.password,
       database: profile.database,
-      stream: () =>
-        new SshTunnelStream(ssh).connect(
-          parsePort(profile.port, "数据库端口"),
-          profile.host,
-        ),
+      stream: () => new SshTunnelStream(ssh).connect(port, profile.host),
     })
 
     return {
       client,
-      closeTransport: async () => {
+      closeTransport: () => {
         ssh.end()
       },
     }
@@ -251,10 +246,6 @@ async function inspectMySqlClient(
   return [schema]
 }
 
-function toMySqlRowCount(result: ResultSetHeader): number | undefined {
-  return toQueryRowCount(result.affectedRows)
-}
-
 async function queryMySqlClient(
   client: MySqlConnection,
   sql: string,
@@ -270,14 +261,14 @@ async function queryMySqlClient(
     return {
       columns: createQueryColumns(queryFields.map((field) => field.name)),
       rows: rows as unknown[][],
-      rowCount: toQueryRowCount(rows.length),
+      rowCount: rows.length,
     }
   }
 
   return {
     columns: [],
     rows: [],
-    rowCount: toMySqlRowCount(rows as ResultSetHeader),
+    rowCount: toQueryRowCount((rows as ResultSetHeader).affectedRows),
   }
 }
 
@@ -285,53 +276,19 @@ export async function connectMySql(
   profile: ConfigProfile,
 ): Promise<ConnectionSession> {
   const { client, closeTransport } = await createMySqlClient(profile)
-  const notifier = createCloseNotifier()
-  let closed = false
-  let closePromise: Promise<void> | null = null
 
-  const close = async () => {
-    if (closePromise) {
-      return closePromise
-    }
-
-    closePromise = (async () => {
-      if (closed) {
-        return
-      }
-
-      closed = true
-      client.off("error", handleDidClose)
-      client.off("end", handleDidClose)
-      client.off("close", handleDidClose)
-
-      await client.end().catch(() => {
-        client.destroy()
-      })
-      await closeTransport().catch(() => undefined)
-      notifier.notify()
-    })()
-
-    await closePromise
-  }
-
-  const handleDidClose = () => {
-    void close()
-  }
-
-  client.on("error", handleDidClose)
-  client.on("end", handleDidClose)
-  client.on("close", handleDidClose)
-
-  return {
+  return createConnectionSession({
     inspect() {
       return inspectMySqlClient(client)
     },
     query(sql) {
       return queryMySqlClient(client, sql)
     },
-    close,
-    onDidClose(listener) {
-      return notifier.onDidClose(listener)
+    close: async () => {
+      await client.end().catch(() => {
+        client.destroy()
+      })
+      closeTransport?.()
     },
-  }
+  })
 }

@@ -7,6 +7,10 @@ import {
   WRITE_CLIPBOARD_TEXT,
 } from "."
 
+function writeClipboardText(text: string): void {
+  clipboard.writeText(text)
+}
+
 async function saveTextFile(
   event: IpcMainInvokeEvent,
   options: SaveTextFileOptions,
@@ -25,11 +29,18 @@ async function saveTextFile(
   return filePath
 }
 
-export function registerHandlers(): void {
+const serialize = {
+  writeClipboardText,
+  saveTextFile,
+}
+
+export default serialize
+
+export function registerSerialize(): void {
   ipcMain.handle(WRITE_CLIPBOARD_TEXT, (_event, text: string) => {
-    clipboard.writeText(text)
+    return serialize.writeClipboardText(text)
   })
   ipcMain.handle(SAVE_TEXT_FILE, (event, options: SaveTextFileOptions) =>
-    saveTextFile(event, options),
+    serialize.saveTextFile(event, options),
   )
 }

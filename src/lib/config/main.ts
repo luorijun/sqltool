@@ -1,52 +1,23 @@
 import { randomUUID } from "node:crypto"
 import { ipcMain } from "electron"
 import Store from "electron-store"
+import conn from "../conn/main"
 import type { Config, CreateConfig, UpdateConfig } from "."
 import { CREATE, GET, LIST, REMOVE, UPDATE } from "."
 
-type ConfigStore = {
+const store = new Store<{
   configs: Record<string, Config>
+}>({ name: "configs" })
+
+function list(): Config[] {
+  return Object.values(store.get("configs", {}))
 }
 
-export interface RegisterConfigHandlersOptions {
-  afterUpdate?: (id: string, config: Config) => void | Promise<void>
-  afterRemove?: (id: string) => void | Promise<void>
+function get(id: string): Config | undefined {
+  return store.get(`configs.${id}`)
 }
 
-let _store: Store<ConfigStore> | null = null
-
-function store(): Store<ConfigStore> {
-  if (!_store) {
-    _store = new Store<ConfigStore>({
-      name: "configs",
-    })
-  }
-  return _store
-}
-
-function configs(): Record<string, Config> {
-  return store().get("configs", {})
-}
-
-async function runHandler(
-  handler: (() => void | Promise<void>) | undefined,
-): Promise<void> {
-  if (!handler) {
-    return
-  }
-
-  await Promise.resolve(handler()).catch(() => undefined)
-}
-
-export function listConnectionConfigs(): Config[] {
-  return Object.values(configs())
-}
-
-export function getConnectionConfig(id: string): Config | undefined {
-  return configs()[id]
-}
-
-export function createConnectionConfig(input: CreateConfig): Config {
+function create(input: CreateConfig): Config {
   const now = Date.now()
   const config: Config = {
     ...input,
@@ -55,54 +26,57 @@ export function createConnectionConfig(input: CreateConfig): Config {
     updatedAt: now,
   }
 
-  store().set(`configs.${config.id}`, config)
+  store.set(`configs.${config.id}`, config)
   return config
 }
 
-export function updateConnectionConfig(
-  id: string,
-  input: UpdateConfig,
-): Config {
-  const existing = getConnectionConfig(id)
-  if (!existing) {
+async function update(id: string, input: UpdateConfig): Promise<Config> {
+  const current = get(id)
+  if (!current) {
     throw new Error(`Config not found: ${id}`)
   }
 
   const updated: Config = {
-    ...existing,
+    ...current,
     ...input,
     id,
     updatedAt: Date.now(),
   }
-  store().set(`configs.${id}`, updated)
+
+  store.set(`configs.${id}`, updated)
+  await conn.disconnect(id).catch(() => undefined)
   return updated
 }
 
-export function removeConnectionConfig(id: string): void {
-  const nextConfigs = configs()
-  delete nextConfigs[id]
-  store().set("configs", nextConfigs)
+async function remove(id: string): Promise<void> {
+  store.delete(`configs.${id}`)
+  await conn.remove(id).catch(() => undefined)
 }
 
-export function registerHandlers(
-  options: RegisterConfigHandlersOptions = {},
-): void {
+const config = {
+  list,
+  get,
+  create,
+  update,
+  remove,
+}
+
+export default config
+
+export function registerConfig(): void {
   ipcMain.handle(LIST, () => {
-    return listConnectionConfigs()
+    return config.list()
   })
   ipcMain.handle(GET, (_e, id: string) => {
-    return getConnectionConfig(id)
+    return config.get(id)
   })
   ipcMain.handle(CREATE, (_e, input: CreateConfig) => {
-    return createConnectionConfig(input)
+    return config.create(input)
   })
-  ipcMain.handle(UPDATE, async (_e, id: string, input: UpdateConfig) => {
-    const config = updateConnectionConfig(id, input)
-    await runHandler(() => options.afterUpdate?.(id, config))
-    return config
+  ipcMain.handle(UPDATE, (_e, id: string, input: UpdateConfig) => {
+    return config.update(id, input)
   })
-  ipcMain.handle(REMOVE, async (_e, id: string) => {
-    removeConnectionConfig(id)
-    await runHandler(() => options.afterRemove?.(id))
+  ipcMain.handle(REMOVE, (_e, id: string) => {
+    return config.remove(id)
   })
 }

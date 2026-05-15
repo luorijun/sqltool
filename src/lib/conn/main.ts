@@ -1,10 +1,10 @@
 import { ipcMain } from "electron"
-import type { Config, ConfigProfile, DbDriver } from "../config"
+import type { ConfigProfile } from "../config"
+import config from "../config/main"
 import {
   CONNECT,
-  type ConnectionEntry,
-  type ConnectionState,
-  createConnectionState,
+  type Connection,
+  type ConnState,
   DISCONNECT,
   INSPECT,
   LIST,
@@ -12,180 +12,111 @@ import {
   type QueryResult,
   TEST,
 } from "."
-import type { ConnectionSession } from "./driver"
-import { connectMySql } from "./mysql"
-import { connectPostgres } from "./postgres"
+import { type ConnectionSession, connectDriver } from "./driver"
 
-interface ManagedSession {
-  configId: string
-  connectedAt: number
-  session: ConnectionSession
-  unsubscribe: () => void
+type Runtime = {
+  config: ConfigProfile
+  session: Promise<ConnectionSession> | null
+  state: ConnState
 }
 
-export interface RegisterConnHandlersOptions {
-  getConnectionConfig(configId: string): Config | undefined
-  listConnectionConfigs(): Config[]
-}
+const connections = new Map<string, Runtime>()
 
-export interface ConnRuntime {
-  disconnectConnection(configId: string): Promise<void>
-  deleteConnectionState(configId: string): void
-}
-
-const activeSessions = new Map<string, ManagedSession>()
-const pendingConnections = new Map<string, Promise<ManagedSession>>()
-const connectionStates = new Map<string, ConnectionState>()
-
-function getDriverConnector(driver: DbDriver) {
-  switch (driver) {
-    case "mysql":
-      return connectMySql
-    case "postgres":
-      return connectPostgres
-  }
-}
-
-function requireConnectionConfig(
-  getConnectionConfig: RegisterConnHandlersOptions["getConnectionConfig"],
-  configId: string,
-): Config {
-  const config = getConnectionConfig(configId)
-  if (!config) {
+function requireConfig(configId: string) {
+  const entry = config.get(configId)
+  if (!entry) {
     throw new Error("连接不存在或已删除")
   }
 
-  return config
+  return entry
 }
 
-function getErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback
-}
-
-function getConnectionState(configId: string): ConnectionState {
-  return connectionStates.get(configId) ?? createConnectionState(configId)
-}
-
-function setConnectionState(
-  configId: string,
-  nextState: Partial<ConnectionState>,
-): ConnectionState {
-  const next: ConnectionState = {
-    ...getConnectionState(configId),
-    ...nextState,
-    configId,
+function createConnection(): ConnState {
+  return {
+    status: "idle",
+    schemaStatus: "idle",
+    schema: null,
+    error: null,
   }
-  connectionStates.set(configId, next)
-  return next
 }
 
-function resetConnectionState(configId: string): ConnectionState {
-  const next = createConnectionState(configId)
-  connectionStates.set(configId, next)
-  return next
-}
+function ensureRuntime(configId: string, config: ConfigProfile): Runtime {
+  const current = connections.get(configId)
+  if (current) {
+    current.config = config
+    return current
+  }
 
-function deleteConnectionState(configId: string): void {
-  connectionStates.delete(configId)
-}
-
-function listConnections(
-  listConnectionConfigs: RegisterConnHandlersOptions["listConnectionConfigs"],
-): ConnectionEntry[] {
-  return listConnectionConfigs().map((config) => ({
+  const next: Runtime = {
     config,
-    state: getConnectionState(config.id),
+    session: null,
+    state: createConnection(),
+  }
+  connections.set(configId, next)
+  return next
+}
+
+function updateConnection(
+  runtime: Runtime,
+  nextConnection: Partial<ConnState>,
+): ConnState {
+  runtime.state = {
+    ...runtime.state,
+    ...nextConnection,
+  }
+  return runtime.state
+}
+
+function resetConnection(runtime: Runtime): ConnState {
+  runtime.state = createConnection()
+  return runtime.state
+}
+
+function list(): Connection[] {
+  return config.list().map((entry) => ({
+    config: entry,
+    state: connections.get(entry.id)?.state ?? createConnection(),
   }))
 }
 
-async function createSession(
-  profile: ConfigProfile,
-): Promise<ConnectionSession> {
-  const connect = getDriverConnector(profile.driver)
-  return connect(profile)
-}
-
-function storeActiveSession(
-  configId: string,
-  session: ConnectionSession,
-): ManagedSession {
-  const managed: ManagedSession = {
-    configId,
-    connectedAt: Date.now(),
-    session,
-    unsubscribe: () => undefined,
+function ensureSession(runtime: Runtime): Promise<ConnectionSession> {
+  if (runtime.session) {
+    return runtime.session
   }
 
-  managed.unsubscribe = session.onDidClose(() => {
-    const current = activeSessions.get(configId)
-    if (current?.session !== session) {
-      return
+  const session = connectDriver(runtime.config).catch((error) => {
+    if (runtime.session === session) {
+      runtime.session = null
     }
-
-    managed.unsubscribe()
-    activeSessions.delete(configId)
-    resetConnectionState(configId)
+    throw error
   })
-
-  activeSessions.set(configId, managed)
-  return managed
+  runtime.session = session
+  return session
 }
 
-async function ensurePersistentSession(
-  configId: string,
-  profile: ConfigProfile,
-): Promise<ManagedSession> {
-  const existing = activeSessions.get(configId)
-  if (existing) {
-    return existing
-  }
-
-  const pending = pendingConnections.get(configId)
-  if (pending) {
-    return pending
-  }
-
-  const nextPending = (async () => {
-    const session = await createSession(profile)
-    return storeActiveSession(configId, session)
-  })()
-
-  pendingConnections.set(configId, nextPending)
-
-  try {
-    return await nextPending
-  } finally {
-    if (pendingConnections.get(configId) === nextPending) {
-      pendingConnections.delete(configId)
-    }
-  }
-}
-
-async function getReusableSession(
-  configId: string,
-): Promise<ManagedSession | null> {
-  const active = activeSessions.get(configId)
-  if (active) {
-    return active
-  }
-
-  const pending = pendingConnections.get(configId)
-  if (!pending) {
+async function getSession(
+  runtime: Runtime | undefined,
+): Promise<ConnectionSession | null> {
+  const session = runtime?.session
+  if (!session) {
     return null
   }
 
   try {
-    return await pending
+    return await session
   } catch {
+    if (runtime?.session === session) {
+      runtime.session = null
+    }
     return null
   }
 }
 
-async function withTemporarySession<T>(
+async function withSession<T>(
   profile: ConfigProfile,
   run: (session: ConnectionSession) => Promise<T>,
 ): Promise<T> {
-  const session = await createSession(profile)
+  const session = await connectDriver(profile)
 
   try {
     return await run(session)
@@ -194,152 +125,150 @@ async function withTemporarySession<T>(
   }
 }
 
-async function testConnection(profile: ConfigProfile): Promise<void> {
-  await withTemporarySession(profile, async () => undefined)
+async function test(profile: ConfigProfile): Promise<void> {
+  await withSession(profile, async () => undefined)
 }
 
-async function connectConnection(
-  configId: string,
-  profile: ConfigProfile,
-): Promise<ConnectionState> {
-  setConnectionState(configId, {
+async function connect(configId: string): Promise<ConnState> {
+  const runtime = ensureRuntime(configId, requireConfig(configId))
+
+  updateConnection(runtime, {
     status: "connecting",
     schemaStatus: "loading",
     error: null,
   })
+  const session = ensureSession(runtime)
 
   try {
-    const managed = await ensurePersistentSession(configId, profile)
-    const schema = await managed.session.inspect()
-    const now = Date.now()
+    const activeSession = await session
+    const schema = await activeSession.inspect()
+    if (runtime.session !== session) {
+      return runtime.state
+    }
 
-    return setConnectionState(configId, {
+    return updateConnection(runtime, {
       status: "connected",
       schemaStatus: "success",
       schema,
       error: null,
-      lastConnectedAt: managed.connectedAt,
-      lastSchemaAt: now,
     })
   } catch (error) {
-    await disconnectConnection(configId).catch(() => undefined)
-    setConnectionState(configId, {
+    if (runtime.session !== session) {
+      return runtime.state
+    }
+
+    await disconnect(configId)
+    return updateConnection(runtime, {
       status: "error",
       schemaStatus: "error",
       schema: null,
-      error: getErrorMessage(error, "连接失败"),
-      lastConnectedAt: null,
-      lastSchemaAt: null,
+      error: error instanceof Error ? error.message : "连接失败",
     })
-    throw error
   }
 }
 
-async function disconnectConnection(configId: string): Promise<void> {
-  const pending = pendingConnections.get(configId)
-  if (pending) {
-    try {
-      await pending
-    } catch {
-      resetConnectionState(configId)
-      return
-    }
+async function disconnect(configId: string): Promise<ConnState> {
+  const runtime = connections.get(configId)
+  if (!runtime) {
+    return createConnection()
   }
 
-  const managed = activeSessions.get(configId)
-  if (!managed) {
-    resetConnectionState(configId)
-    return
+  const session = runtime.session
+  runtime.session = null
+
+  if (!session) {
+    return resetConnection(runtime)
   }
 
-  activeSessions.delete(configId)
-  managed.unsubscribe()
-  await managed.session.close().catch(() => undefined)
-  resetConnectionState(configId)
+  const activeSession = await session.catch(() => null)
+  await activeSession?.close().catch(() => undefined)
+
+  if (runtime.session) {
+    return runtime.state
+  }
+
+  return resetConnection(runtime)
 }
 
-async function inspectConnection(
-  configId: string,
-  profile: ConfigProfile,
-): Promise<ConnectionState> {
-  setConnectionState(configId, {
+async function inspect(configId: string): Promise<ConnState> {
+  const runtime = ensureRuntime(configId, requireConfig(configId))
+
+  updateConnection(runtime, {
     schemaStatus: "loading",
     error: null,
   })
+  const session = runtime.session
 
   try {
-    const managed = await getReusableSession(configId)
-    const schema = managed
-      ? await managed.session.inspect()
-      : await withTemporarySession(profile, (session) => session.inspect())
-    const now = Date.now()
-    const current = getConnectionState(configId)
+    const schema = session
+      ? await (await session).inspect()
+      : await withSession(runtime.config, (session) => session.inspect())
+    if (session && runtime.session !== session) {
+      return runtime.state
+    }
 
-    return setConnectionState(configId, {
-      status: managed ? "connected" : current.status,
+    return updateConnection(runtime, {
+      status: session ? "connected" : runtime.state.status,
       schemaStatus: "success",
       schema,
       error: null,
-      lastConnectedAt: managed?.connectedAt ?? current.lastConnectedAt,
-      lastSchemaAt: now,
     })
   } catch (error) {
-    const current = getConnectionState(configId)
-    setConnectionState(configId, {
-      status: current.status === "idle" ? "error" : current.status,
+    if (session && runtime.session !== session) {
+      return runtime.state
+    }
+
+    return updateConnection(runtime, {
+      status: runtime.state.status === "idle" ? "error" : runtime.state.status,
       schemaStatus: "error",
-      error: getErrorMessage(error, "刷新数据库结构失败"),
+      error: error instanceof Error ? error.message : "刷新数据库结构失败",
     })
-    throw error
   }
 }
 
-async function queryConnection(
-  configId: string,
-  profile: ConfigProfile,
-  sql: string,
-): Promise<QueryResult> {
-  const managed = await getReusableSession(configId)
-  if (managed) {
-    return managed.session.query(sql)
+async function query(configId: string, sql: string): Promise<QueryResult> {
+  const session = await getSession(connections.get(configId))
+  if (session) {
+    return session.query(sql)
   }
 
-  return withTemporarySession(profile, (session) => session.query(sql))
+  return withSession(requireConfig(configId), (session) => session.query(sql))
 }
 
-export function registerHandlers(
-  options: RegisterConnHandlersOptions,
-): ConnRuntime {
-  ipcMain.handle(TEST, (_e, profile: ConfigProfile) => testConnection(profile))
-  ipcMain.handle(LIST, () => listConnections(options.listConnectionConfigs))
+async function remove(configId: string): Promise<void> {
+  await disconnect(configId)
+  connections.delete(configId)
+}
+
+const conn = {
+  test,
+  list,
+  connect,
+  disconnect,
+  inspect,
+  query,
+  remove,
+}
+
+export default conn
+
+export function registerConn(): void {
+  ipcMain.handle(TEST, (_e, profile: ConfigProfile) => {
+    return conn.test(profile)
+  })
+  ipcMain.handle(LIST, () => {
+    return conn.list()
+  })
   ipcMain.handle(CONNECT, (_e, configId: string) => {
-    const config = requireConnectionConfig(
-      options.getConnectionConfig,
-      configId,
-    )
-    return connectConnection(configId, config)
+    return conn.connect(configId)
   })
-  ipcMain.handle(DISCONNECT, async (_e, configId: string) => {
-    await disconnectConnection(configId)
-    return getConnectionState(configId)
-  })
+  ipcMain.handle(DISCONNECT, (_e, configId: string) =>
+    conn.disconnect(configId),
+  )
   ipcMain.handle(INSPECT, (_e, configId: string) => {
-    const config = requireConnectionConfig(
-      options.getConnectionConfig,
-      configId,
-    )
-    return inspectConnection(configId, config)
+    return conn.inspect(configId)
   })
   ipcMain.handle(QUERY, (_e, configId: string, sql: string) => {
-    const config = requireConnectionConfig(
-      options.getConnectionConfig,
-      configId,
-    )
-    return queryConnection(configId, config, sql)
+    return conn.query(configId, sql)
   })
-
-  return {
-    disconnectConnection,
-    deleteConnectionState,
-  }
 }

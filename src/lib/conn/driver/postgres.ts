@@ -1,15 +1,15 @@
 import { Client as PgClient } from "pg"
-import type { ConfigProfile } from "../config"
-import type { ConnectionSession } from "./driver"
+import type { ConfigProfile } from "@/lib/config"
+import type { DbSchema, DbTable, QueryResult, QueryResultRow } from ".."
+import { connectSshClient, SshTunnelStream } from "../ssh"
+import type { ConnectionSession } from "."
 import {
-  createCloseNotifier,
+  createConnectionSession,
   createQueryColumns,
   parsePort,
   toQueryRowCount,
   toRowCount,
-} from "./driver"
-import type { DbSchema, DbTable, QueryResult, QueryResultRow } from "./index"
-import { connectSshClient, SshTunnelStream } from "./ssh"
+} from "."
 
 interface PostgresField {
   name: string
@@ -53,7 +53,7 @@ interface FunctionRow {
 
 interface ConnectedPostgresClient {
   client: PgClient
-  closeTransport: () => Promise<void>
+  closeTransport?: () => void
 }
 
 function excludeSystemSchemas(column: string): string {
@@ -63,9 +63,10 @@ function excludeSystemSchemas(column: string): string {
 async function connectDirectPostgres(
   profile: ConfigProfile,
 ): Promise<ConnectedPostgresClient> {
+  const port = parsePort(profile.port, "数据库端口")
   const client = new PgClient({
     host: profile.host,
-    port: parsePort(profile.port, "数据库端口"),
+    port,
     user: profile.username,
     password: profile.password,
     database: profile.database,
@@ -73,10 +74,7 @@ async function connectDirectPostgres(
 
   await client.connect()
 
-  return {
-    client,
-    closeTransport: async () => undefined,
-  }
+  return { client }
 }
 
 async function connectPostgresViaSsh(
@@ -87,14 +85,12 @@ async function connectPostgresViaSsh(
   }
 
   const ssh = await connectSshClient(profile.ssh)
-  const stream = new SshTunnelStream(ssh).connect(
-    parsePort(profile.port, "数据库端口"),
-    profile.host,
-  )
+  const port = parsePort(profile.port, "数据库端口")
+  const stream = new SshTunnelStream(ssh).connect(port, profile.host)
 
   const client = new PgClient({
     host: profile.host,
-    port: parsePort(profile.port, "数据库端口"),
+    port,
     user: profile.username,
     password: profile.password,
     database: profile.database,
@@ -106,7 +102,7 @@ async function connectPostgresViaSsh(
 
     return {
       client,
-      closeTransport: async () => {
+      closeTransport: () => {
         ssh.end()
       },
     }
@@ -310,49 +306,17 @@ export async function connectPostgres(
   profile: ConfigProfile,
 ): Promise<ConnectionSession> {
   const { client, closeTransport } = await createPostgresClient(profile)
-  const notifier = createCloseNotifier()
-  let closed = false
-  let closePromise: Promise<void> | null = null
 
-  const close = async () => {
-    if (closePromise) {
-      return closePromise
-    }
-
-    closePromise = (async () => {
-      if (closed) {
-        return
-      }
-
-      closed = true
-      client.off("error", handleDidClose)
-      client.off("end", handleDidClose)
-
-      await client.end().catch(() => undefined)
-      await closeTransport().catch(() => undefined)
-      notifier.notify()
-    })()
-
-    await closePromise
-  }
-
-  const handleDidClose = () => {
-    void close()
-  }
-
-  client.on("error", handleDidClose)
-  client.on("end", handleDidClose)
-
-  return {
+  return createConnectionSession({
     inspect() {
       return inspectPostgresClient(client)
     },
     query(sql) {
       return queryPostgresClient(client, sql)
     },
-    close,
-    onDidClose(listener) {
-      return notifier.onDidClose(listener)
+    close: async () => {
+      await client.end().catch(() => undefined)
+      closeTransport?.()
     },
-  }
+  })
 }

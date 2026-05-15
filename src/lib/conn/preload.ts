@@ -2,7 +2,7 @@ import { ipcRenderer } from "electron"
 import type { ConfigProfile } from "../config"
 import { CONNECT, DISCONNECT, INSPECT, LIST, QUERY, TEST } from "."
 
-export const bridge = {
+const conn = {
   test: (profile: ConfigProfile) => {
     return ipcRenderer.invoke(TEST, profile)
   },
@@ -22,3 +22,5 @@ export const bridge = {
     return ipcRenderer.invoke(QUERY, configId, sql)
   },
 }
+
+export default conn

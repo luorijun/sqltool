@@ -5,7 +5,7 @@ import {
   WRITE_CLIPBOARD_TEXT,
 } from "."
 
-export const bridge = {
+const serialize = {
   writeClipboardText: (text: string) => {
     return ipcRenderer.invoke(WRITE_CLIPBOARD_TEXT, text)
   },
@@ -13,3 +13,5 @@ export const bridge = {
     return ipcRenderer.invoke(SAVE_TEXT_FILE, options) as Promise<string | null>
   },
 }
+
+export default serialize

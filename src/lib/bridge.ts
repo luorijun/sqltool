@@ -4,7 +4,7 @@ import type {
   CreateConfig,
   UpdateConfig,
 } from "./config"
-import type { ConnectionEntry, ConnectionState, QueryResult } from "./conn"
+import type { Connection, ConnState, QueryResult } from "./conn"
 import type { SaveTextFileOptions } from "./serialize"
 
 export interface MainBridge {
@@ -17,10 +17,10 @@ export interface MainBridge {
   }
   conn: {
     test(profile: ConfigProfile): Promise<void>
-    list(): Promise<ConnectionEntry[]>
-    connect(configId: string): Promise<ConnectionState>
-    disconnect(configId: string): Promise<ConnectionState>
-    inspect(configId: string): Promise<ConnectionState>
+    list(): Promise<Connection[]>
+    connect(configId: string): Promise<ConnState>
+    disconnect(configId: string): Promise<ConnState>
+    inspect(configId: string): Promise<ConnState>
     query(configId: string, sql: string): Promise<QueryResult>
   }
   serialize: {

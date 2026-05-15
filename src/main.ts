@@ -1,34 +1,9 @@
 import path from "node:path"
 import { app, BrowserWindow } from "electron"
 import started from "electron-squirrel-startup"
-import {
-  getConnectionConfig,
-  listConnectionConfigs,
-  registerHandlers as registerConfigHandlers,
-} from "./lib/config/main"
-import { registerHandlers as registerConnHandlers } from "./lib/conn/main"
-import { registerHandlers as registerSerializeHandlers } from "./lib/serialize/main"
-
-if (started) {
-  app.quit()
-}
-
-try {
-  const connRuntime = registerConnHandlers({
-    getConnectionConfig,
-    listConnectionConfigs,
-  })
-  registerConfigHandlers({
-    afterUpdate: (id) => connRuntime.disconnectConnection(id),
-    afterRemove: async (id) => {
-      await connRuntime.disconnectConnection(id)
-      connRuntime.deleteConnectionState(id)
-    },
-  })
-  registerSerializeHandlers()
-} catch (e) {
-  console.error(e)
-}
+import { registerConfig } from "./lib/config/main"
+import { registerConn } from "./lib/conn/main"
+import { registerSerialize } from "./lib/serialize/main"
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -52,16 +27,24 @@ const createWindow = () => {
   mainWindow.webContents.openDevTools()
 }
 
-app.on("ready", createWindow)
+if (started) {
+  app.quit()
+} else {
+  registerConn()
+  registerConfig()
+  registerSerialize()
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit()
-  }
-})
+  app.once("ready", createWindow)
 
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
-  }
-})
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+      app.quit()
+    }
+  })
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    }
+  })
+}

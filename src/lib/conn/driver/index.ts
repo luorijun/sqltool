@@ -1,32 +1,50 @@
-import type { ConfigProfile } from "../config"
-import type { DbSchema, QueryResult, QueryResultColumn } from "."
+import type { ConfigProfile } from "../../config"
+import type { DbSchema, QueryResult, QueryResultColumn } from ".."
+import { connectMySql } from "./mysql"
+import { connectPostgres } from "./postgres"
 
 export interface ConnectionSession {
   inspect(): Promise<DbSchema[]>
   query(sql: string): Promise<QueryResult>
   close(): Promise<void>
-  onDidClose(listener: () => void): () => void
 }
 
-export type DriverConnect = (
-  profile: ConfigProfile,
-) => Promise<ConnectionSession>
+interface CreateConnectionSessionOptions {
+  inspect: () => Promise<DbSchema[]>
+  query: (sql: string) => Promise<QueryResult>
+  close: () => Promise<void>
+}
 
-export function createCloseNotifier() {
-  const listeners = new Set<() => void>()
+export function connectDriver(
+  profile: ConfigProfile,
+): Promise<ConnectionSession> {
+  switch (profile.driver) {
+    case "mysql":
+      return connectMySql(profile)
+    case "postgres":
+      return connectPostgres(profile)
+  }
+}
+
+export function createConnectionSession(
+  options: CreateConnectionSessionOptions,
+): ConnectionSession {
+  let closePromise: Promise<void> | null = null
+
+  const close = async () => {
+    if (closePromise) {
+      return closePromise
+    }
+
+    closePromise = options.close().catch(() => undefined)
+
+    await closePromise
+  }
 
   return {
-    notify() {
-      for (const listener of Array.from(listeners)) {
-        listener()
-      }
-    },
-    onDidClose(listener: () => void) {
-      listeners.add(listener)
-      return () => {
-        listeners.delete(listener)
-      }
-    },
+    inspect: options.inspect,
+    query: options.query,
+    close,
   }
 }
 

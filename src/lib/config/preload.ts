@@ -2,7 +2,7 @@ import { ipcRenderer } from "electron"
 import type { CreateConfig, UpdateConfig } from "."
 import { CREATE, GET, LIST, REMOVE, UPDATE } from "."
 
-export const bridge = {
+const config = {
   list: () => {
     return ipcRenderer.invoke(LIST)
   },
@@ -19,3 +19,5 @@ export const bridge = {
     return ipcRenderer.invoke(REMOVE, id)
   },
 }
+
+export default config

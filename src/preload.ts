@@ -1,10 +1,10 @@
 import { contextBridge } from "electron"
-import { bridge as configBridge } from "./lib/config/preload"
-import { bridge as connBridge } from "./lib/conn/preload"
-import { bridge as serializeBridge } from "./lib/serialize/preload"
+import config from "./lib/config/preload"
+import conn from "./lib/conn/preload"
+import serialize from "./lib/serialize/preload"
 
 contextBridge.exposeInMainWorld("main", {
-  config: configBridge,
-  conn: connBridge,
-  serialize: serializeBridge,
+  config,
+  conn,
+  serialize,
 })

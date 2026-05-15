@@ -48,29 +48,14 @@ export interface QueryResult {
   rowCount?: number
 }
 
-export interface ConnectionState {
-  configId: string
+export interface ConnState {
   status: "idle" | "connecting" | "connected" | "error"
   schemaStatus: "idle" | "loading" | "success" | "error"
   schema: DbSchema[] | null
   error: string | null
-  lastConnectedAt: number | null
-  lastSchemaAt: number | null
 }
 
-export interface ConnectionEntry {
+export interface Connection {
   config: Config
-  state: ConnectionState
-}
-
-export function createConnectionState(configId: string): ConnectionState {
-  return {
-    configId,
-    status: "idle",
-    schemaStatus: "idle",
-    schema: null,
-    error: null,
-    lastConnectedAt: null,
-    lastSchemaAt: null,
-  }
+  state: ConnState
 }

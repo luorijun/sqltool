@@ -26,8 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { Config } from "@/lib/config"
+import type { ConnState } from "@/lib/conn"
 import {
-  type ConnectionState,
   connectConnectionAtom,
   connectionEntriesAtom,
   deleteConnectionConfigAtom,
@@ -80,7 +80,7 @@ export function ConnList(props: { onEdit: (conn: Config) => void }) {
 
 function ConnectionItem(props: {
   conn: Config
-  state: ConnectionState
+  state: ConnState
   onEdit: () => void
 }) {
   const name = props.conn.name ?? "未命名"
@@ -91,8 +91,12 @@ function ConnectionItem(props: {
     setExpanded(true)
 
     try {
-      await connectConnection(props.conn.id)
-      toast.success(`"${name}" 已连接`)
+      const state = await connectConnection(props.conn.id)
+      if (state.status === "connected") {
+        toast.success(`"${name}" 已连接`)
+      } else if (state.error) {
+        toast.error(state.error)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "连接失败")
     }
@@ -108,8 +112,12 @@ function ConnectionItem(props: {
   const onRefreshSchema = async () => {
     setExpanded(true)
     try {
-      await refreshConnectionSchema(props.conn.id)
-      toast.success(`"${name}" 结构已刷新`)
+      const state = await refreshConnectionSchema(props.conn.id)
+      if (state.schemaStatus === "success") {
+        toast.success(`"${name}" 结构已刷新`)
+      } else if (state.error) {
+        toast.error(state.error)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "刷新数据库结构失败")
     }
@@ -309,7 +317,7 @@ function ConnectionItem(props: {
   )
 }
 
-function ConnectionStatusBadge({ state }: { state: ConnectionState }) {
+function ConnectionStatusBadge({ state }: { state: ConnState }) {
   if (state.status === "connecting") {
     return <Badge variant="warning">连接中</Badge>
   }
