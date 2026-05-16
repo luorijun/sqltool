@@ -94,14 +94,9 @@ export interface QueryResult {
   rowCount?: number
 }
 
-export interface ConnState {
-  status: "idle" | "connecting" | "connected" | "error"
-  schemaStatus: "idle" | "loading" | "success" | "error"
-  schema: DbSchema[] | null
-  error: string | null
-}
-
 export interface Connection {
   config: Config
-  state: ConnState
+  connected: boolean
+  schema: DbSchema[] | null
+  error: string | null
 }

@@ -25,8 +25,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Config, ConnState } from "@/lib/conn"
+import type { Config, Connection } from "@/lib/conn"
 import {
+  connectionActionAtom,
   connectConnectionAtom,
   connectionEntriesAtom,
   deleteConnectionAtom,
@@ -49,6 +50,7 @@ export function DriverIcon({ driver }: { driver: string }) {
 
 export function ConnList(props: { onEdit: (conn: Config) => void }) {
   const connections = useAtomValue(connectionEntriesAtom)
+  const actions = useAtomValue(connectionActionAtom)
   const loading = connections === null
 
   return loading ? (
@@ -62,25 +64,29 @@ export function ConnList(props: { onEdit: (conn: Config) => void }) {
     </p>
   ) : (
     <ul className="flex flex-col py-2 gap-2">
-      {connections.map(({ config, state }) => (
-        <li key={config.id}>
-          <ConnectionItem
-            conn={config}
-            state={state}
-            onEdit={() => props.onEdit(config)}
-          />
-        </li>
-      ))}
+      {connections.map((connection) => {
+        const action = actions[connection.config.id]
+
+        return (
+          <li key={connection.config.id}>
+            <ConnectionItem
+              connection={connection}
+              action={action}
+              onEdit={() => props.onEdit(connection.config)}
+            />
+          </li>
+        )
+      })}
     </ul>
   )
 }
 
 function ConnectionItem(props: {
-  conn: Config
-  state: ConnState
+  connection: Connection
+  action?: "connect" | "disconnect" | "inspect"
   onEdit: () => void
 }) {
-  const name = props.conn.name ?? "未命名"
+  const name = props.connection.config.name ?? "未命名"
   const [expanded, setExpanded] = useState(false)
 
   const connectConnection = useSetAtom(connectConnectionAtom)
@@ -88,11 +94,11 @@ function ConnectionItem(props: {
     setExpanded(true)
 
     try {
-      const state = await connectConnection(props.conn.id)
-      if (state.status === "connected") {
+      const connection = await connectConnection(props.connection.config.id)
+      if (connection.connected) {
         toast.success(`"${name}" 已连接`)
-      } else if (state.error) {
-        toast.error(state.error)
+      } else if (connection.error) {
+        toast.error(connection.error)
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "连接失败")
@@ -101,7 +107,7 @@ function ConnectionItem(props: {
 
   const disconnectConnection = useSetAtom(disconnectConnectionAtom)
   const handleDisconnect = async () => {
-    await disconnectConnection(props.conn.id)
+    await disconnectConnection(props.connection.config.id)
     toast.success(`"${name}" 已断开`)
   }
 
@@ -109,11 +115,11 @@ function ConnectionItem(props: {
   const onRefreshSchema = async () => {
     setExpanded(true)
     try {
-      const state = await refreshConnectionSchema(props.conn.id)
-      if (state.schemaStatus === "success") {
+      const connection = await refreshConnectionSchema(props.connection.config.id)
+      if (!connection.error) {
         toast.success(`"${name}" 结构已刷新`)
-      } else if (state.error) {
-        toast.error(state.error)
+      } else {
+        toast.error(connection.error)
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "刷新数据库结构失败")
@@ -123,7 +129,7 @@ function ConnectionItem(props: {
   const deleteConnection = useSetAtom(deleteConnectionAtom)
   const onDelete = async () => {
     try {
-      await deleteConnection(props.conn.id)
+      await deleteConnection(props.connection.config.id)
       toast.success(`"${name}" 已删除`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "删除失败")
@@ -132,13 +138,15 @@ function ConnectionItem(props: {
 
   const createTab = useSetAtom(createTabAtom)
   const onNewQuery = () => {
-    createTab({ configId: props.conn.id })
+    createTab({ configId: props.connection.config.id })
   }
 
-  const isConnected = props.state.status === "connected"
-  const isBusy =
-    props.state.status === "connecting" ||
-    props.state.schemaStatus === "loading"
+  const isConnected = props.connection.connected
+  const isBusy = props.action !== undefined
+  const displayError =
+    props.action === "connect" || props.action === "inspect"
+      ? null
+      : props.connection.error
 
   return (
     <div className="flex flex-col pl-2 pr-3.5 gap-1">
@@ -158,19 +166,24 @@ function ConnectionItem(props: {
             </span>
 
             <span className="text-muted-foreground group-hover:text-foreground">
-              <DriverIcon driver={props.conn.driver} />
+              <DriverIcon driver={props.connection.config.driver} />
             </span>
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium leading-tight">
-                {props.conn.name ?? "未命名"}
-                <ConnectionStatusBadge state={props.state} />
+                {props.connection.config.name ?? "未命名"}
+                <ConnectionStatusBadge
+                  connected={props.connection.connected}
+                  error={props.connection.error}
+                  action={props.action}
+                />
               </p>
               <p className="truncate text-xs leading-tight text-muted-foreground">
-                {props.conn.database}
+                {props.connection.config.database}
                 <span className="mx-1">·</span>
-                {driverLabel[props.conn.driver] ?? props.conn.driver}
-                {props.conn.ssh ? " · SSH" : ""}
+                {driverLabel[props.connection.config.driver] ??
+                  props.connection.config.driver}
+                {props.connection.config.ssh ? " · SSH" : ""}
               </p>
             </div>
           </button>
@@ -189,7 +202,9 @@ function ConnectionItem(props: {
                   )
                 })
               } else {
-                handleConnect()
+                handleConnect().catch((err) => {
+                  toast.error(err instanceof Error ? err.message : "连接失败")
+                })
               }
             }}
           >
@@ -223,7 +238,9 @@ function ConnectionItem(props: {
                       )
                     })
                   } else {
-                    handleConnect()
+                    handleConnect().catch((err) => {
+                      toast.error(err instanceof Error ? err.message : "连接失败")
+                    })
                   }
                 }}
                 disabled={isBusy}
@@ -235,9 +252,13 @@ function ConnectionItem(props: {
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation()
-                  onRefreshSchema()
+                  onRefreshSchema().catch((err) => {
+                    toast.error(
+                      err instanceof Error ? err.message : "刷新数据库结构失败",
+                    )
+                  })
                 }}
-                disabled={props.state.status === "connecting"}
+                disabled={isBusy}
               >
                 <RefreshCw />
                 刷新结构
@@ -284,26 +305,26 @@ function ConnectionItem(props: {
 
       {expanded && (
         <div className="overflow-hidden rounded-xl border bg-background/60">
-          {props.state.error ? (
+          {displayError ? (
             <div
               className={cn(
                 "flex items-center gap-2 border-b px-3 py-2 text-xs",
-                props.state.status === "error"
-                  ? "bg-destructive/5 text-destructive"
-                  : "bg-amber-500/8 text-amber-700 dark:text-amber-400",
+                props.connection.connected
+                  ? "bg-amber-500/8 text-amber-700 dark:text-amber-400"
+                  : "bg-destructive/5 text-destructive",
               )}
             >
               <TriangleAlert className="size-3.5 shrink-0" />
-              <span>{props.state.error}</span>
+              <span>{displayError}</span>
             </div>
           ) : null}
 
           <SchemaPanel
-            conn={props.conn}
-            status={props.state.status}
-            schemaStatus={props.state.schemaStatus}
-            error={props.state.error}
-            schemas={props.state.schema}
+            conn={props.connection.config}
+            connected={props.connection.connected}
+            loading={props.action === "connect" || props.action === "inspect"}
+            error={props.connection.error}
+            schemas={props.connection.schema}
             onConnect={handleConnect}
             onRefresh={onRefreshSchema}
             onNewQuery={onNewQuery}
@@ -314,24 +335,32 @@ function ConnectionItem(props: {
   )
 }
 
-function ConnectionStatusBadge({ state }: { state: ConnState }) {
-  if (state.status === "connecting") {
+function ConnectionStatusBadge(props: {
+  connected: boolean
+  error: string | null
+  action?: "connect" | "disconnect" | "inspect"
+}) {
+  if (props.action === "connect") {
     return <Badge variant="warning">连接中</Badge>
   }
 
-  if (state.status === "connected" && state.schemaStatus === "loading") {
+  if (props.action === "disconnect") {
+    return <Badge variant="warning">断开中</Badge>
+  }
+
+  if (props.action === "inspect") {
     return <Badge variant="warning">刷新中</Badge>
   }
 
-  if (state.status === "connected" && state.schemaStatus === "error") {
+  if (props.connected && props.error) {
     return <Badge variant="warning">结构异常</Badge>
   }
 
-  if (state.status === "connected") {
+  if (props.connected) {
     return <Badge variant="success">已连接</Badge>
   }
 
-  if (state.status === "error") {
+  if (props.error) {
     return <Badge variant="destructive">异常</Badge>
   }
 

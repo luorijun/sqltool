@@ -6,7 +6,6 @@ import {
   type Config,
   type ConfigProfile,
   type Connection,
-  type ConnState,
   CREATE,
   type CreateConfig,
   DISCONNECT,
@@ -16,106 +15,60 @@ import {
   QUERY,
   type QueryResult,
   REMOVE,
-  type SshConfig,
   TEST,
   UPDATE,
   type UpdateConfig,
 } from "."
 import { type ConnectionSession, connectDriver } from "./driver"
 
-type Runtime = {
-  config: ConfigProfile
-  session: Promise<ConnectionSession> | null
-  state: ConnState
+type ConnLock = {
+  action: "connect" | "disconnect" | "inspect" | null
+  queryCount: number
+}
+
+type ConnState = {
+  session: ConnectionSession | null
+  schema: Connection["schema"]
+  error: Connection["error"]
 }
 
 const store = new Store<{
   configs: Record<string, Config>
 }>({ name: "configs" })
 
-const connections = new Map<string, Runtime>()
+const states: Record<string, ConnState | undefined> = {}
+const locks: Record<string, ConnLock | undefined> = {}
 
-function createState(): ConnState {
+function connection(config: Config): Connection {
+  const state = states[config.id]
+
   return {
-    status: "idle",
-    schemaStatus: "idle",
-    schema: null,
-    error: null,
-  }
-}
-
-function createConnectionLogContext(profile: ConfigProfile): {
-  driver: ConfigProfile["driver"]
-  host: string
-  port: string
-  database: string
-  username: string
-  sshEnabled: boolean
-  sshHost?: string
-  sshPort?: string
-  sshUsername?: string
-  sshAuthType?: SshConfig["auth"]["type"]
-} {
-  return {
-    driver: profile.driver,
-    host: profile.host,
-    port: profile.port,
-    database: profile.database,
-    username: profile.username,
-    sshEnabled: Boolean(profile.ssh),
-    sshHost: profile.ssh?.host,
-    sshPort: profile.ssh?.port,
-    sshUsername: profile.ssh?.username,
-    sshAuthType: profile.ssh?.auth.type,
-  }
-}
-
-function updateState(
-  runtime: Runtime,
-  nextConnection: Partial<ConnState>,
-): ConnState {
-  runtime.state = {
-    ...runtime.state,
-    ...nextConnection,
-  }
-  return runtime.state
-}
-
-async function withSession<T>(
-  profile: ConfigProfile,
-  run: (session: ConnectionSession) => Promise<T>,
-): Promise<T> {
-  const session = await connectDriver(profile)
-
-  try {
-    return await run(session)
-  } finally {
-    await session.close().catch(() => undefined)
+    config,
+    connected: Boolean(state?.session),
+    schema: state?.schema ?? null,
+    error: state?.error ?? null,
   }
 }
 
 async function test(profile: ConfigProfile): Promise<void> {
-  const logContext = createConnectionLogContext(profile)
-  console.info("[conn] 开始测试连接", logContext)
+  const session = await connectDriver(profile)
 
   try {
-    await withSession(profile, async () => undefined)
-    console.info("[conn] 测试连接成功", logContext)
-  } catch (error) {
-    console.error("[conn] 测试连接失败", logContext, error)
-    throw error
+    await session.close()
+  } catch {
+    // ignore close failure after a successful test connection
   }
 }
 
 function list(): Connection[] {
-  return Object.values(store.get("configs", {})).map((entry) => ({
-    config: entry,
-    state: connections.get(entry.id)?.state ?? createState(),
-  }))
+  return Object.values(store.get("configs", {})).map((config) =>
+    connection(config),
+  )
 }
 
-function get(id: string): Config | undefined {
-  return store.get(`configs.${id}`)
+function get(id: string): Connection | undefined {
+  const config = store.get(`configs.${id}`)
+  return config ? connection(config) : undefined
 }
 
 function create(input: CreateConfig): Config {
@@ -137,6 +90,15 @@ async function update(id: string, input: UpdateConfig): Promise<Config> {
     throw new Error("连接不存在或已删除")
   }
 
+  if (states[id]?.session) {
+    throw new Error("连接尚未关闭，请先断开连接")
+  }
+
+  const lock = locks[id]
+  if (lock?.action || lock?.queryCount) {
+    throw new Error("当前连接正在执行其他操作，请稍后再试")
+  }
+
   const updated: Config = {
     ...current,
     ...input,
@@ -144,176 +106,174 @@ async function update(id: string, input: UpdateConfig): Promise<Config> {
     updatedAt: Date.now(),
   }
 
+  delete states[id]
   store.set(`configs.${id}`, updated)
-
-  await disconnect(id).catch(() => undefined)
   return updated
 }
 
 async function remove(id: string): Promise<void> {
-  await disconnect(id).catch(() => undefined)
-  connections.delete(id)
+  if (states[id]?.session) {
+    throw new Error("连接尚未关闭，请先断开连接")
+  }
+
+  const lock = locks[id]
+  if (lock?.action || lock?.queryCount) {
+    throw new Error("当前连接正在执行其他操作，请稍后再试")
+  }
+
+  delete states[id]
+  delete locks[id]
   store.delete(`configs.${id}`)
 }
 
-async function connect(configId: string): Promise<ConnState> {
+async function connect(configId: string): Promise<Connection> {
   const config = store.get(`configs.${configId}`)
   if (!config) {
     throw new Error("连接不存在或已删除")
   }
 
-  const logContext = {
-    configId,
-    ...createConnectionLogContext(config),
+  if (states[configId]?.session) {
+    return connection(config)
   }
-  console.info("[conn] 开始建立连接", logContext)
 
-  const runtime = connections.get(configId) ?? {
-    config,
-    session: null,
-    state: createState(),
+  const lock = locks[configId]
+  if (lock?.action || lock?.queryCount) {
+    throw new Error("当前连接正在执行其他操作，请稍后再试")
   }
-  runtime.config = config
-  connections.set(configId, runtime)
 
-  updateState(runtime, {
-    status: "connecting",
-    schemaStatus: "loading",
-    error: null,
-  })
-
-  const session =
-    runtime.session ??
-    connectDriver(runtime.config).catch((error) => {
-      if (runtime.session === session) {
-        runtime.session = null
-      }
-      throw error
-    })
-  runtime.session = session
+  locks[configId] = {
+    action: "connect",
+    queryCount: 0,
+  }
 
   try {
-    const activeSession = await session
-    console.info("[conn] 驱动连接已建立，开始加载数据库结构", logContext)
-    const schema = await activeSession.inspect()
-    if (runtime.session !== session) {
-      return runtime.state
-    }
-
-    console.info("[conn] 数据库结构加载完成", {
-      ...logContext,
-      schemaCount: schema.length,
-    })
-
-    return updateState(runtime, {
-      status: "connected",
-      schemaStatus: "success",
-      schema,
+    states[configId] = {
+      session: await connectDriver(config),
+      schema: null,
       error: null,
-    })
-  } catch (error) {
-    if (runtime.session !== session) {
-      return runtime.state
     }
-
-    console.error("[conn] 建立连接失败", logContext, error)
-
-    await disconnect(configId)
-    return updateState(runtime, {
-      status: "error",
-      schemaStatus: "error",
+  } catch (error) {
+    states[configId] = {
+      session: null,
       schema: null,
       error: error instanceof Error ? error.message : "连接失败",
-    })
+    }
+  } finally {
+    delete locks[configId]
   }
+  return connection(config)
 }
 
-async function disconnect(configId: string): Promise<ConnState> {
-  const runtime = connections.get(configId)
-  if (!runtime) {
-    return createState()
+async function disconnect(configId: string): Promise<Connection> {
+  const config = store.get(`configs.${configId}`)
+  if (!config) {
+    throw new Error("连接不存在或已删除")
   }
 
-  const session = runtime.session
-  runtime.session = null
+  const lock = locks[configId]
+  if (lock?.action || lock?.queryCount) {
+    throw new Error("当前连接正在执行其他操作，请稍后再试")
+  }
 
+  const state = states[configId]
+  const session = state?.session
   if (!session) {
-    runtime.state = createState()
-    return runtime.state
+    return connection(config)
   }
 
-  const activeSession = await session.catch(() => null)
-  await activeSession?.close().catch(() => undefined)
-
-  if (runtime.session) {
-    return runtime.state
+  locks[configId] = {
+    action: "disconnect",
+    queryCount: 0,
   }
 
-  runtime.state = createState()
-  return runtime.state
+  try {
+    await session.close()
+    state.session = null
+    state.error = null
+  } finally {
+    delete locks[configId]
+  }
+  return connection(config)
 }
 
-async function inspect(configId: string): Promise<ConnState> {
+async function inspect(configId: string): Promise<Connection> {
+  const config = store.get(`configs.${configId}`)
+  if (!config) {
+    throw new Error("连接不存在或已删除")
+  }
+
+  const lock = locks[configId]
+  if (lock?.action) {
+    throw new Error("当前连接正在执行其他操作，请稍后再试")
+  }
+
+  const state = states[configId]
+  const session = state?.session
+  if (!session) {
+    throw new Error("连接尚未建立")
+  }
+
+  if (lock) {
+    lock.action = "inspect"
+  } else {
+    locks[configId] = {
+      action: "inspect",
+      queryCount: 0,
+    }
+  }
+
+  try {
+    const schema = await session.inspect()
+    state.schema = schema
+    state.error = null
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : "获取模式信息失败"
+  } finally {
+    const currentLock = locks[configId]
+    if (!currentLock || currentLock.queryCount === 0) {
+      delete locks[configId]
+    } else {
+      currentLock.action = null
+    }
+  }
+  return connection(config)
+}
+
+async function query(configId: string, sql: string): Promise<QueryResult> {
   if (!store.get(`configs.${configId}`)) {
     throw new Error("连接不存在或已删除")
   }
 
-  const runtime = connections.get(configId)
-  const session = runtime?.session
-  if (!runtime || !session) {
+  const lock = locks[configId]
+  if (lock?.action === "connect" || lock?.action === "disconnect") {
+    throw new Error("当前连接正在执行其他操作，请稍后再试")
+  }
+
+  const session = states[configId]?.session
+  if (!session) {
     throw new Error("连接尚未建立")
   }
 
-  updateState(runtime, {
-    schemaStatus: "loading",
-    error: null,
-  })
+  if (lock) {
+    lock.queryCount += 1
+  } else {
+    locks[configId] = {
+      action: null,
+      queryCount: 1,
+    }
+  }
 
   try {
-    const schema = await (await session).inspect()
-    if (runtime.session !== session) {
-      return runtime.state
+    return await session.query(sql)
+  } finally {
+    const currentLock = locks[configId]
+    if (currentLock) {
+      currentLock.queryCount = Math.max(0, currentLock.queryCount - 1)
+      if (!currentLock.action && currentLock.queryCount === 0) {
+        delete locks[configId]
+      }
     }
-
-    return updateState(runtime, {
-      schemaStatus: "success",
-      schema,
-      error: null,
-    })
-  } catch (error) {
-    if (runtime.session !== session) {
-      return runtime.state
-    }
-
-    return updateState(runtime, {
-      schemaStatus: "error",
-      error: error instanceof Error ? error.message : "刷新数据库结构失败",
-    })
   }
-}
-
-async function query(configId: string, sql: string): Promise<QueryResult> {
-  const runtime = connections.get(configId)
-  const sessionPromise = runtime?.session
-  const session = sessionPromise
-    ? await sessionPromise.catch(() => {
-        if (runtime?.session === sessionPromise) {
-          runtime.session = null
-        }
-        return null
-      })
-    : null
-
-  if (session) {
-    return session.query(sql)
-  }
-
-  const config = store.get(`configs.${configId}`)
-  if (!config) {
-    throw new Error("连接不存在或已删除")
-  }
-
-  return withSession(config, (session) => session.query(sql))
 }
 
 export function registerConn(): void {

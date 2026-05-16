@@ -324,8 +324,13 @@ export async function connectPostgres(
       return queryPostgresClient(client, sql)
     },
     close: async () => {
-      await client.end().catch(() => undefined)
-      closeTransport?.()
+      try {
+        await client.end()
+      } catch {
+        // ignore close failure and always release SSH transport
+      } finally {
+        closeTransport?.()
+      }
     },
   })
 }

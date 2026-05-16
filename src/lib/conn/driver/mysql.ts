@@ -284,10 +284,13 @@ export async function connectMySql(
       return queryMySqlClient(client, sql)
     },
     close: async () => {
-      await client.end().catch(() => {
+      try {
+        await client.end()
+      } catch {
         client.destroy()
-      })
-      closeTransport?.()
+      } finally {
+        closeTransport?.()
+      }
     },
   })
 }

@@ -216,8 +216,8 @@ function TableNode({
 
 export interface SchemaPanelProps {
   conn: Config
-  status: "idle" | "connecting" | "connected" | "error"
-  schemaStatus: "idle" | "loading" | "success" | "error"
+  connected: boolean
+  loading: boolean
   error: string | null
   schemas: Schema[] | null
   onConnect: () => void
@@ -227,8 +227,8 @@ export interface SchemaPanelProps {
 
 export function SchemaPanel({
   conn,
-  status,
-  schemaStatus,
+  connected,
+  loading,
   error,
   schemas,
   onConnect,
@@ -284,16 +284,28 @@ export function SchemaPanel({
 
       <ScrollArea className="flex-1 overflow-auto">
         <div className="p-1.5 space-y-px">
-          {status === "connecting" || schemaStatus === "loading" ? (
+          {loading ? (
             <div className="px-3 py-8 text-center text-xs text-muted-foreground">
               正在加载数据库结构...
             </div>
-          ) : status !== "connected" ? (
+          ) : !connected ? (
             <div className="flex flex-col items-center gap-3 px-3 py-8 text-center text-xs text-muted-foreground">
               <p>当前连接尚未建立，连接后即可浏览数据库结构</p>
               <div className="flex items-center gap-2">
                 <Button size="xs" onClick={onConnect}>
                   连接
+                </Button>
+                <Button size="xs" variant="outline" onClick={onNewQuery}>
+                  新建查询
+                </Button>
+              </div>
+            </div>
+          ) : !schemas && !error ? (
+            <div className="flex flex-col items-center gap-3 px-3 py-8 text-center text-xs text-muted-foreground">
+              <p>当前已建立连接，加载数据库结构后即可浏览对象</p>
+              <div className="flex items-center gap-2">
+                <Button size="xs" onClick={onRefresh}>
+                  加载结构
                 </Button>
                 <Button size="xs" variant="outline" onClick={onNewQuery}>
                   新建查询

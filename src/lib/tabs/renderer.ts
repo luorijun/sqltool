@@ -1,7 +1,7 @@
 import { atom } from "jotai"
 import { unwrap } from "jotai/utils"
 import type { Getter, Setter } from "jotai/vanilla"
-import type { Config, QueryResult } from "@/lib/conn"
+import type { Config, Connection, QueryResult } from "@/lib/conn"
 import connApi from "@/lib/conn/renderer"
 import type {
   Tab,
@@ -51,16 +51,20 @@ const activeTabAtom = atom<Tab>((get) => {
 })
 
 // 连接配置
-const _activeTabConfigAtom = atom<Promise<Config>>(async (get) => {
+const _activeTabConnectionAtom = atom<Promise<Connection>>(async (get) => {
   const id = get(activeTabAtom).configId
   if (!id) {
     throw new Error("活动标签页未绑定数据库连接")
   }
-  const config = await connApi.get(id)
-  if (!config) {
+  const connection = await connApi.get(id)
+  if (!connection) {
     throw new Error("活动标签页绑定的数据库连接不存在")
   }
-  return config
+  return connection
+})
+
+const _activeTabConfigAtom = atom<Promise<Config>>(async (get) => {
+  return (await get(_activeTabConnectionAtom)).config
 })
 export const activeTabConfigAtom = unwrap(_activeTabConfigAtom)
 
@@ -389,6 +393,15 @@ async function runTabSql(get: Getter, set: Setter, tabId: string) {
     },
   }))
   try {
+    const connection = await connApi.get(tab.configId)
+    if (!connection) {
+      throw new Error("活动标签页绑定的数据库连接不存在")
+    }
+
+    if (!connection.connected) {
+      throw new Error("连接尚未建立，请先连接数据库")
+    }
+
     const result = await connApi.query(tab.configId, sql)
     const rowCount = getQueryResultRowCount(result)
     const durationMs = Math.max(1, Date.now() - startedAt)

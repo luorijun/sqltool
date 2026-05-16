@@ -40,7 +40,13 @@ export function createConnectionSession(
       return closePromise
     }
 
-    closePromise = options.close().catch(() => undefined)
+    closePromise = (async () => {
+      try {
+        await options.close()
+      } catch {
+        // ignore close failure to keep close idempotent
+      }
+    })()
 
     await closePromise
   }

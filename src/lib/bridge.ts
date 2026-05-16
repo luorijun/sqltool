@@ -2,7 +2,6 @@ import type {
   Config,
   ConfigProfile,
   Connection,
-  ConnState,
   CreateConfig,
   QueryResult,
   UpdateConfig,
@@ -13,13 +12,13 @@ export interface MainBridge {
   conn: {
     test(profile: ConfigProfile): Promise<void>
     list(): Promise<Connection[]>
-    get(id: string): Promise<Config | undefined>
+    get(id: string): Promise<Connection | undefined>
     create(input: CreateConfig): Promise<Config>
     update(id: string, input: UpdateConfig): Promise<Config>
     remove(id: string): Promise<void>
-    connect(configId: string): Promise<ConnState>
-    disconnect(configId: string): Promise<ConnState>
-    inspect(configId: string): Promise<ConnState>
+    connect(configId: string): Promise<Connection>
+    disconnect(configId: string): Promise<Connection>
+    inspect(configId: string): Promise<Connection>
     query(configId: string, sql: string): Promise<QueryResult>
   }
   serialize: {
