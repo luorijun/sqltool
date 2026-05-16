@@ -1,5 +1,9 @@
-import type { ConfigProfile } from "../../config"
-import type { DbSchema, QueryResult, QueryResultColumn } from ".."
+import type {
+  ConfigProfile,
+  DbSchema,
+  QueryResult,
+  QueryResultColumn,
+} from ".."
 import { connectMySql } from "./mysql"
 import { connectPostgres } from "./postgres"
 

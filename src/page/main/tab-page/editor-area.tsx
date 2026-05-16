@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import type { SqlLanguage } from "sql-formatter"
 import { format as formatSql } from "sql-formatter"
 import { Button } from "@/components/ui/button"
-import type { DbDriver } from "@/lib/config"
+import type { DbDriver } from "@/lib/conn"
 import type { TabEditorState } from "@/lib/tabs"
 import {
   activeTabConfigAtom,

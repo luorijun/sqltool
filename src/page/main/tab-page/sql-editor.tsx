@@ -28,7 +28,7 @@ import {
   useRef,
   useState,
 } from "react"
-import type { DbDriver } from "@/lib/config"
+import type { DbDriver } from "@/lib/conn"
 import type { TabEditorState } from "@/lib/tabs"
 
 export interface CursorPosition {

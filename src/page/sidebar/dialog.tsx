@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod"
+import { useSetAtom } from "jotai"
 import { Database, KeyRound, LockKeyhole, Server } from "lucide-react"
 import { useEffect, useId, useState } from "react"
 import { type UseFormReturn, useForm } from "react-hook-form"
@@ -23,9 +24,8 @@ import { FormField, FormInput } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { Config, CreateConfig, DbDriver, SshAuth } from "@/lib/config"
-import configApi from "@/lib/config/renderer"
-import connApi from "@/lib/conn/renderer"
+import type { Config, CreateConfig, DbDriver, SshAuth } from "@/lib/conn"
+import connApi, { refreshConnectionsAtom } from "@/lib/conn/renderer"
 import { cn } from "@/lib/utils"
 import z from "@/lib/zod"
 
@@ -244,9 +244,10 @@ export function ConnDialog({
   mode: ConnDialogMode | null
   conn?: Config | null
   onClose: () => void
-  onSaved: (conn: Config) => void
+  onSaved?: (conn: Config) => void
 }) {
   const open = mode !== null
+  const refreshConnections = useSetAtom(refreshConnectionsAtom)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const form = useForm<Schema>({
@@ -274,11 +275,19 @@ export function ConnDialog({
       const payload = toCreateConfig(data)
       const saved =
         mode === "edit" && conn
-          ? await configApi.update(conn.id, payload)
-          : await configApi.create(payload)
+          ? await connApi.update(conn.id, payload)
+          : await connApi.create(payload)
+
+      try {
+        await refreshConnections()
+      } catch {
+        toast.error("刷新连接列表失败")
+        return
+      }
 
       toast.success(mode === "edit" ? "连接已更新" : "连接已保存")
-      onSaved(saved)
+      close(false)
+      onSaved?.(saved)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "保存失败")
     } finally {

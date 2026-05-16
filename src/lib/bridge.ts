@@ -1,23 +1,22 @@
 import type {
   Config,
   ConfigProfile,
+  Connection,
+  ConnState,
   CreateConfig,
+  QueryResult,
   UpdateConfig,
-} from "./config"
-import type { Connection, ConnState, QueryResult } from "./conn"
+} from "./conn"
 import type { SaveTextFileOptions } from "./serialize"
 
 export interface MainBridge {
-  config: {
-    list(): Promise<Config[]>
+  conn: {
+    test(profile: ConfigProfile): Promise<void>
+    list(): Promise<Connection[]>
     get(id: string): Promise<Config | undefined>
     create(input: CreateConfig): Promise<Config>
     update(id: string, input: UpdateConfig): Promise<Config>
     remove(id: string): Promise<void>
-  }
-  conn: {
-    test(profile: ConfigProfile): Promise<void>
-    list(): Promise<Connection[]>
     connect(configId: string): Promise<ConnState>
     disconnect(configId: string): Promise<ConnState>
     inspect(configId: string): Promise<ConnState>

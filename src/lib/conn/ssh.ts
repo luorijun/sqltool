@@ -6,7 +6,7 @@ import { Duplex, type Duplex as DuplexStream } from "node:stream"
 import SSHConfig, { type Directive, LineType } from "ssh-config"
 import type { ConnectConfig } from "ssh2"
 import { Client as SshClient } from "ssh2"
-import type { SshConfig, SshPasswordAuth, SshPrivateKeyAuth } from "../config"
+import type { SshConfig, SshPasswordAuth, SshPrivateKeyAuth } from "."
 import { parsePort } from "./driver"
 
 type DirectiveValue = Directive["value"]

@@ -1,7 +1,6 @@
 import path from "node:path"
 import { app, BrowserWindow } from "electron"
 import started from "electron-squirrel-startup"
-import { registerConfig } from "./lib/config/main"
 import { registerConn } from "./lib/conn/main"
 import { registerSerialize } from "./lib/serialize/main"
 
@@ -31,7 +30,6 @@ if (started) {
   app.quit()
 } else {
   registerConn()
-  registerConfig()
   registerSerialize()
 
   app.once("ready", createWindow)

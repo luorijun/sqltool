@@ -15,9 +15,9 @@ import {
 import { type ReactNode, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Config } from "@/lib/config"
 import type {
   DbColumn as Column,
+  Config,
   DbSchema as Schema,
   DbTable as Table,
 } from "@/lib/conn"

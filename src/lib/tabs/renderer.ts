@@ -1,9 +1,7 @@
 import { atom } from "jotai"
 import { unwrap } from "jotai/utils"
 import type { Getter, Setter } from "jotai/vanilla"
-import type { Config } from "@/lib/config"
-import configApi from "@/lib/config/renderer"
-import type { QueryResult } from "@/lib/conn"
+import type { Config, QueryResult } from "@/lib/conn"
 import connApi from "@/lib/conn/renderer"
 import type {
   Tab,
@@ -58,7 +56,7 @@ const _activeTabConfigAtom = atom<Promise<Config>>(async (get) => {
   if (!id) {
     throw new Error("活动标签页未绑定数据库连接")
   }
-  const config = await configApi.get(id)
+  const config = await connApi.get(id)
   if (!config) {
     throw new Error("活动标签页绑定的数据库连接不存在")
   }

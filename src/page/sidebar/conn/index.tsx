@@ -25,14 +25,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Config } from "@/lib/config"
-import type { ConnState } from "@/lib/conn"
+import type { Config, ConnState } from "@/lib/conn"
 import {
   connectConnectionAtom,
   connectionEntriesAtom,
-  deleteConnectionConfigAtom,
+  deleteConnectionAtom,
   disconnectConnectionAtom,
-  hasLoadedConnectionsAtom,
   refreshConnectionSchemaAtom,
 } from "@/lib/conn/renderer"
 import { createTabAtom } from "@/lib/tabs/renderer"
@@ -51,8 +49,7 @@ export function DriverIcon({ driver }: { driver: string }) {
 
 export function ConnList(props: { onEdit: (conn: Config) => void }) {
   const connections = useAtomValue(connectionEntriesAtom)
-  const hasLoadedConnections = useAtomValue(hasLoadedConnectionsAtom)
-  const loading = !hasLoadedConnections && connections.length === 0
+  const loading = connections === null
 
   return loading ? (
     <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-foreground">
@@ -123,10 +120,10 @@ function ConnectionItem(props: {
     }
   }
 
-  const deleteConnectionConfig = useSetAtom(deleteConnectionConfigAtom)
+  const deleteConnection = useSetAtom(deleteConnectionAtom)
   const onDelete = async () => {
     try {
-      await deleteConnectionConfig(props.conn.id)
+      await deleteConnection(props.conn.id)
       toast.success(`"${name}" 已删除`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "删除失败")

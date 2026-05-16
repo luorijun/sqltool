@@ -1,6 +1,17 @@
 import { ipcRenderer } from "electron"
-import type { ConfigProfile } from "../config"
-import { CONNECT, DISCONNECT, INSPECT, LIST, QUERY, TEST } from "."
+import type { ConfigProfile, CreateConfig, UpdateConfig } from "."
+import {
+  CONNECT,
+  CREATE,
+  DISCONNECT,
+  GET,
+  INSPECT,
+  LIST,
+  QUERY,
+  REMOVE,
+  TEST,
+  UPDATE,
+} from "."
 
 const conn = {
   test: (profile: ConfigProfile) => {
@@ -8,6 +19,18 @@ const conn = {
   },
   list: () => {
     return ipcRenderer.invoke(LIST)
+  },
+  get: (id: string) => {
+    return ipcRenderer.invoke(GET, id)
+  },
+  create: (input: CreateConfig) => {
+    return ipcRenderer.invoke(CREATE, input)
+  },
+  update: (id: string, input: UpdateConfig) => {
+    return ipcRenderer.invoke(UPDATE, id, input)
+  },
+  remove: (id: string) => {
+    return ipcRenderer.invoke(REMOVE, id)
   },
   connect: (configId: string) => {
     return ipcRenderer.invoke(CONNECT, configId)

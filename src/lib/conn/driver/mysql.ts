@@ -4,8 +4,7 @@ import mysql, {
   type Connection as MySqlConnection,
   type ResultSetHeader,
 } from "mysql2/promise"
-import type { ConfigProfile } from "../../config"
-import type { DbSchema, DbTable, QueryResult } from "../index"
+import type { ConfigProfile, DbSchema, DbTable, QueryResult } from ".."
 import { connectSshClient, SshTunnelStream } from "../ssh"
 import type { ConnectionSession } from "."
 import {

@@ -2,11 +2,8 @@ import { useSetAtom } from "jotai"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Config } from "@/lib/config"
-import {
-  ensureConnectionsLoadedAtom,
-  refreshConnectionsAtom,
-} from "@/lib/conn/renderer"
+import type { Config } from "@/lib/conn"
+import { ensureConnectionsLoadedAtom } from "@/lib/conn/renderer"
 import { cn } from "@/lib/utils"
 import { ConnList } from "./conn"
 import { ConnDialog } from "./dialog"
@@ -16,7 +13,6 @@ type DialogMode = "create" | "edit" | null
 
 export default function Sidebar(props: { className?: string }) {
   const ensureConnectionsLoaded = useSetAtom(ensureConnectionsLoadedAtom)
-  const refreshConnections = useSetAtom(refreshConnectionsAtom)
 
   const [dialogMode, setDialogMode] = useState<DialogMode>(null)
   const [dialogTarget, setDialogTarget] = useState<Config | null>(null)
@@ -42,11 +38,6 @@ export default function Sidebar(props: { className?: string }) {
     setDialogTarget(null)
   }
 
-  const handleSaved = async (_conn: Config) => {
-    await refreshConnections()
-    closeDialog()
-  }
-
   return (
     <nav
       className={cn(
@@ -60,16 +51,7 @@ export default function Sidebar(props: { className?: string }) {
         <ConnList onEdit={openEditDialog} />
       </ScrollArea>
 
-      <ConnDialog
-        mode={dialogMode}
-        conn={dialogTarget}
-        onClose={closeDialog}
-        onSaved={(conn) => {
-          handleSaved(conn).catch(() => {
-            toast.error("刷新连接列表失败")
-          })
-        }}
-      />
+      <ConnDialog mode={dialogMode} conn={dialogTarget} onClose={closeDialog} />
     </nav>
   )
 }

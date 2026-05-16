@@ -1,6 +1,11 @@
 import { Client as PgClient } from "pg"
-import type { ConfigProfile } from "@/lib/config"
-import type { DbSchema, DbTable, QueryResult, QueryResultRow } from ".."
+import type {
+  ConfigProfile,
+  DbSchema,
+  DbTable,
+  QueryResult,
+  QueryResultRow,
+} from ".."
 import { connectSshClient, SshTunnelStream } from "../ssh"
 import type { ConnectionSession } from "."
 import {

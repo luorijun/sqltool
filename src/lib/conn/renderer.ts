@@ -1,7 +1,14 @@
 import { atom } from "jotai"
-import type { ConfigProfile } from "../config"
-import configApi from "../config/renderer"
-import type { Connection, ConnState, QueryResult } from "./index"
+import type { Setter } from "jotai/vanilla"
+import type {
+  Config,
+  ConfigProfile,
+  Connection,
+  ConnState,
+  CreateConfig,
+  QueryResult,
+  UpdateConfig,
+} from "./index"
 
 const connApi = {
   test(profile: ConfigProfile): Promise<void> {
@@ -9,6 +16,18 @@ const connApi = {
   },
   list(): Promise<Connection[]> {
     return window.main.conn.list()
+  },
+  get(id: string): Promise<Config | undefined> {
+    return window.main.conn.get(id)
+  },
+  create(input: CreateConfig): Promise<Config> {
+    return window.main.conn.create(input)
+  },
+  update(id: string, input: UpdateConfig): Promise<Config> {
+    return window.main.conn.update(id, input)
+  },
+  remove(id: string): Promise<void> {
+    return window.main.conn.remove(id)
   },
   connect(configId: string): Promise<ConnState> {
     return window.main.conn.connect(configId)
@@ -26,11 +45,18 @@ const connApi = {
 
 export default connApi
 
+const CONNECTIONS_NOT_LOADED = Symbol("connections-not-loaded")
+type ConnectionEntriesState = Connection[] | typeof CONNECTIONS_NOT_LOADED
+
 function replaceEntryState(
-  entries: Connection[],
+  entries: ConnectionEntriesState,
   configId: string,
   state: ConnState,
-): Connection[] {
+): ConnectionEntriesState {
+  if (entries === CONNECTIONS_NOT_LOADED) {
+    return entries
+  }
+
   const index = entries.findIndex((entry) => entry.config.id === configId)
   if (index === -1) {
     return entries
@@ -50,10 +76,14 @@ function replaceEntryState(
 }
 
 function patchEntryState(
-  entries: Connection[],
+  entries: ConnectionEntriesState,
   configId: string,
   patch: Partial<ConnState>,
-): Connection[] {
+): ConnectionEntriesState {
+  if (entries === CONNECTIONS_NOT_LOADED) {
+    return entries
+  }
+
   const index = entries.findIndex((entry) => entry.config.id === configId)
   if (index === -1) {
     return entries
@@ -80,87 +110,82 @@ function patchEntryState(
   return entries
 }
 
-export const connectionEntriesAtom = atom<Connection[]>([])
-const _hasLoadedConnectionsAtom = atom(false)
-
-export const hasLoadedConnectionsAtom = atom((get) =>
-  get(_hasLoadedConnectionsAtom),
+const _connectionEntriesAtom = atom<ConnectionEntriesState>(
+  CONNECTIONS_NOT_LOADED,
 )
+
+export const connectionEntriesAtom = atom((get) => {
+  const entries = get(_connectionEntriesAtom)
+  return entries === CONNECTIONS_NOT_LOADED ? null : entries
+})
 
 export const refreshConnectionsAtom = atom(null, async (_get, set) => {
   const entries = await connApi.list()
-  set(connectionEntriesAtom, entries)
-  set(_hasLoadedConnectionsAtom, true)
+  set(_connectionEntriesAtom, entries)
   return entries
 })
 
 export const ensureConnectionsLoadedAtom = atom(null, async (get, set) => {
-  if (get(_hasLoadedConnectionsAtom)) {
-    return get(connectionEntriesAtom)
+  const entries = get(_connectionEntriesAtom)
+  if (entries !== CONNECTIONS_NOT_LOADED) {
+    return entries
   }
 
   return set(refreshConnectionsAtom)
 })
 
-export const testConnectionAtom = atom(
-  null,
-  async (_get, _set, profile: ConfigProfile) => {
-    await connApi.test(profile)
-  },
-)
+async function runConnectionAction(
+  set: Setter,
+  configId: string,
+  run: () => Promise<ConnState>,
+  optimistic?: Partial<ConnState>,
+): Promise<ConnState> {
+  if (optimistic) {
+    set(_connectionEntriesAtom, (entries) =>
+      patchEntryState(entries, configId, optimistic),
+    )
+  }
+
+  try {
+    const state = await run()
+    set(_connectionEntriesAtom, (entries) =>
+      replaceEntryState(entries, configId, state),
+    )
+    return state
+  } catch (error) {
+    try {
+      await set(refreshConnectionsAtom)
+    } catch {
+      // ignore refresh failure and rethrow the original error
+    }
+    throw error
+  }
+}
 
 export const connectConnectionAtom = atom(
   null,
   async (_get, set, configId: string) => {
-    set(connectionEntriesAtom, (entries) =>
-      patchEntryState(entries, configId, {
-        status: "connecting",
-        schemaStatus: "loading",
-        error: null,
-      }),
-    )
-
-    try {
-      const state = await connApi.connect(configId)
-      set(connectionEntriesAtom, (entries) =>
-        replaceEntryState(entries, configId, state),
-      )
-      return state
-    } catch (error) {
-      try {
-        await set(refreshConnectionsAtom)
-      } catch {
-        // ignore refresh failure and rethrow the original error
-      }
-      throw error
-    }
+    return runConnectionAction(set, configId, () => connApi.connect(configId), {
+      status: "connecting",
+      schemaStatus: "loading",
+      error: null,
+    })
   },
 )
 
 export const disconnectConnectionAtom = atom(
   null,
   async (_get, set, configId: string) => {
-    try {
-      const state = await connApi.disconnect(configId)
-      set(connectionEntriesAtom, (entries) =>
-        replaceEntryState(entries, configId, state),
-      )
-      return state
-    } catch (error) {
-      try {
-        await set(refreshConnectionsAtom)
-      } catch {
-        // ignore refresh failure and rethrow the original error
-      }
-      throw error
-    }
+    return runConnectionAction(set, configId, () =>
+      connApi.disconnect(configId),
+    )
   },
 )
 
 export const refreshConnectionSchemaAtom = atom(
   null,
   async (get, set, configId: string) => {
-    const current = get(connectionEntriesAtom).find(
+    const current = get(connectionEntriesAtom)?.find(
       (entry) => entry.config.id === configId,
     )?.state
 
@@ -168,38 +193,24 @@ export const refreshConnectionSchemaAtom = atom(
       return set(connectConnectionAtom, configId)
     }
 
-    set(connectionEntriesAtom, (entries) =>
-      patchEntryState(entries, configId, {
-        schemaStatus: "loading",
-        error: null,
-      }),
-    )
-
-    try {
-      const state = await connApi.inspect(configId)
-      set(connectionEntriesAtom, (entries) =>
-        replaceEntryState(entries, configId, state),
-      )
-      return state
-    } catch (error) {
-      try {
-        await set(refreshConnectionsAtom)
-      } catch {
-        // ignore refresh failure and rethrow the original error
-      }
-      throw error
-    }
+    return runConnectionAction(set, configId, () => connApi.inspect(configId), {
+      schemaStatus: "loading",
+      error: null,
+    })
   },
 )
 
-export const deleteConnectionConfigAtom = atom(
+export const deleteConnectionAtom = atom(
   null,
   async (_get, set, configId: string) => {
-    await configApi.remove(configId)
-    set(connectionEntriesAtom, (entries) => {
+    await connApi.remove(configId)
+    set(_connectionEntriesAtom, (entries) => {
+      if (entries === CONNECTIONS_NOT_LOADED) {
+        return entries
+      }
+
       const next = entries.filter((entry) => entry.config.id !== configId)
       return next.length === entries.length ? entries : next
     })
-    set(_hasLoadedConnectionsAtom, true)
   },
 )
