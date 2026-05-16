@@ -61,6 +61,8 @@ interface ConnectedPostgresClient {
   closeTransport?: () => void
 }
 
+const POSTGRES_CONNECTION_TIMEOUT_MS = 20_000
+
 function excludeSystemSchemas(column: string): string {
   return `${column} NOT IN ('pg_catalog', 'information_schema') AND ${column} NOT LIKE 'pg_toast%' AND ${column} NOT LIKE 'pg_temp_%'`
 }
@@ -75,6 +77,7 @@ async function connectDirectPostgres(
     user: profile.username,
     password: profile.password,
     database: profile.database,
+    connectionTimeoutMillis: POSTGRES_CONNECTION_TIMEOUT_MS,
   })
 
   await client.connect()
@@ -91,7 +94,7 @@ async function connectPostgresViaSsh(
 
   const ssh = await connectSshClient(profile.ssh)
   const port = parsePort(profile.port, "数据库端口")
-  const stream = new SshTunnelStream(ssh).connect(port, profile.host)
+  const stream = new SshTunnelStream(ssh)
 
   const client = new PgClient({
     host: profile.host,
@@ -99,7 +102,8 @@ async function connectPostgresViaSsh(
     user: profile.username,
     password: profile.password,
     database: profile.database,
-    stream: () => stream,
+    connectionTimeoutMillis: POSTGRES_CONNECTION_TIMEOUT_MS,
+    stream,
   })
 
   try {

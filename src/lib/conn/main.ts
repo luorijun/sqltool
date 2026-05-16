@@ -16,6 +16,7 @@ import {
   QUERY,
   type QueryResult,
   REMOVE,
+  type SshConfig,
   TEST,
   UPDATE,
   type UpdateConfig,
@@ -40,6 +41,32 @@ function createState(): ConnState {
     schemaStatus: "idle",
     schema: null,
     error: null,
+  }
+}
+
+function createConnectionLogContext(profile: ConfigProfile): {
+  driver: ConfigProfile["driver"]
+  host: string
+  port: string
+  database: string
+  username: string
+  sshEnabled: boolean
+  sshHost?: string
+  sshPort?: string
+  sshUsername?: string
+  sshAuthType?: SshConfig["auth"]["type"]
+} {
+  return {
+    driver: profile.driver,
+    host: profile.host,
+    port: profile.port,
+    database: profile.database,
+    username: profile.username,
+    sshEnabled: Boolean(profile.ssh),
+    sshHost: profile.ssh?.host,
+    sshPort: profile.ssh?.port,
+    sshUsername: profile.ssh?.username,
+    sshAuthType: profile.ssh?.auth.type,
   }
 }
 
@@ -68,7 +95,16 @@ async function withSession<T>(
 }
 
 async function test(profile: ConfigProfile): Promise<void> {
-  await withSession(profile, async () => undefined)
+  const logContext = createConnectionLogContext(profile)
+  console.info("[conn] 开始测试连接", logContext)
+
+  try {
+    await withSession(profile, async () => undefined)
+    console.info("[conn] 测试连接成功", logContext)
+  } catch (error) {
+    console.error("[conn] 测试连接失败", logContext, error)
+    throw error
+  }
 }
 
 function list(): Connection[] {
@@ -126,6 +162,12 @@ async function connect(configId: string): Promise<ConnState> {
     throw new Error("连接不存在或已删除")
   }
 
+  const logContext = {
+    configId,
+    ...createConnectionLogContext(config),
+  }
+  console.info("[conn] 开始建立连接", logContext)
+
   const runtime = connections.get(configId) ?? {
     config,
     session: null,
@@ -152,10 +194,16 @@ async function connect(configId: string): Promise<ConnState> {
 
   try {
     const activeSession = await session
+    console.info("[conn] 驱动连接已建立，开始加载数据库结构", logContext)
     const schema = await activeSession.inspect()
     if (runtime.session !== session) {
       return runtime.state
     }
+
+    console.info("[conn] 数据库结构加载完成", {
+      ...logContext,
+      schemaCount: schema.length,
+    })
 
     return updateState(runtime, {
       status: "connected",
@@ -167,6 +215,8 @@ async function connect(configId: string): Promise<ConnState> {
     if (runtime.session !== session) {
       return runtime.state
     }
+
+    console.error("[conn] 建立连接失败", logContext, error)
 
     await disconnect(configId)
     return updateState(runtime, {

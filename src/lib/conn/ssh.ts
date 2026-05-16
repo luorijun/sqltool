@@ -3,7 +3,7 @@ import { access, glob, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import { Duplex, type Duplex as DuplexStream } from "node:stream"
-import SSHConfig, { type Directive, LineType } from "ssh-config"
+import { type Directive, LineType, SSHConfig } from "ssh-config"
 import type { ConnectConfig } from "ssh2"
 import { Client as SshClient } from "ssh2"
 import type { SshConfig, SshPasswordAuth, SshPrivateKeyAuth } from "."
@@ -31,9 +31,29 @@ interface ResolvedSshConnectConfig {
 }
 
 interface LocalSshConfigMatch {
+  host?: string
+  port?: string
+  username?: string
   privateKeyPaths?: string[]
   agent?: string
   agentForward?: boolean
+}
+
+function createSshLogContext(
+  config: Pick<ResolvedSshConnectConfig, "host" | "port" | "username">,
+  authType: SshConfig["auth"]["type"],
+): {
+  host: string
+  port: number
+  username: string
+  authType: SshConfig["auth"]["type"]
+} {
+  return {
+    host: config.host,
+    port: config.port,
+    username: config.username,
+    authType,
+  }
 }
 
 function getSshConfigPath(): string {
@@ -77,10 +97,16 @@ async function resolveLocalSshConfig(
   const privateKeyPaths = toStringList(computed.identityfile)
     .map((value) => expandHomePath(value))
     .filter(Boolean)
+  const host = toSingleValue(computed.hostname)
+  const port = toSingleValue(computed.port)
+  const username = toSingleValue(computed.user)
   const identityAgent = toSingleValue(computed.identityagent)
   const forwardAgent = toBooleanValue(computed.forwardagent)
 
   return {
+    host: host || undefined,
+    port: port || undefined,
+    username: username || undefined,
     privateKeyPaths: privateKeyPaths.length > 0 ? privateKeyPaths : undefined,
     agent:
       identityAgent && identityAgent.toLowerCase() !== "none"
@@ -343,16 +369,25 @@ export async function resolveSshConnectConfig(
 ): Promise<ResolvedSshConnectConfig> {
   const localConfig = await resolveLocalSshConfig(ssh)
 
-  const host = getPreferredTextValue(ssh.host)
+  const host = getPreferredTextValue(localConfig.host, ssh.host)
   if (!host) {
     throw new Error("SSH 主机不能为空")
   }
 
-  const portText = getPreferredTextValue(ssh.port, "22")
-  const username = getPreferredTextValue(ssh.username)
+  const portText = getPreferredTextValue(localConfig.port, ssh.port, "22")
+  const username = getPreferredTextValue(localConfig.username, ssh.username)
   if (!username) {
     throw new Error("SSH 账号不能为空")
   }
+
+  console.info("[conn][ssh] 本地 SSH 配置解析结果", {
+    alias: ssh.host,
+    host,
+    port: portText,
+    username,
+    hasIdentityFile: Boolean(localConfig.privateKeyPaths?.length),
+    hasAgent: Boolean(localConfig.agent),
+  })
 
   const authConfig =
     ssh.auth.type === "password"
@@ -367,24 +402,67 @@ export async function resolveSshConnectConfig(
   }
 }
 
-export function connectSshClient(ssh: SshConfig): Promise<SshClient> {
-  return new Promise(async (resolve, reject) => {
-    let config: ResolvedSshConnectConfig
+export async function connectSshClient(ssh: SshConfig): Promise<SshClient> {
+  let config: ResolvedSshConnectConfig
 
-    try {
-      config = await resolveSshConnectConfig(ssh)
-    } catch (error) {
-      reject(error)
-      return
-    }
+  try {
+    config = await resolveSshConnectConfig(ssh)
+  } catch (error) {
+    console.error(
+      "[conn][ssh] 解析 SSH 配置失败",
+      {
+        host: ssh.host,
+        port: ssh.port || "22",
+        username: ssh.username,
+        authType: ssh.auth.type,
+      },
+      error,
+    )
+    throw error
+  }
 
+  const logContext = createSshLogContext(config, ssh.auth.type)
+  console.info("[conn][ssh] 开始建立 SSH 连接", logContext)
+
+  return new Promise((resolve, reject) => {
     const client = new SshClient()
     let settled = false
+
+    const attachRuntimeLogging = () => {
+      client.on("error", (error) => {
+        console.error("[conn][ssh] SSH 运行时错误", logContext, error)
+      })
+      client.on("end", () => {
+        console.info("[conn][ssh] SSH 连接已结束", logContext)
+      })
+      client.on("close", () => {
+        console.info("[conn][ssh] SSH 连接已关闭", logContext)
+      })
+      client.on("timeout", () => {
+        console.error("[conn][ssh] SSH 连接超时", logContext)
+      })
+    }
 
     const cleanup = () => {
       client.removeAllListeners("ready")
       client.removeAllListeners("error")
+      client.removeAllListeners("close")
+      client.removeAllListeners("end")
+      client.removeAllListeners("timeout")
       client.removeAllListeners("keyboard-interactive")
+    }
+
+    const rejectPending = (message: string, error?: unknown) => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      cleanup()
+
+      const reason = error instanceof Error ? error : new Error(message)
+      console.error(`[conn][ssh] ${message}`, logContext, reason)
+      reject(reason)
     }
 
     if (ssh.auth.type === "password") {
@@ -406,24 +484,31 @@ export function connectSshClient(ssh: SshConfig): Promise<SshClient> {
     client.once("ready", () => {
       settled = true
       cleanup()
+      attachRuntimeLogging()
+      console.info("[conn][ssh] SSH 连接已就绪", logContext)
       resolve(client)
     })
 
     client.once("error", (error) => {
-      if (settled) {
-        return
-      }
+      rejectPending("SSH 连接失败", error)
+    })
 
-      settled = true
-      cleanup()
-      reject(error)
+    client.once("end", () => {
+      rejectPending("SSH 连接在完成握手前已结束")
+    })
+
+    client.once("close", () => {
+      rejectPending("SSH 连接在完成握手前已关闭")
+    })
+
+    client.once("timeout", () => {
+      rejectPending("SSH 连接超时")
     })
 
     try {
       client.connect(toSshConnectConfig(config))
     } catch (error) {
-      cleanup()
-      reject(error)
+      rejectPending("SSH 连接初始化失败", error)
     }
   })
 }
@@ -455,23 +540,32 @@ export class SshTunnelStream extends Duplex {
 
     this.#target = target
     this.#connecting = true
+    console.info("[conn][ssh] 开始创建 SSH 隧道", target)
 
     this.#ssh.forwardOut("127.0.0.1", 0, host, port, (error, channel) => {
       if (error) {
         this.#connecting = false
+        console.error("[conn][ssh] SSH 隧道创建失败", target, error)
         this.destroy(error)
         return
       }
 
       if (!channel) {
         this.#connecting = false
+        console.error("[conn][ssh] SSH 隧道创建失败", target)
         this.destroy(new Error("SSH 隧道创建失败"))
+        return
+      }
+
+      if (this.destroyed) {
+        channel.destroy()
         return
       }
 
       this.#channel = channel
       this.#connecting = false
       this.#connected = true
+      console.info("[conn][ssh] SSH 隧道已建立", target)
 
       channel.on("data", (chunk) => {
         if (!this.push(chunk)) {
@@ -491,7 +585,11 @@ export class SshTunnelStream extends Duplex {
         this.destroy(channelError)
       })
 
-      this.emit("connect")
+      process.nextTick(() => {
+        if (!this.destroyed) {
+          this.emit("connect")
+        }
+      })
     })
 
     return this
@@ -552,6 +650,8 @@ export class SshTunnelStream extends Duplex {
   ): void {
     const channel = this.#channel
     this.#channel = null
+    this.#connecting = false
+    this.#connected = false
 
     if (channel && !channel.destroyed) {
       channel.destroy(error ?? undefined)
