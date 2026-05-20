@@ -18,16 +18,6 @@ import {
 import { EditorView, keymap } from "@codemirror/view"
 import { tags } from "@lezer/highlight"
 import { basicSetup } from "codemirror"
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useImperativeHandle,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react"
 import type { DbDriver } from "@/lib/conn"
 import type { TabEditorState } from "@/lib/tabs"
 
@@ -41,12 +31,8 @@ export interface EditorSelectionStats {
   selectedLines: number
 }
 
-export interface SqlEditorHandle {
-  focus: () => void
-  openSearch: () => void
-}
-
-interface SqlEditorProps {
+interface CreateSqlEditorControllerOptions {
+  host: HTMLDivElement
   value: string
   driver?: DbDriver
   editorState: TabEditorState
@@ -54,6 +40,15 @@ interface SqlEditorProps {
   onEditorStateChange: (editorState: TabEditorState) => void
   onRun: () => void
   onFormat: () => void
+}
+
+export interface SqlEditorController {
+  destroy: () => void
+  focus: () => void
+  openSearch: () => void
+  setDriver: (driver?: DbDriver) => void
+  setValue: (value: string) => void
+  syncViewState: (editorState: TabEditorState) => void
 }
 
 const MONO_FONT_FAMILY =
@@ -260,7 +255,7 @@ function clampSelection(
   }
 }
 
-function getSelectionStats(state: EditorState): EditorSelectionStats {
+export function getSelectionStats(state: EditorState): EditorSelectionStats {
   let selectedChars = 0
   const selectedLines = new Set<number>()
 
@@ -327,214 +322,165 @@ function getEditorSnapshot(
   }
 }
 
-const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
-  function SqlEditor(
-    {
-      value,
-      driver,
-      editorState,
-      onChange,
-      onEditorStateChange,
-      onRun,
-      onFormat,
-    },
-    ref,
-  ) {
-    const viewRef = useRef<EditorView | null>(null)
-    const languageRef = useRef<Compartment | null>(null)
-    const applyingExternalChangeRef = useRef(false)
-    const syncingSnapshotRef = useRef(false)
-    const initialValueRef = useRef(value)
-    const initialDriverRef = useRef(driver)
-    const initialEditorStateRef = useRef(editorState)
-    const [host, setHost] = useState<HTMLDivElement | null>(null)
+export function createSqlEditorController(
+  options: CreateSqlEditorControllerOptions,
+): SqlEditorController {
+  const language = new Compartment()
+  let currentDriver = options.driver
+  let destroyed = false
+  let applyingExternalChange = false
+  let syncingSnapshot = false
 
-    initialValueRef.current = value
-    initialDriverRef.current = driver
-    initialEditorStateRef.current = editorState
+  const initialRanges = getSelectionRanges(
+    options.editorState.selections,
+    options.value.length,
+  )
+  const initialSelection = toSelectionRanges(initialRanges)
 
-    const handleChange = useEffectEvent((nextValue: string) => {
-      onChange(nextValue)
-    })
-
-    const handleEditorStateChange = useEffectEvent(
-      (nextEditorState: TabEditorState) => {
-        onEditorStateChange(nextEditorState)
-      },
-    )
-
-    const handleRun = useEffectEvent(() => {
-      onRun()
-    })
-
-    const handleFormat = useEffectEvent(() => {
-      onFormat()
-    })
-
-    const setHostRef = useCallback((node: HTMLDivElement | null) => {
-      setHost(node)
-    }, [])
-
-    useImperativeHandle(ref, () => ({
-      focus() {
-        viewRef.current?.focus()
-      },
-      openSearch() {
-        const view = viewRef.current
-        if (!view) {
-          return
-        }
-
-        openSearchPanel(view)
-      },
-    }))
-
-    useLayoutEffect(() => {
-      if (!host) {
-        return
-      }
-
-      const language = new Compartment()
-      languageRef.current = language
-
-      const initialRanges = getSelectionRanges(
-        initialEditorStateRef.current.selections,
-        initialValueRef.current.length,
-      )
-      const initialSelection = toSelectionRanges(initialRanges)
-
-      const view = new EditorView({
-        parent: host,
-        state: EditorState.create({
-          doc: initialValueRef.current,
-          selection: EditorSelection.create(
-            initialSelection.ranges,
-            Math.min(
-              initialEditorStateRef.current.mainSelectionIndex,
-              Math.max(0, initialSelection.ranges.length - 1),
-            ),
-          ),
-          extensions: [
-            basicSetup,
-            search({ top: true }),
-            language.of(getSqlExtension(initialDriverRef.current)),
-            sqlEditorTheme,
-            syntaxHighlighting(sqlHighlightStyle),
-            keymap.of([
-              {
-                key: "Mod-Enter",
-                run: () => {
-                  handleRun()
-                  return true
-                },
-              },
-              {
-                key: "Shift-Alt-f",
-                run: () => {
-                  handleFormat()
-                  return true
-                },
-              },
-            ]),
-            EditorView.contentAttributes.of({
-              spellcheck: "false",
-              autocorrect: "off",
-              autocapitalize: "off",
-              "aria-label": "SQL editor",
-            }),
-            EditorView.updateListener.of((update) => {
-              if (syncingSnapshotRef.current) {
-                return
-              }
-
-              if (update.docChanged && !applyingExternalChangeRef.current) {
-                handleChange(update.state.doc.toString())
-              }
-
-              if (
-                update.docChanged ||
-                update.selectionSet ||
-                update.viewportChanged ||
-                update.transactions.some(
-                  (transaction) => transaction.effects.length > 0,
-                )
-              ) {
-                handleEditorStateChange(
-                  getEditorSnapshot(update.state, update.view),
-                )
-              }
-            }),
-          ],
+  const view = new EditorView({
+    parent: options.host,
+    state: EditorState.create({
+      doc: options.value,
+      selection: EditorSelection.create(
+        initialSelection.ranges,
+        Math.min(
+          options.editorState.mainSelectionIndex,
+          Math.max(0, initialSelection.ranges.length - 1),
+        ),
+      ),
+      extensions: [
+        basicSetup,
+        search({ top: true }),
+        language.of(getSqlExtension(options.driver)),
+        sqlEditorTheme,
+        syntaxHighlighting(sqlHighlightStyle),
+        keymap.of([
+          {
+            key: "Mod-Enter",
+            run: () => {
+              options.onRun()
+              return true
+            },
+          },
+          {
+            key: "Shift-Alt-f",
+            run: () => {
+              options.onFormat()
+              return true
+            },
+          },
+        ]),
+        EditorView.contentAttributes.of({
+          spellcheck: "false",
+          autocorrect: "off",
+          autocapitalize: "off",
+          "aria-label": "SQL editor",
         }),
-      })
+        EditorView.updateListener.of((update) => {
+          if (syncingSnapshot) {
+            return
+          }
 
-      const handleScroll = () => {
-        if (syncingSnapshotRef.current) {
-          return
-        }
+          if (update.docChanged && !applyingExternalChange) {
+            options.onChange(update.state.doc.toString())
+          }
 
-        handleEditorStateChange(getEditorSnapshot(view.state, view))
-      }
+          if (
+            update.docChanged ||
+            update.selectionSet ||
+            update.viewportChanged ||
+            update.transactions.some(
+              (transaction) => transaction.effects.length > 0,
+            )
+          ) {
+            options.onEditorStateChange(
+              getEditorSnapshot(update.state, update.view),
+            )
+          }
+        }),
+      ],
+    }),
+  })
 
-      view.scrollDOM.addEventListener("scroll", handleScroll)
-      viewRef.current = view
+  const handleScroll = () => {
+    if (syncingSnapshot) {
+      return
+    }
 
-      const initialSearch = initialEditorStateRef.current.search
-      if (
-        initialSearch.query ||
-        initialSearch.replace ||
-        initialSearch.caseSensitive ||
-        initialSearch.wholeWord ||
-        initialSearch.regexp
-      ) {
-        syncingSnapshotRef.current = true
-        view.dispatch({
-          effects: setSearchQuery.of(
-            new SearchQuery({
-              search: initialSearch.query,
-              replace: initialSearch.replace,
-              caseSensitive: initialSearch.caseSensitive,
-              wholeWord: initialSearch.wholeWord,
-              regexp: initialSearch.regexp,
-            }),
-          ),
-        })
-        syncingSnapshotRef.current = false
-      }
+    options.onEditorStateChange(getEditorSnapshot(view.state, view))
+  }
 
-      if (initialSearch.open) {
-        syncingSnapshotRef.current = true
-        openSearchPanel(view)
-        syncingSnapshotRef.current = false
-      }
+  view.scrollDOM.addEventListener("scroll", handleScroll)
 
-      view.scrollDOM.scrollTop = initialEditorStateRef.current.scroll.top
-      view.scrollDOM.scrollLeft = initialEditorStateRef.current.scroll.left
-      handleEditorStateChange(getEditorSnapshot(view.state, view))
+  const initialSearch = options.editorState.search
+  if (
+    initialSearch.query ||
+    initialSearch.replace ||
+    initialSearch.caseSensitive ||
+    initialSearch.wholeWord ||
+    initialSearch.regexp
+  ) {
+    syncingSnapshot = true
+    view.dispatch({
+      effects: setSearchQuery.of(
+        new SearchQuery({
+          search: initialSearch.query,
+          replace: initialSearch.replace,
+          caseSensitive: initialSearch.caseSensitive,
+          wholeWord: initialSearch.wholeWord,
+          regexp: initialSearch.regexp,
+        }),
+      ),
+    })
+    syncingSnapshot = false
+  }
 
-      return () => {
-        view.scrollDOM.removeEventListener("scroll", handleScroll)
-        languageRef.current = null
-        viewRef.current = null
-        view.destroy()
-      }
-    }, [host])
+  if (initialSearch.open) {
+    syncingSnapshot = true
+    openSearchPanel(view)
+    syncingSnapshot = false
+  }
 
-    useEffect(() => {
-      const view = viewRef.current
-      const language = languageRef.current
-      if (!view || !language) {
+  view.scrollDOM.scrollTop = options.editorState.scroll.top
+  view.scrollDOM.scrollLeft = options.editorState.scroll.left
+  options.onEditorStateChange(getEditorSnapshot(view.state, view))
+
+  return {
+    destroy() {
+      if (destroyed) {
         return
       }
 
+      destroyed = true
+      view.scrollDOM.removeEventListener("scroll", handleScroll)
+      view.destroy()
+    },
+    focus() {
+      if (destroyed) {
+        return
+      }
+
+      view.focus()
+    },
+    openSearch() {
+      if (destroyed) {
+        return
+      }
+
+      openSearchPanel(view)
+    },
+    setDriver(driver) {
+      if (destroyed || Object.is(currentDriver, driver)) {
+        return
+      }
+
+      currentDriver = driver
       view.dispatch({
         effects: language.reconfigure(getSqlExtension(driver)),
       })
-    }, [driver])
-
-    useEffect(() => {
-      const view = viewRef.current
-      if (!view) {
+    },
+    setValue(value) {
+      if (destroyed) {
         return
       }
 
@@ -558,17 +504,15 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
         ),
       )
 
-      applyingExternalChangeRef.current = true
+      applyingExternalChange = true
       view.dispatch({
         changes: { from: 0, to: currentValue.length, insert: value },
         selection: nextSelection,
       })
-      applyingExternalChangeRef.current = false
-    }, [value])
-
-    useEffect(() => {
-      const view = viewRef.current
-      if (!view) {
+      applyingExternalChange = false
+    },
+    syncViewState(editorState) {
+      if (destroyed) {
         return
       }
 
@@ -613,7 +557,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
         return
       }
 
-      syncingSnapshotRef.current = true
+      syncingSnapshot = true
 
       if (selectionChanged) {
         view.dispatch({ selection: nextSelection })
@@ -646,11 +590,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
         view.scrollDOM.scrollLeft = editorState.scroll.left
       }
 
-      syncingSnapshotRef.current = false
-    }, [editorState])
-
-    return <div ref={setHostRef} className="size-full min-w-0 min-h-0" />
-  },
-)
-
-export { SqlEditor, getSelectionStats }
+      syncingSnapshot = false
+    },
+  }
+}

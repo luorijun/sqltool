@@ -1,5 +1,5 @@
 import { ResizeContainer } from "@/components/ui/resizer"
-import EditorArea from "./editor-area"
+import CoreArea from "./code-area"
 import LoggerArea from "./logger-area"
 import TableArea from "./table-area"
 
@@ -28,7 +28,7 @@ export default function TabPage() {
           minRemainingSize={MIN_CODE_WIDTH}
           className="size-full min-h-0"
           dividerLabel="左右拖拽调节日志区宽度"
-          first={<EditorArea />}
+          first={<CoreArea />}
           second={<LoggerArea />}
         />
       }

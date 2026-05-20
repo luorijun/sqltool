@@ -13,7 +13,7 @@ import {
   activeTabIdAtom,
   runActiveTabSqlAtom,
 } from "@/lib/tabs/renderer"
-import { AreaStatusBar, AreaToolbar } from "./bars"
+import { AreaStatusBar, AreaToolbar } from "../bars"
 import { SqlEditor, type SqlEditorHandle } from "./sql-editor"
 
 const FORMAT_LANGUAGE_MAP: Record<DbDriver, SqlLanguage> = {
@@ -94,7 +94,7 @@ function isSameEditorState(
   )
 }
 
-export default function EditorArea() {
+export default function CoreArea() {
   const tabId = useAtomValue(activeTabIdAtom)
   const config = useAtomValue(activeTabConfigAtom)
 
