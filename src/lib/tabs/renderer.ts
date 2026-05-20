@@ -1,8 +1,8 @@
 import { atom } from "jotai"
-import { unwrap } from "jotai/utils"
+import { selectAtom } from "jotai/utils"
 import type { Getter, Setter } from "jotai/vanilla"
-import type { Config, Connection, QueryResult } from "@/lib/conn"
-import connApi from "@/lib/conn/renderer"
+import type { Config, QueryResult } from "@/lib/conn"
+import connApi, { connectionEntriesAtom } from "@/lib/conn/renderer"
 import type {
   Tab,
   TabEditorState,
@@ -51,22 +51,22 @@ const activeTabAtom = atom<Tab>((get) => {
 })
 
 // 连接配置
-const _activeTabConnectionAtom = atom<Promise<Connection>>(async (get) => {
-  const id = get(activeTabAtom).configId
-  if (!id) {
-    throw new Error("活动标签页未绑定数据库连接")
-  }
-  const connection = await connApi.get(id)
-  if (!connection) {
-    throw new Error("活动标签页绑定的数据库连接不存在")
-  }
-  return connection
-})
+const activeTabConfigIdAtom = selectAtom(
+  activeTabAtom,
+  (tab) => tab.configId,
+  Object.is,
+)
 
-const _activeTabConfigAtom = atom<Promise<Config>>(async (get) => {
-  return (await get(_activeTabConnectionAtom)).config
+export const activeTabConfigAtom = atom<Config | undefined>((get) => {
+  const configId = get(activeTabConfigIdAtom)
+  if (!configId) {
+    return undefined
+  }
+
+  return get(connectionEntriesAtom)?.find(
+    (connection) => connection.config.id === configId,
+  )?.config
 })
-export const activeTabConfigAtom = unwrap(_activeTabConfigAtom)
 
 // 表格 ui 状态
 export const activeTabTableStateAtom = atom(
