@@ -3,13 +3,10 @@ import { access, glob, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import { Duplex, type Duplex as DuplexStream } from "node:stream"
-import { type Directive, LineType, SSHConfig } from "ssh-config"
-import type { ConnectConfig } from "ssh2"
+import { LineType, SSHConfig } from "ssh-config"
 import { Client as SshClient } from "ssh2"
-import type { SshConfig, SshPasswordAuth, SshPrivateKeyAuth } from "."
+import type { SshConfig, SshPrivateKeyAuth } from "."
 import { parsePort } from "./driver"
-
-type DirectiveValue = Directive["value"]
 
 const DEFAULT_PRIVATE_KEY_FILES = [
   "id_ed25519",
@@ -39,10 +36,6 @@ interface LocalSshConfigMatch {
   agentForward?: boolean
 }
 
-function getSshConfigPath(): string {
-  return path.join(homedir(), ".ssh", "config")
-}
-
 function expandHomePath(filePath: string): string {
   if (filePath === "~") {
     return homedir()
@@ -58,7 +51,7 @@ function expandHomePath(filePath: string): string {
 async function resolveLocalSshConfig(
   ssh: SshConfig,
 ): Promise<LocalSshConfigMatch> {
-  const configPath = getSshConfigPath()
+  const configPath = path.join(homedir(), ".ssh", "config")
   if (!(await canReadFile(configPath))) {
     return {}
   }
@@ -77,25 +70,67 @@ async function resolveLocalSshConfig(
     throw new Error("SSH 配置解析失败")
   }
 
-  const privateKeyPaths = toStringList(computed.identityfile)
-    .map((value) => expandHomePath(value))
-    .filter(Boolean)
-  const host = toSingleValue(computed.hostname)
-  const port = toSingleValue(computed.port)
-  const username = toSingleValue(computed.user)
-  const identityAgent = toSingleValue(computed.identityagent)
-  const forwardAgent = toBooleanValue(computed.forwardagent)
+  const pickText = (
+    value: string | string[] | undefined,
+  ): string | undefined => {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const trimmed = item.trim()
+        if (trimmed) {
+          return trimmed
+        }
+      }
+
+      return undefined
+    }
+
+    const trimmed = value?.trim()
+    return trimmed || undefined
+  }
+
+  const privateKeyPaths: string[] = []
+  const identityFiles = Array.isArray(computed.identityfile)
+    ? computed.identityfile
+    : computed.identityfile
+      ? [computed.identityfile]
+      : []
+
+  for (const identityFile of identityFiles) {
+    for (const segment of identityFile.split(/\s+/)) {
+      const filePath = expandHomePath(segment.trim())
+      if (filePath) {
+        privateKeyPaths.push(filePath)
+      }
+    }
+  }
+
+  const host = pickText(computed.hostname)
+  const port = pickText(computed.port)
+  const username = pickText(computed.user)
+  const identityAgent = pickText(computed.identityagent)
+  const forwardAgentText = pickText(computed.forwardagent)
+  let agentForward: boolean | undefined
+
+  if (forwardAgentText) {
+    const value = forwardAgentText.toLowerCase()
+
+    if (["yes", "true", "on"].includes(value)) {
+      agentForward = true
+    } else if (["no", "false", "off"].includes(value)) {
+      agentForward = false
+    }
+  }
 
   return {
-    host: host || undefined,
-    port: port || undefined,
-    username: username || undefined,
+    host,
+    port,
+    username,
     privateKeyPaths: privateKeyPaths.length > 0 ? privateKeyPaths : undefined,
     agent:
       identityAgent && identityAgent.toLowerCase() !== "none"
         ? expandHomePath(identityAgent)
         : undefined,
-    agentForward: forwardAgent,
+    agentForward,
   }
 }
 
@@ -119,125 +154,50 @@ async function readExpandedSshConfig(
     throw new Error(`SSH 配置文件解析失败: ${resolvedPath}`)
   }
 
+  const baseDir = path.dirname(resolvedPath)
   let output = ""
 
   for (const line of parsed) {
-    if (line.type !== LineType.DIRECTIVE || !isIncludeDirective(line)) {
-      output += stringifySshConfigLine(line)
+    if (
+      line.type === LineType.DIRECTIVE &&
+      line.param.toLowerCase() === "include"
+    ) {
+      const patterns = (
+        typeof line.value === "string"
+          ? line.value
+          : line.value.map((item) => item.val).join(" ")
+      )
+        .split(/\s+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+
+      for (const rawPattern of patterns) {
+        const pattern = expandHomePath(rawPattern)
+        const absolutePattern = path.isAbsolute(pattern)
+          ? pattern
+          : path.resolve(baseDir, pattern)
+        const includePaths: string[] = []
+
+        for await (const match of glob(absolutePattern)) {
+          includePaths.push(path.resolve(match))
+        }
+
+        includePaths.sort((a, b) => a.localeCompare(b))
+
+        for (const includePath of includePaths) {
+          output += await readExpandedSshConfig(includePath, visited)
+        }
+      }
+
       continue
     }
 
-    for (const pattern of splitDirectiveValues(line.value)) {
-      const includePaths = await resolveIncludeMatches(
-        pattern,
-        path.dirname(resolvedPath),
-      )
-
-      for (const includePath of includePaths) {
-        output += await readExpandedSshConfig(includePath, visited)
-      }
-    }
+    const fragment = new SSHConfig()
+    fragment.push(line)
+    output += SSHConfig.stringify(fragment)
   }
 
   return output
-}
-
-function isIncludeDirective(line: Directive): boolean {
-  return line.param.toLowerCase() === "include"
-}
-
-async function resolveIncludeMatches(
-  rawPattern: string,
-  baseDir: string,
-): Promise<string[]> {
-  const pattern = expandHomePath(rawPattern)
-  const absolutePattern = path.isAbsolute(pattern)
-    ? pattern
-    : path.resolve(baseDir, pattern)
-  const matches: string[] = []
-
-  for await (const match of glob(absolutePattern)) {
-    matches.push(path.resolve(match))
-  }
-
-  return matches.sort((a, b) => a.localeCompare(b))
-}
-
-function stringifySshConfigLine(line: SSHConfig[number]): string {
-  const fragment = new SSHConfig()
-  fragment.push(line)
-  return SSHConfig.stringify(fragment)
-}
-
-function normalizeDirectiveValue(value: DirectiveValue): string {
-  if (typeof value === "string") {
-    return value
-  }
-
-  return value.map((item) => item.val).join(" ")
-}
-
-function splitDirectiveValues(value: DirectiveValue): string[] {
-  return normalizeDirectiveValue(value)
-    .split(/\s+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-function toSingleValue(
-  value: string | string[] | undefined,
-): string | undefined {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const trimmed = item.trim()
-      if (trimmed) {
-        return trimmed
-      }
-    }
-
-    return undefined
-  }
-
-  const trimmed = value?.trim()
-  return trimmed || undefined
-}
-
-function toStringList(value: string | string[] | undefined): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => splitDirectiveValues(item))
-  }
-
-  return value ? splitDirectiveValues(value) : []
-}
-
-function toBooleanValue(
-  value: string | string[] | undefined,
-): boolean | undefined {
-  const text = toSingleValue(value)?.toLowerCase()
-  if (!text) {
-    return undefined
-  }
-
-  if (["yes", "true", "on"].includes(text)) {
-    return true
-  }
-
-  if (["no", "false", "off"].includes(text)) {
-    return false
-  }
-
-  return undefined
-}
-
-function getPreferredTextValue(...values: Array<string | undefined>): string {
-  for (const value of values) {
-    const trimmed = value?.trim()
-    if (trimmed) {
-      return trimmed
-    }
-  }
-
-  return ""
 }
 
 async function canReadFile(filePath: string): Promise<boolean> {
@@ -249,70 +209,29 @@ async function canReadFile(filePath: string): Promise<boolean> {
   }
 }
 
-async function resolveDefaultPrivateKeyPath(): Promise<string> {
-  const sshDir = path.join(homedir(), ".ssh")
-
-  for (const fileName of DEFAULT_PRIVATE_KEY_FILES) {
-    const filePath = path.join(sshDir, fileName)
-    if (await canReadFile(filePath)) {
-      return filePath
-    }
-  }
-
-  throw new Error("未找到默认私钥文件")
-}
-
-async function readPrivateKey(filePath: string): Promise<string> {
-  try {
-    return await readFile(filePath, "utf8")
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
-      throw new Error("私钥文件不存在")
-    }
-
-    throw new Error("私钥文件不可读取")
-  }
-}
-
-function resolvePasswordAuth(
-  auth: SshPasswordAuth,
-): Pick<ResolvedSshConnectConfig, "password" | "tryKeyboard"> {
-  const password = auth.password.trim()
-  if (!password) {
-    throw new Error("SSH 密码不能为空")
-  }
-
-  return {
-    password,
-    tryKeyboard: true,
-  }
-}
-
 async function resolvePrivateKeyAuth(
   auth: SshPrivateKeyAuth,
-  localConfig: Awaited<ReturnType<typeof resolveLocalSshConfig>>,
+  localConfig: LocalSshConfigMatch,
 ): Promise<
   Pick<
     ResolvedSshConnectConfig,
     "privateKey" | "passphrase" | "agent" | "agentForward"
   >
 > {
-  const agent = localConfig.agent?.trim() || process.env.SSH_AUTH_SOCK?.trim()
-  let privateKeyPath = ""
+  const agent = localConfig.agent || process.env.SSH_AUTH_SOCK?.trim()
+  const privateKeyCandidates = [...(localConfig.privateKeyPaths ?? [])]
+  const sshDir = path.join(homedir(), ".ssh")
 
-  try {
-    privateKeyPath = await resolveReadablePrivateKeyPath(
-      localConfig.privateKeyPaths,
-    )
-  } catch {
-    privateKeyPath = ""
+  for (const fileName of DEFAULT_PRIVATE_KEY_FILES) {
+    privateKeyCandidates.push(path.join(sshDir, fileName))
   }
 
-  if (!privateKeyPath) {
-    try {
-      privateKeyPath = await resolveDefaultPrivateKeyPath()
-    } catch {
-      privateKeyPath = ""
+  let privateKeyPath = ""
+
+  for (const filePath of privateKeyCandidates) {
+    if (await canReadFile(filePath)) {
+      privateKeyPath = filePath
+      break
     }
   }
 
@@ -320,42 +239,25 @@ async function resolvePrivateKeyAuth(
     throw new Error("未找到可用的 SSH 私钥或 agent")
   }
 
-  return {
-    privateKey: privateKeyPath
-      ? await readPrivateKey(privateKeyPath)
-      : undefined,
-    passphrase: auth.passphrase?.trim() || undefined,
-    agent: agent || undefined,
-    agentForward: localConfig.agentForward,
-  }
-}
+  let privateKey: string | undefined
 
-async function resolveReadablePrivateKeyPath(
-  filePaths: string[] | undefined,
-): Promise<string> {
-  for (const filePath of filePaths ?? []) {
-    if (await canReadFile(filePath)) {
-      return filePath
+  if (privateKeyPath) {
+    try {
+      privateKey = await readFile(privateKeyPath, "utf8")
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+        throw new Error("私钥文件不存在")
+      }
+
+      throw new Error("私钥文件不可读取")
     }
   }
 
-  throw new Error("SSH 私钥文件不可读取")
-}
-
-function toSshConnectConfig(config: ResolvedSshConnectConfig): ConnectConfig {
   return {
-    host: config.host,
-    port: config.port,
-    username: config.username,
-    password: config.password,
-    privateKey: config.privateKey,
-    passphrase: config.passphrase,
-    agent: config.agent,
-    agentForward: config.agentForward,
-    tryKeyboard: config.tryKeyboard,
-    keepaliveInterval: 10_000,
-    keepaliveCountMax: 3,
-    readyTimeout: 20_000,
+    privateKey,
+    passphrase: auth.passphrase?.trim() || undefined,
+    agent: agent || undefined,
+    agentForward: localConfig.agentForward,
   }
 }
 
@@ -364,33 +266,43 @@ export async function resolveSshConnectConfig(
 ): Promise<ResolvedSshConnectConfig> {
   const localConfig = await resolveLocalSshConfig(ssh)
 
-  const host = getPreferredTextValue(localConfig.host, ssh.host)
+  const host = localConfig.host || ssh.host.trim()
   if (!host) {
     throw new Error("SSH 主机不能为空")
   }
 
-  const portText = getPreferredTextValue(localConfig.port, ssh.port, "22")
-  const username = getPreferredTextValue(localConfig.username, ssh.username)
+  const portText = localConfig.port || ssh.port.trim() || "22"
+  const port = parsePort(portText, "SSH 端口")
+  const username = localConfig.username || ssh.username.trim()
   if (!username) {
     throw new Error("SSH 账号不能为空")
   }
 
-  const authConfig =
-    ssh.auth.type === "password"
-      ? resolvePasswordAuth(ssh.auth)
-      : await resolvePrivateKeyAuth(ssh.auth, localConfig)
+  if (ssh.auth.type === "password") {
+    const password = ssh.auth.password.trim()
+    if (!password) {
+      throw new Error("SSH 密码不能为空")
+    }
+
+    return {
+      host,
+      port,
+      username,
+      password,
+      tryKeyboard: true,
+    }
+  }
 
   return {
     host,
-    port: parsePort(portText, "SSH 端口"),
+    port,
     username,
-    ...authConfig,
+    ...(await resolvePrivateKeyAuth(ssh.auth, localConfig)),
   }
 }
 
 export async function connectSshClient(ssh: SshConfig): Promise<SshClient> {
-  let config: ResolvedSshConnectConfig
-  config = await resolveSshConnectConfig(ssh)
+  const config = await resolveSshConnectConfig(ssh)
 
   return new Promise((resolve, reject) => {
     const client = new SshClient()
@@ -418,7 +330,7 @@ export async function connectSshClient(ssh: SshConfig): Promise<SshClient> {
     }
 
     if (ssh.auth.type === "password") {
-      const password = ssh.auth.password.trim()
+      const password = config.password ?? ""
 
       client.on(
         "keyboard-interactive",
@@ -456,7 +368,12 @@ export async function connectSshClient(ssh: SshConfig): Promise<SshClient> {
     })
 
     try {
-      client.connect(toSshConnectConfig(config))
+      client.connect({
+        ...config,
+        keepaliveInterval: 10_000,
+        keepaliveCountMax: 3,
+        readyTimeout: 20_000,
+      })
     } catch (error) {
       rejectPending("SSH 连接初始化失败", error)
     }
