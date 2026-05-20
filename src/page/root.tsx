@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/sonner"
 import Main from "./main"
 import Sidebar from "./sidebar"
 
-const DEFAULT_NAV_WIDTH = 256
+const DEFAULT_NAV_WIDTH = 300
 const MIN_NAV_WIDTH = 100
 const MIN_MAIN_WIDTH = 500
 

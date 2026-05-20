@@ -8,7 +8,9 @@ import {
   LogIn,
   LogOut,
   MoreHorizontal,
+  Pause,
   Pencil,
+  Play,
   RefreshCw,
   Server,
   Trash2,
@@ -27,8 +29,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { Config, Connection } from "@/lib/conn"
 import {
-  connectionActionAtom,
   connectConnectionAtom,
+  connectionActionAtom,
   connectionEntriesAtom,
   deleteConnectionAtom,
   disconnectConnectionAtom,
@@ -115,7 +117,9 @@ function ConnectionItem(props: {
   const onRefreshSchema = async () => {
     setExpanded(true)
     try {
-      const connection = await refreshConnectionSchema(props.connection.config.id)
+      const connection = await refreshConnectionSchema(
+        props.connection.config.id,
+      )
       if (!connection.error) {
         toast.success(`"${name}" 结构已刷新`)
       } else {
@@ -150,157 +154,152 @@ function ConnectionItem(props: {
 
   return (
     <div className="flex flex-col pl-2 pr-3.5 gap-1">
-      <div className={cn("sticky top-0 bg-sidebar z-10 flex-none")}>
-        <div className="size-full rounded-md hover:bg-primary/10 transition-colors duration-250 ease-in-out group flex items-stretch p-1.5 gap-1">
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left"
-            onClick={() => setExpanded((v) => !v)}
-          >
-            <span className="text-muted-foreground/60">
-              {expanded ? (
-                <ChevronDown className="size-4" />
-              ) : (
-                <ChevronRight className="size-4" />
-              )}
-            </span>
-
-            <span className="text-muted-foreground group-hover:text-foreground">
-              <DriverIcon driver={props.connection.config.driver} />
-            </span>
-
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium leading-tight">
-                {props.connection.config.name ?? "未命名"}
-                <ConnectionStatusBadge
-                  connected={props.connection.connected}
-                  error={props.connection.error}
-                  action={props.action}
-                />
-              </p>
-              <p className="truncate text-xs leading-tight text-muted-foreground">
-                {props.connection.config.database}
-                <span className="mx-1">·</span>
-                {driverLabel[props.connection.config.driver] ??
-                  props.connection.config.driver}
-                {props.connection.config.ssh ? " · SSH" : ""}
-              </p>
-            </div>
-          </button>
-
-          <Button
-            variant={isConnected ? "ghost" : "secondary"}
-            size="icon-xs"
-            className="shrink-0"
-            disabled={isBusy}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (isConnected) {
-                handleDisconnect().catch((err) => {
-                  toast.error(
-                    err instanceof Error ? err.message : "断开连接失败",
-                  )
-                })
-              } else {
-                handleConnect().catch((err) => {
-                  toast.error(err instanceof Error ? err.message : "连接失败")
-                })
-              }
-            }}
-          >
-            {isBusy ? (
-              <LoaderCircle className="size-3 animate-spin" />
-            ) : isConnected ? (
-              <LogOut className="size-3" />
+      <div className="sticky top-0 z-10 flex-none bg-sidebar group flex items-stretch">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center p-2 gap-2 rounded-lg text-left hover:bg-primary/5 transition-colors duration-150 ease-in-out"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <span className="text-muted-foreground/60">
+            {expanded ? (
+              <ChevronDown className="size-4" />
             ) : (
-              <LogIn className="size-3" />
+              <ChevronRight className="size-4" />
             )}
-          </Button>
+          </span>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="ghost" size="icon-xs" className="shrink-0" />
-              }
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MoreHorizontal />
-            </DropdownMenuTrigger>
+          <span className="text-muted-foreground group-hover:text-foreground">
+            <DriverIcon driver={props.connection.config.driver} />
+          </span>
 
-            <DropdownMenuContent side="right" align="start">
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (isConnected) {
-                    handleDisconnect().catch((err) => {
-                      toast.error(
-                        err instanceof Error ? err.message : "断开连接失败",
-                      )
-                    })
-                  } else {
-                    handleConnect().catch((err) => {
-                      toast.error(err instanceof Error ? err.message : "连接失败")
-                    })
-                  }
-                }}
-                disabled={isBusy}
-              >
-                {isConnected ? <LogOut /> : <LogIn />}
-                {isConnected ? "断开连接" : "连接"}
-              </DropdownMenuItem>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium leading-tight">
+              {props.connection.config.name ?? "未命名"}
+              <ConnectionStatusBadge
+                connected={props.connection.connected}
+                error={props.connection.error}
+                action={props.action}
+              />
+            </p>
+            <p className="truncate text-xs leading-tight text-muted-foreground">
+              {props.connection.config.database}
+              <span className="mx-1">·</span>
+              {driverLabel[props.connection.config.driver] ??
+                props.connection.config.driver}
+              {props.connection.config.ssh ? " · SSH" : ""}
+            </p>
+          </div>
+        </button>
 
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRefreshSchema().catch((err) => {
+        <Button
+          variant="ghost"
+          className="flex-none h-auto px-2"
+          disabled={isBusy}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (isConnected) {
+              handleDisconnect().catch((err) => {
+                toast.error(err instanceof Error ? err.message : "断开连接失败")
+              })
+            } else {
+              handleConnect().catch((err) => {
+                toast.error(err instanceof Error ? err.message : "连接失败")
+              })
+            }
+          }}
+        >
+          {isBusy ? (
+            <LoaderCircle className="size-3 animate-spin" />
+          ) : isConnected ? (
+            <Pause className="size-3" />
+          ) : (
+            <Play className="size-3" />
+          )}
+        </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="ghost" className="flex-none h-auto px-2" />
+            }
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal />
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent side="right" align="start">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                if (isConnected) {
+                  handleDisconnect().catch((err) => {
                     toast.error(
-                      err instanceof Error ? err.message : "刷新数据库结构失败",
+                      err instanceof Error ? err.message : "断开连接失败",
                     )
                   })
-                }}
-                disabled={isBusy}
-              >
-                <RefreshCw />
-                刷新结构
-              </DropdownMenuItem>
+                } else {
+                  handleConnect().catch((err) => {
+                    toast.error(err instanceof Error ? err.message : "连接失败")
+                  })
+                }
+              }}
+              disabled={isBusy}
+            >
+              {isConnected ? <LogOut /> : <LogIn />}
+              {isConnected ? "断开连接" : "连接"}
+            </DropdownMenuItem>
 
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onNewQuery()
-                }}
-              >
-                <FilePlus2 />
-                新建查询
-              </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                onRefreshSchema().catch((err) => {
+                  toast.error(
+                    err instanceof Error ? err.message : "刷新数据库结构失败",
+                  )
+                })
+              }}
+              disabled={isBusy}
+            >
+              <RefreshCw />
+              刷新结构
+            </DropdownMenuItem>
 
-              <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                onNewQuery()
+              }}
+            >
+              <FilePlus2 />
+              新建查询
+            </DropdownMenuItem>
 
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  props.onEdit()
-                }}
-              >
-                <Pencil />
-                编辑
-              </DropdownMenuItem>
+            <DropdownMenuSeparator />
 
-              <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                props.onEdit()
+              }}
+            >
+              <Pencil />
+              编辑
+            </DropdownMenuItem>
 
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete()
-                }}
-              >
-                <Trash2 />
-                删除
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
+            >
+              <Trash2 />
+              删除
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {expanded && (
