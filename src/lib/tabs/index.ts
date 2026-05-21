@@ -1,12 +1,3 @@
-export type Tab = {
-  id: string
-  label: string
-  configId?: string
-  table: TabTableState
-  editor: TabEditorState
-  logger: TabLoggerState
-}
-
 export interface TabTableState {
   status: "idle" | "running" | "success" | "error"
   error: string | null
@@ -49,12 +40,6 @@ export interface TabEditorState {
 }
 
 export type TabLogStatus = "success" | "error" | "running"
-export interface TabLoggerState {
-  query: string
-  statuses: TabLogStatus[]
-  followTail: boolean
-  logs: TabLogEntry[]
-}
 
 export interface TabLogEntry {
   id: string

@@ -91,11 +91,13 @@ export function ResultTable() {
     },
     onSortingChange: (updater: Updater<SortingState>) => {
       setTableState((current) => ({
+        ...current,
         sorting: functionalUpdate(updater, current.sorting as SortingState),
       }))
     },
     onColumnVisibilityChange: (updater: Updater<VisibilityState>) => {
       setTableState((current) => ({
+        ...current,
         visibility: functionalUpdate(
           updater,
           current.visibility as VisibilityState,
@@ -104,11 +106,13 @@ export function ResultTable() {
     },
     onColumnSizingChange: (updater: Updater<ColumnSizingState>) => {
       setTableState((current) => ({
+        ...current,
         sizing: functionalUpdate(updater, current.sizing as ColumnSizingState),
       }))
     },
     onColumnPinningChange: (updater: Updater<ColumnPinningState>) => {
       setTableState((current) => ({
+        ...current,
         pinning: normalizeColumnPinning(
           functionalUpdate(updater, current.pinning as ColumnPinningState),
         ),
@@ -126,10 +130,10 @@ export function ResultTable() {
         current.selected?.rowId === rowId &&
         current.selected.colId === columnId
       ) {
-        return null
+        return current
       }
 
-      return { selected: { rowId, colId: columnId } }
+      return { ...current, selected: { rowId, colId: columnId } }
     })
   }
 

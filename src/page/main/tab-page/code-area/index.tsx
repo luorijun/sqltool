@@ -109,11 +109,11 @@ export default function CoreArea() {
   const handleEditorStateChange = (nextEditorState: TabEditorState) => {
     setState((current) => {
       if (isSameEditorState(current, nextEditorState)) {
-        return null
+        return current
       }
 
       return {
-        text: current.text,
+        ...current,
         cursor: nextEditorState.cursor,
         selections: nextEditorState.selections,
         mainSelectionIndex: nextEditorState.mainSelectionIndex,
@@ -138,10 +138,7 @@ export default function CoreArea() {
       })
 
       if (formatted !== state.text) {
-        setState((current) => ({
-          ...current,
-          text: formatted,
-        }))
+        setState((current) => ({ ...current, text: formatted }))
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "SQL 格式化失败")
@@ -203,12 +200,7 @@ export default function CoreArea() {
           value={state.text}
           driver={config?.driver}
           editorState={state}
-          onChange={(text) =>
-            setState((current) => ({
-              ...current,
-              text,
-            }))
-          }
+          onChange={(text) => setState((current) => ({ ...current, text }))}
           onEditorStateChange={handleEditorStateChange}
           onRun={() => runSql()}
           onFormat={handleFormat}

@@ -395,6 +395,7 @@ export default function LoggerArea() {
 
   const handleToggleStatus = (status: TabLogStatus) => {
     setState((current) => ({
+      ...current,
       statuses: current.statuses.includes(status)
         ? current.statuses.filter((item) => item !== status)
         : [...current.statuses, status],
@@ -431,7 +432,12 @@ export default function LoggerArea() {
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={state.query}
-            onChange={(event) => setState({ query: event.target.value })}
+            onChange={(event) =>
+              setState((current) => ({
+                ...current,
+                query: event.target.value,
+              }))
+            }
             className="h-7 rounded-md pr-2 pl-7 text-xs"
             placeholder="搜索 SQL / 摘要 / 详情"
             aria-label="搜索日志"
@@ -441,7 +447,12 @@ export default function LoggerArea() {
         <StatusFilterMenu
           selected={state.statuses}
           onToggle={handleToggleStatus}
-          onClear={() => setState({ statuses: [] })}
+          onClear={() =>
+            setState((current) => ({
+              ...current,
+              statuses: [],
+            }))
+          }
         />
 
         <Button
@@ -451,7 +462,12 @@ export default function LoggerArea() {
           title={
             state.followTail ? "已开启自动跟随最新日志" : "开启自动跟随最新日志"
           }
-          onClick={() => setState({ followTail: !state.followTail })}
+          onClick={() =>
+            setState((current) => ({
+              ...current,
+              followTail: !current.followTail,
+            }))
+          }
         >
           <ChevronDown className="size-3.5" />
         </Button>

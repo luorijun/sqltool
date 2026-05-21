@@ -1,12 +1,12 @@
 import { useAtomValue } from "jotai"
-import { hasTabsAtom } from "@/lib/tabs/renderer"
+import { hasActiveTabAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import { EmptyPage } from "./empty-page"
 import { TabBar } from "./tab-bar"
 import TabPage from "./tab-page"
 
 export default function Main(props: { className?: string }) {
-  const hasTabs = useAtomValue(hasTabsAtom)
+  const hasActiveTab = useAtomValue(hasActiveTabAtom)
   return (
     <main
       className={cn(
@@ -15,7 +15,7 @@ export default function Main(props: { className?: string }) {
       )}
     >
       <TabBar />
-      {hasTabs ? <TabPage /> : <EmptyPage />}
+      {hasActiveTab ? <TabPage /> : <EmptyPage />}
     </main>
   )
 }
