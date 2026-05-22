@@ -1,6 +1,7 @@
 import path from "node:path"
 import { app, BrowserWindow } from "electron"
 import started from "electron-squirrel-startup"
+import { updateElectronApp } from "update-electron-app"
 import { registerConn } from "./lib/conn/main"
 import { registerSerialize } from "./lib/serialize/main"
 
@@ -9,7 +10,7 @@ const createWindow = () => {
     width: 1600,
     height: 900,
     center: true,
-    title: "SQLTool",
+    title: "SqlTool",
     titleBarStyle: "hidden",
     backgroundColor: "#fafafa",
     titleBarOverlay: {
@@ -31,13 +32,25 @@ const createWindow = () => {
   }
 }
 
-if (started) {
-  app.quit()
-} else {
+function main() {
+  if (started) {
+    app.quit()
+    return
+  }
+
   registerConn()
   registerSerialize()
 
-  app.once("ready", createWindow)
+  app.once("ready", () => {
+    createWindow()
+    if (app.isPackaged && ["win32", "darwin"].includes(process.platform)) {
+      try {
+        updateElectronApp()
+      } catch (e) {
+        console.error("Failed to update Electron app:", e)
+      }
+    }
+  })
 
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
@@ -51,3 +64,5 @@ if (started) {
     }
   })
 }
+
+main()
