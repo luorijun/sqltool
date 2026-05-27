@@ -21,7 +21,6 @@
         "@electron-forge/maker-rpm": "^7.10.2",
         "@electron-forge/maker-squirrel": "^7.10.2",
         "@electron-forge/maker-zip": "^7.10.2",
-        "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
         "@electron-forge/plugin-fuses": "^7.10.2",
         "@electron-forge/plugin-vite": "^7.10.2",
         "@electron-forge/publisher-github": "^7.11.2",
@@ -156,9 +155,7 @@
 
     "@electron-forge/maker-zip": ["@electron-forge/maker-zip@7.10.2", "https://registry.npmmirror.com/@electron-forge/maker-zip/-/maker-zip-7.10.2.tgz", { "dependencies": { "@electron-forge/maker-base": "7.10.2", "@electron-forge/shared-types": "7.10.2", "cross-zip": "^4.0.0", "fs-extra": "^10.0.0", "got": "^11.8.5" } }, "sha512-APRqVPM+O1rj4O7sk5f8tqJpS5UgxcUJEsCnXN4JRpdRvsOlMopzYZdazlCLH9l7S+r4ZKirjtMluIGeYq8YOg=="],
 
-    "@electron-forge/plugin-auto-unpack-natives": ["@electron-forge/plugin-auto-unpack-natives@7.11.2", "https://registry.npmmirror.com/@electron-forge/plugin-auto-unpack-natives/-/plugin-auto-unpack-natives-7.11.2.tgz", { "dependencies": { "@electron-forge/plugin-base": "7.11.2", "@electron-forge/shared-types": "7.11.2" } }, "sha512-ktMQxO80vGjqVXVSFha+kWJscBmJaWud4Kqu7rKkbrCphr1zqaG+8EDNbkpGzV/+mhKOLuA5qII1hJ69gFNpdA=="],
-
-    "@electron-forge/plugin-base": ["@electron-forge/plugin-base@7.11.2", "https://registry.npmmirror.com/@electron-forge/plugin-base/-/plugin-base-7.11.2.tgz", { "dependencies": { "@electron-forge/shared-types": "7.11.2" } }, "sha512-tIFzEE2+D9NnCAn/rLwSkh8H59IqN+G973JNl7xmCzquO6qa7/veitZOQFGO79Zmmgkc8R/fmiCbh7LIdLS9Tg=="],
+    "@electron-forge/plugin-base": ["@electron-forge/plugin-base@7.10.2", "https://registry.npmmirror.com/@electron-forge/plugin-base/-/plugin-base-7.10.2.tgz", { "dependencies": { "@electron-forge/shared-types": "7.10.2" } }, "sha512-+4YLmkLZxvS6JFXYNI4dHt8Il8iIvwk2o6lCJGwNysOUq2KOZ3Wu1He4Ko8HhKcO1VWbFvslbh57oQn963Aryw=="],
 
     "@electron-forge/plugin-fuses": ["@electron-forge/plugin-fuses@7.10.2", "https://registry.npmmirror.com/@electron-forge/plugin-fuses/-/plugin-fuses-7.10.2.tgz", { "dependencies": { "@electron-forge/plugin-base": "7.10.2", "@electron-forge/shared-types": "7.10.2" }, "peerDependencies": { "@electron/fuses": "^1.0.0" } }, "sha512-X8FaBL5pVvKCTBNaa9EjbH6vuaeIU7UcPSmP9501XF4zcKPCfTbQKz49LTMl7gd5YzUm82IlqRjte12LLpcSDQ=="],
 
@@ -1402,19 +1399,9 @@
 
     "@babel/helper-compilation-targets/semver": ["semver@6.3.1", "https://registry.npmmirror.com/semver/-/semver-6.3.1.tgz", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
-    "@electron-forge/core/@electron-forge/plugin-base": ["@electron-forge/plugin-base@7.10.2", "https://registry.npmmirror.com/@electron-forge/plugin-base/-/plugin-base-7.10.2.tgz", { "dependencies": { "@electron-forge/shared-types": "7.10.2" } }, "sha512-+4YLmkLZxvS6JFXYNI4dHt8Il8iIvwk2o6lCJGwNysOUq2KOZ3Wu1He4Ko8HhKcO1VWbFvslbh57oQn963Aryw=="],
-
     "@electron-forge/core/@electron-forge/publisher-base": ["@electron-forge/publisher-base@7.10.2", "https://registry.npmmirror.com/@electron-forge/publisher-base/-/publisher-base-7.10.2.tgz", { "dependencies": { "@electron-forge/shared-types": "7.10.2" } }, "sha512-2k2VOY0wOoAgQoQXn/u3EJ2Ka2v363+wC/+zUMTWGeRHW8pRwX84WX2SpsTttRzbsqAEMJYw5FAzgMBEQUTfpg=="],
 
     "@electron-forge/core/interpret": ["interpret@3.1.1", "https://registry.npmmirror.com/interpret/-/interpret-3.1.1.tgz", {}, "sha512-6xwYfHbajpoF0xLW+iwLkhwgvLoZDfjYfoFNu8ftMoXINzwuymNLd9u/KmwtdT2GbR+/Cz66otEGEVVUHX9QLQ=="],
-
-    "@electron-forge/plugin-auto-unpack-natives/@electron-forge/shared-types": ["@electron-forge/shared-types@7.11.2", "https://registry.npmmirror.com/@electron-forge/shared-types/-/shared-types-7.11.2.tgz", { "dependencies": { "@electron-forge/tracer": "7.11.2", "@electron/packager": "^18.3.5", "@electron/rebuild": "^3.7.0", "listr2": "^7.0.2" } }, "sha512-Tcles7y74xy3jN5dEC+Pt1duJYk4c7W2xu98tjWW8RewmfKD2uHkie6I1I3yifPFZXZ/QfTlaFOOoKIQ9ENZjg=="],
-
-    "@electron-forge/plugin-base/@electron-forge/shared-types": ["@electron-forge/shared-types@7.11.2", "https://registry.npmmirror.com/@electron-forge/shared-types/-/shared-types-7.11.2.tgz", { "dependencies": { "@electron-forge/tracer": "7.11.2", "@electron/packager": "^18.3.5", "@electron/rebuild": "^3.7.0", "listr2": "^7.0.2" } }, "sha512-Tcles7y74xy3jN5dEC+Pt1duJYk4c7W2xu98tjWW8RewmfKD2uHkie6I1I3yifPFZXZ/QfTlaFOOoKIQ9ENZjg=="],
-
-    "@electron-forge/plugin-fuses/@electron-forge/plugin-base": ["@electron-forge/plugin-base@7.10.2", "https://registry.npmmirror.com/@electron-forge/plugin-base/-/plugin-base-7.10.2.tgz", { "dependencies": { "@electron-forge/shared-types": "7.10.2" } }, "sha512-+4YLmkLZxvS6JFXYNI4dHt8Il8iIvwk2o6lCJGwNysOUq2KOZ3Wu1He4Ko8HhKcO1VWbFvslbh57oQn963Aryw=="],
-
-    "@electron-forge/plugin-vite/@electron-forge/plugin-base": ["@electron-forge/plugin-base@7.10.2", "https://registry.npmmirror.com/@electron-forge/plugin-base/-/plugin-base-7.10.2.tgz", { "dependencies": { "@electron-forge/shared-types": "7.10.2" } }, "sha512-+4YLmkLZxvS6JFXYNI4dHt8Il8iIvwk2o6lCJGwNysOUq2KOZ3Wu1He4Ko8HhKcO1VWbFvslbh57oQn963Aryw=="],
 
     "@electron-forge/publisher-base/@electron-forge/shared-types": ["@electron-forge/shared-types@7.11.2", "https://registry.npmmirror.com/@electron-forge/shared-types/-/shared-types-7.11.2.tgz", { "dependencies": { "@electron-forge/tracer": "7.11.2", "@electron/packager": "^18.3.5", "@electron/rebuild": "^3.7.0", "listr2": "^7.0.2" } }, "sha512-Tcles7y74xy3jN5dEC+Pt1duJYk4c7W2xu98tjWW8RewmfKD2uHkie6I1I3yifPFZXZ/QfTlaFOOoKIQ9ENZjg=="],
 
@@ -1643,10 +1630,6 @@
     "yargs/string-width": ["string-width@4.2.3", "https://registry.npmmirror.com/string-width/-/string-width-4.2.3.tgz", { "dependencies": { "emoji-regex": "^8.0.0", "is-fullwidth-code-point": "^3.0.0", "strip-ansi": "^6.0.1" } }, "sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g=="],
 
     "yargs/yargs-parser": ["yargs-parser@20.2.9", "https://registry.npmmirror.com/yargs-parser/-/yargs-parser-20.2.9.tgz", {}, "sha512-y11nGElTIV+CT3Zv9t7VKl+Q3hTQoT9a1Qzezhhl6Rp21gJ/IVTW7Z3y9EWXhuUBC2Shnf+DX0antecpAwSP8w=="],
-
-    "@electron-forge/plugin-auto-unpack-natives/@electron-forge/shared-types/@electron-forge/tracer": ["@electron-forge/tracer@7.11.2", "https://registry.npmmirror.com/@electron-forge/tracer/-/tracer-7.11.2.tgz", { "dependencies": { "chrome-trace-event": "^1.0.3" } }, "sha512-U8j5Hyj2Zt7I5PciJvPJfmEv69Gb/Da9v+k655z3Jj1cuY0UnToEJ61IhXrzlTYqo+jUKC+fgAjDJ6vltJTS0A=="],
-
-    "@electron-forge/plugin-base/@electron-forge/shared-types/@electron-forge/tracer": ["@electron-forge/tracer@7.11.2", "https://registry.npmmirror.com/@electron-forge/tracer/-/tracer-7.11.2.tgz", { "dependencies": { "chrome-trace-event": "^1.0.3" } }, "sha512-U8j5Hyj2Zt7I5PciJvPJfmEv69Gb/Da9v+k655z3Jj1cuY0UnToEJ61IhXrzlTYqo+jUKC+fgAjDJ6vltJTS0A=="],
 
     "@electron-forge/publisher-base/@electron-forge/shared-types/@electron-forge/tracer": ["@electron-forge/tracer@7.11.2", "https://registry.npmmirror.com/@electron-forge/tracer/-/tracer-7.11.2.tgz", { "dependencies": { "chrome-trace-event": "^1.0.3" } }, "sha512-U8j5Hyj2Zt7I5PciJvPJfmEv69Gb/Da9v+k655z3Jj1cuY0UnToEJ61IhXrzlTYqo+jUKC+fgAjDJ6vltJTS0A=="],
 
