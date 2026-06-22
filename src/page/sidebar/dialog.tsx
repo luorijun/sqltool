@@ -14,12 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  FieldDescription,
-  FieldGroup,
-  FieldLegend,
-  FieldSet,
-} from "@/components/ui/field"
+import { FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field"
 import { FormField, FormInput } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -94,11 +89,13 @@ const schema = z
       return
     }
 
-    const requiredFields = [
-      ["host", "SSH 主机不能为空"],
-      ["port", "SSH 端口不能为空"],
-      ["username", "SSH 账号不能为空"],
-    ] as const
+    const requiredFields =
+      data.ssh.authType === "password"
+        ? ([
+            ["host", "SSH 主机不能为空"],
+            ["username", "SSH 账号不能为空"],
+          ] as const)
+        : ([["host", "SSH 主机不能为空"]] as const)
 
     for (const [field, message] of requiredFields) {
       if (data.ssh[field].trim()) {
@@ -145,7 +142,7 @@ function getDriverDefaults(driver: DbDriver) {
 function getDefaultSshValues(auth?: SshAuth): Schema["ssh"] {
   return {
     host: "",
-    port: "22",
+    port: "",
     username: "",
     authType: auth?.type ?? "privateKey",
     secret:
@@ -169,7 +166,7 @@ function getDefaultValues(conn?: Config | null): Schema {
     ssh: {
       ...getDefaultSshValues(conn?.ssh?.auth),
       host: conn?.ssh?.host ?? "",
-      port: conn?.ssh?.port ?? "22",
+      port: conn?.ssh?.port ?? "",
       username: conn?.ssh?.username ?? "",
     },
   }
@@ -186,15 +183,19 @@ function getSshState(values: Schema["ssh"]) {
     }
   }
 
-  const baseComplete =
-    values.host.trim().length > 0 && values.port.trim().length > 0
-
-  const authComplete =
-    values.authType === "password" ? values.secret.trim().length > 0 : true
+  if (values.authType === "privateKey") {
+    return {
+      hasConfig: true,
+      complete: values.host.trim().length > 0,
+    }
+  }
 
   return {
     hasConfig: true,
-    complete: baseComplete && authComplete,
+    complete:
+      values.host.trim().length > 0 &&
+      values.username.trim().length > 0 &&
+      values.secret.trim().length > 0,
   }
 }
 
@@ -227,7 +228,7 @@ function toCreateConfig(data: Schema): CreateConfig {
     ssh: sshState.hasConfig
       ? {
           host: data.ssh.host.trim(),
-          port: data.ssh.port.trim() || "22",
+          port: data.ssh.port.trim(),
           username: data.ssh.username.trim(),
           auth: toSshAuth(data.ssh),
         }
@@ -438,10 +439,6 @@ function DatabasePanel(props: { form: ConnForm }) {
 function SSHPanel(props: { form: ConnForm }) {
   const authType = props.form.watch("ssh.authType")
   const secretLabel = authType === "password" ? "SSH 密码" : "私钥口令"
-  const secretDescription =
-    authType === "password"
-      ? "密码模式下会优先使用 password，并回退到 keyboard-interactive。"
-      : "私钥模式下，当前版本会先尝试本地 SSH 配置骨架，随后回退到默认私钥文件。"
 
   return (
     <FieldSet className="rounded-xl border p-5">
@@ -475,7 +472,6 @@ function SSHPanel(props: { form: ConnForm }) {
       <FormInput
         name="ssh.authType"
         label="认证方式"
-        description="当前版本支持 SSH 密码和私钥认证两种方式。"
         errors={[props.form.formState.errors.ssh?.authType]}
       >
         <div className="grid gap-3 sm:grid-cols-2">
@@ -516,14 +512,9 @@ function SSHPanel(props: { form: ConnForm }) {
         control={props.form.control}
         name="ssh.secret"
         label={secretLabel}
-        description={secretDescription}
       >
         {(fProps) => <Input {...fProps.field} type="password" />}
       </FormField>
-
-      <FieldDescription>
-        只要 SSH 字段中任意一项有值，就会按 SSH 隧道方式连接数据库。
-      </FieldDescription>
     </FieldSet>
   )
 }
