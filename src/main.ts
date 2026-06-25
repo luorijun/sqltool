@@ -1,55 +1,51 @@
 import path from "node:path"
 import { app, BrowserWindow } from "electron"
-import started from "electron-squirrel-startup"
-import { updateElectronApp } from "update-electron-app"
 import { initConn } from "./lib/conn/main"
 import { initSerialize } from "./lib/serialize/main"
+import { initUpdater } from "./lib/updater/main"
 
-if (started) {
-  app.quit()
-} else {
-  const createWindow = () => {
-    const mainWindow = new BrowserWindow({
-      width: 1600,
-      height: 900,
-      center: true,
-      title: "SqlTool",
-      titleBarStyle: "hidden",
-      backgroundColor: "#fafafa",
-      titleBarOverlay: {
-        color: "#fafafa",
-        symbolColor: "#111827",
-        height: 40,
-      },
-      webPreferences: {
-        preload: path.join(__dirname, "preload.js"),
-      },
-    })
+const appDir = import.meta.dirname
 
-    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-      mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
-    } else {
-      mainWindow.loadFile(
-        path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-      )
-    }
+const createWindow = () => {
+  const mainWindow = new BrowserWindow({
+    width: 1600,
+    height: 900,
+    center: true,
+    title: "SqlTool",
+    titleBarStyle: "hidden",
+    backgroundColor: "#fafafa",
+    titleBarOverlay: {
+      color: "#fafafa",
+      symbolColor: "#111827",
+      height: 40,
+    },
+    webPreferences: {
+      preload: path.join(appDir, "../preload/index.cjs"),
+    },
+  })
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+  } else {
+    mainWindow.loadFile(path.join(appDir, "../renderer/index.html"))
   }
+}
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
-  })
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow()
+  }
+})
 
-  app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-      app.quit()
-    }
-  })
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit()
+  }
+})
 
-  await app.whenReady()
-  updateElectronApp()
+app.whenReady().then(() => {
   initConn()
   initSerialize()
+  initUpdater()
   createWindow()
-}
+})

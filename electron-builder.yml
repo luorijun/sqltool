@@ -1,0 +1,49 @@
+appId: com.luorijun.sqltool
+productName: SqlTool
+asar: true
+npmRebuild: false
+
+directories:
+  output: dist
+
+files:
+  - out/**/*
+
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+
+win:
+  executableName: sqltool
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+mac:
+  identity: null
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+
+linux:
+  executableName: sqltool
+  category: Development
+  target:
+    - target: deb
+      arch:
+        - x64
+    - target: rpm
+      arch:
+        - x64
+    - target: pacman
+      arch:
+        - x64
