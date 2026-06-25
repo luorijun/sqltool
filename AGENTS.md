@@ -1,28 +1,44 @@
-# Repository Notes
+# SqlTool
 
-- `README.md` is a Chinese backlog/V2 planning document, not an operational README. Trust `package.json`, `forge.config.ts`, and the `src/**` entrypoints for current behavior.
-- `package.json` declares `packageManager: npm@11.1.0` even though `bun.lock` exists. Default to `bun run ...` unless the user asks for npm.
+## 项目概览
 
-## Commands
+SqlTool 是一个面向开发者的本地桌面数据库客户端，定位接近 DataGrip、Navicat 这类专业数据库工具。它面向日常开发、调试和数据查看场景，提供图形化的数据库访问体验，帮助开发者更直接地连接数据库、理解数据结构、执行 SQL 并分析查询结果。
 
-- `bun run dev`: starts Electron Forge + Vite. `src/main.ts` always opens Chromium devtools for the main window.
-- `bun run typecheck`: runs `tsc -b` for the renderer, Forge/Vite config files, and `scripts/**`.
-- `bun run lint`: runs `biome lint --write` and mutates files.
-- Prefer `bunx --bun biome check <changed-paths>` for non-mutating verification. `bunx --bun biome check .` currently reports existing repo-wide formatting/import issues, so avoid repo-wide Biome rewrites unless the user asks.
-- There is no configured test runner, CI workflow, or Husky hook. `scripts/knex-test.ts` is a local scratch script with a hardcoded Postgres DSN, not a supported test.
+当前 SqlTool 聚焦于数据库访问的核心工作流：管理数据库连接、浏览数据库结构、编写并执行 SQL、查看查询结果，以及通过运行日志追踪查询过程。项目明确支持 PostgreSQL 和 MySQL / MariaDB，主要能力围绕“连接数据库、查看结构、运行查询、处理结果”展开。
 
-## Architecture
+作为产品，SqlTool 的目标是成为一个清晰、稳定、适合高频使用的开发者数据库工具，让数据库查询、调试和分析工作尽量集中在一个桌面客户端中完成。
 
-- Entry points: `src/main.ts` (Electron main), `src/preload.ts` (bridge), `src/renderer.tsx` -> `src/page/root.tsx` (React UI).
-- Keep process boundaries strict: renderer code goes through `window.main` wrappers in `src/lib/*/renderer.ts`. If you add IPC, update `src/lib/<domain>/{index,main,preload,renderer}.ts` and `src/lib/bridge.ts` together.
-- Left sidebar code lives under `src/page/navabr/*`.
-- `src/lib/config/main.ts` persists connection configs in `electron-store` under the `configs` store name. Change storage types, bridge types, and form fields together.
-- `src/lib/tabs/renderer.ts` is the single source of truth for tab state and SQL run/log/dirty side effects. Put shared tab behavior there instead of duplicating state in `src/page/main/**`.
+## 技术栈与目录结构
 
-## Data And UI Gotchas
+### 技术架构导读
 
-- User-facing copy and error messages are currently Chinese; match that unless the user asks otherwise.
-- The UI exposes `postgres`, `mysql`, and `sqlite`, but `src/lib/conn/main.ts` only implements PostgreSQL `inspect` and `query`. Do not assume MySQL/SQLite work without backend changes.
-- Query results are array-based: `src/lib/conn/postgres.ts` uses `rowMode: "array"` and `src/page/main/tab-page/table-area.tsx` reads `row[columnIndex]`. Do not switch one side to object rows without updating the other.
-- If you add a new DB driver or other main-process dependency used by `src/main.ts`, update `vite.main.config.mts` `build.rollupOptions.external`.
-- Tailwind is v4 CSS-first: theme tokens live in `src/global.css`; there is no `tailwind.config.*`.
+- 桌面运行：Electron。
+- 构建与发布：`electron-vite` 组织 main / preload / renderer 三端构建，`electron-builder` 负责桌面应用打包，`electron-updater` 提供打包后应用的更新检查能力。
+- Renderer：React、TypeScript 和 Jotai。
+- 样式与组件：Tailwind CSS v4、Base UI primitives、本地 `src/components/ui`。基础本地组件应基于 Base UI 实现，并沉淀为项目自己的 UI 基础设施。
+- 数据库：PostgreSQL 和 MySQL，对应访问依赖主要是 `pg` 和 `mysql2`。
+- 编辑与展示：CodeMirror 承载 SQL 编辑体验，TanStack Table 承载查询结果表格能力。
+
+### 目录导读
+
+- `src/lib`：应用能力层，承载跨进程领域模块、renderer 侧客户端接口和共享类型。
+- `src/page`：界面组织层，承载应用框架、侧边栏、主工作区等页面结构。
+- `src/components/ui`：本地基础 UI 组件层。
+- `src/global.css`：Tailwind v4 主题变量和全局样式。
+- `electron.vite.config.ts`：Electron main / preload / renderer 三端构建配置。
+- `electron-builder.yml`：桌面应用打包配置。
+
+### 领域模块模式
+
+跨进程能力按领域组织在 `src/lib` 下，稳定模式是 `src/lib/<domain>/{index,main,preload,renderer}.ts`。这个模式同时表达领域边界和进程边界：main 侧负责真实能力实现，preload 负责受控桥接，renderer 侧负责提供页面可用的客户端接口。
+
+- `index.ts` 放置领域类型、IPC channel 名称和 main / preload / renderer 之间共享的定义。
+- `main.ts` 放置 main 侧能力实现，负责调用 Electron、Node、数据库驱动等只能在主进程侧执行的能力。
+- `preload.ts` 放置 IPC 调用包装，并通过全局桥接接口暴露给 renderer。
+- `renderer.ts` 放置 renderer 侧客户端接口，以及该领域在客户端需要维护的全局缓存和状态同步逻辑。
+
+### 请求响应模式
+
+当前结构更接近请求响应模式，也可以借助 MVC 的视角理解。`src/page` 主要负责界面展示和交互组织，不直接访问数据库驱动、文件系统或 Electron 主进程对象。`src/lib/<domain>/renderer.ts` 是 renderer 侧访问领域能力的客户端接口和缓存层，`src/lib/<domain>/main.ts` 是 main 侧的实际能力实现。
+
+典型数据流是：页面组件发起动作，调用对应领域的 renderer 客户端接口；renderer 客户端接口通过 preload 暴露的桥接能力发起 IPC 请求；main 侧完成实际处理并返回结果；renderer 侧再更新缓存或状态，驱动页面刷新。
