@@ -276,7 +276,7 @@ async function query(configId: string, sql: string): Promise<QueryResult> {
   }
 }
 
-export function registerConn(): void {
+export function initConn(): void {
   ipcMain.handle(TEST, (_e, profile: ConfigProfile) => {
     return test(profile)
   })

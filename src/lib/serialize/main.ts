@@ -36,7 +36,7 @@ const serialize = {
 
 export default serialize
 
-export function registerSerialize(): void {
+export function initSerialize(): void {
   ipcMain.handle(WRITE_CLIPBOARD_TEXT, (_event, text: string) => {
     return serialize.writeClipboardText(text)
   })
