@@ -6,12 +6,12 @@ import type { SqlLanguage } from "sql-formatter"
 import { format as formatSql } from "sql-formatter"
 import { Button } from "@/components/ui/button"
 import type { DbDriver } from "@/lib/conn"
-import type { TabEditorState } from "@/lib/tabs"
+import type { QueryTabEditorState } from "@/lib/tabs"
 import {
-  activeTabConfigAtom,
-  activeTabEditorStateAtom,
+  activeQueryTabConfigAtom,
+  activeQueryTabEditorStateAtom,
   activeTabIdAtom,
-  runActiveTabSqlAtom,
+  runActiveQueryTabSqlAtom,
 } from "@/lib/tabs/renderer"
 import { AreaStatusBar, AreaToolbar } from "../bars"
 import { SqlEditor, type SqlEditorHandle } from "./sql-editor"
@@ -40,7 +40,7 @@ function getLineNumberAt(sql: string, pos: number): number {
   return line
 }
 
-function getEditorSummary(state: TabEditorState) {
+function getEditorSummary(state: QueryTabEditorState) {
   let selectedChars = 0
   const selectedLines = new Set<number>()
 
@@ -70,8 +70,8 @@ function getEditorSummary(state: TabEditorState) {
 }
 
 function isSameEditorState(
-  left: TabEditorState,
-  right: TabEditorState,
+  left: QueryTabEditorState,
+  right: QueryTabEditorState,
 ): boolean {
   return (
     left.cursor.line === right.cursor.line &&
@@ -96,17 +96,17 @@ function isSameEditorState(
 
 export default function CoreArea() {
   const tabId = useAtomValue(activeTabIdAtom)
-  const config = useAtomValue(activeTabConfigAtom)
+  const config = useAtomValue(activeQueryTabConfigAtom)
 
-  const [state, setState] = useAtom(activeTabEditorStateAtom)
+  const [state, setState] = useAtom(activeQueryTabEditorStateAtom)
 
-  const runSql = useSetAtom(runActiveTabSqlAtom)
+  const runSql = useSetAtom(runActiveQueryTabSqlAtom)
 
   const editorRef = useRef<SqlEditorHandle | null>(null)
 
   const summary = useMemo(() => getEditorSummary(state), [state])
 
-  const handleEditorStateChange = (nextEditorState: TabEditorState) => {
+  const handleEditorStateChange = (nextEditorState: QueryTabEditorState) => {
     setState((current) => {
       if (isSameEditorState(current, nextEditorState)) {
         return current

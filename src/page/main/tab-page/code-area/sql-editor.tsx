@@ -9,7 +9,7 @@ import {
   useState,
 } from "react"
 import type { DbDriver } from "@/lib/conn"
-import type { TabEditorState } from "@/lib/tabs"
+import type { QueryTabEditorState } from "@/lib/tabs"
 import {
   type CursorPosition,
   createSqlEditorController,
@@ -28,9 +28,9 @@ export interface SqlEditorHandle {
 interface SqlEditorProps {
   value: string
   driver?: DbDriver
-  editorState: TabEditorState
+  editorState: QueryTabEditorState
   onChange: (value: string) => void
-  onEditorStateChange: (editorState: TabEditorState) => void
+  onEditorStateChange: (editorState: QueryTabEditorState) => void
   onRun: () => void
   onFormat: () => void
 }
@@ -63,7 +63,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
     })
 
     const handleEditorStateChange = useEffectEvent(
-      (nextEditorState: TabEditorState) => {
+      (nextEditorState: QueryTabEditorState) => {
         onEditorStateChange(nextEditorState)
       },
     )

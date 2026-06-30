@@ -21,7 +21,7 @@ import type {
   DbSchema as Schema,
   DbTable as Table,
 } from "@/lib/conn"
-import { createTabAtom } from "@/lib/tabs/renderer"
+import { openQueryTabAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 
 function quoteIdent(value: string): string {
@@ -146,11 +146,11 @@ function TableNode({
   expanded: boolean
   onToggle: () => void
 }) {
-  const createTab = useSetAtom(createTabAtom)
+  const openQueryTab = useSetAtom(openQueryTabAtom)
 
   const handleOpen = (e: React.MouseEvent) => {
     e.stopPropagation()
-    createTab({
+    openQueryTab({
       label: table.name,
       text: createPreviewSql(schemaName, table.name),
       configId: conn.id,

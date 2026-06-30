@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { QueryResultColumn } from "@/lib/conn"
 import serializeApi from "@/lib/serialize/renderer"
-import type { TabTableState } from "@/lib/tabs"
+import type { QueryTabTableState } from "@/lib/tabs"
 import {
   getQueryColumnFlagLabels,
   getQueryColumnSourceLabel,
@@ -157,7 +157,7 @@ export function CopyMenu({
   disabled,
 }: {
   table: ResultTableInstance
-  activeCell: TabTableState["selected"]
+  activeCell: QueryTabTableState["selected"]
   disabled?: boolean
 }) {
   const activeRow = activeCell

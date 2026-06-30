@@ -1,37 +1,26 @@
-import { ResizeContainer } from "@/components/ui/resizer"
-import CoreArea from "./code-area"
-import LoggerArea from "./logger-area"
-import TableArea from "./table-area"
-
-const MIN_TABLE_HEIGHT = 80
-const MIN_BOTTOM_HEIGHT = 120
-const MIN_LOG_WIDTH = 240
-const MIN_CODE_WIDTH = 160
+import { useAtomValue } from "jotai"
+import { activeTabAtom } from "@/lib/tabs/renderer"
+import { QueryTabPage } from "./query"
 
 export default function TabPage() {
+  const tab = useAtomValue(activeTabAtom)
+
+  if (!tab) {
+    return null
+  }
+
+  switch (tab.kind) {
+    case "query":
+      return <QueryTabPage />
+    case "view":
+      return <ViewTabPage />
+  }
+}
+
+function ViewTabPage() {
   return (
-    <ResizeContainer
-      axis="y"
-      fixed="first"
-      defaultSize={(containerHeight) => (containerHeight * 2) / 3}
-      minSize={MIN_TABLE_HEIGHT}
-      minRemainingSize={MIN_BOTTOM_HEIGHT}
-      className="flex-1 min-h-0"
-      dividerLabel="上下拖拽调节结果区高度"
-      first={<TableArea />}
-      second={
-        <ResizeContainer
-          axis="x"
-          fixed="second"
-          defaultSize={(containerWidth) => containerWidth / 3}
-          minSize={MIN_LOG_WIDTH}
-          minRemainingSize={MIN_CODE_WIDTH}
-          className="size-full min-h-0"
-          dividerLabel="左右拖拽调节日志区宽度"
-          first={<CoreArea />}
-          second={<LoggerArea />}
-        />
-      }
-    />
+    <div className="flex size-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
+      View tab 页面尚未实现
+    </div>
   )
 }

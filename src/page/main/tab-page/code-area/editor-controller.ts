@@ -19,7 +19,7 @@ import { EditorView, keymap } from "@codemirror/view"
 import { tags } from "@lezer/highlight"
 import { basicSetup } from "codemirror"
 import type { DbDriver } from "@/lib/conn"
-import type { TabEditorState } from "@/lib/tabs"
+import type { QueryTabEditorState } from "@/lib/tabs"
 
 export interface CursorPosition {
   line: number
@@ -35,9 +35,9 @@ interface CreateSqlEditorControllerOptions {
   host: HTMLDivElement
   value: string
   driver?: DbDriver
-  editorState: TabEditorState
+  editorState: QueryTabEditorState
   onChange: (value: string) => void
-  onEditorStateChange: (editorState: TabEditorState) => void
+  onEditorStateChange: (editorState: QueryTabEditorState) => void
   onRun: () => void
   onFormat: () => void
 }
@@ -48,7 +48,7 @@ export interface SqlEditorController {
   openSearch: () => void
   setDriver: (driver?: DbDriver) => void
   setValue: (value: string) => void
-  syncViewState: (editorState: TabEditorState) => void
+  syncViewState: (editorState: QueryTabEditorState) => void
 }
 
 const MONO_FONT_FAMILY =
@@ -234,7 +234,7 @@ function getCursorPosition(state: EditorState): CursorPosition {
 }
 
 function toSelectionRanges(
-  selections: TabEditorState["selections"],
+  selections: QueryTabEditorState["selections"],
 ): EditorSelection {
   if (selections.length === 0) {
     return EditorSelection.single(0)
@@ -246,9 +246,9 @@ function toSelectionRanges(
 }
 
 function clampSelection(
-  selection: TabEditorState["selections"][number],
+  selection: QueryTabEditorState["selections"][number],
   length: number,
-): TabEditorState["selections"][number] {
+): QueryTabEditorState["selections"][number] {
   return {
     anchor: Math.min(Math.max(selection.anchor, 0), length),
     head: Math.min(Math.max(selection.head, 0), length),
@@ -282,9 +282,9 @@ export function getSelectionStats(state: EditorState): EditorSelectionStats {
 }
 
 function getSelectionRanges(
-  selections: TabEditorState["selections"],
+  selections: QueryTabEditorState["selections"],
   length: number,
-): TabEditorState["selections"] {
+): QueryTabEditorState["selections"] {
   if (selections.length === 0) {
     return [{ anchor: 0, head: 0 }]
   }
@@ -295,7 +295,7 @@ function getSelectionRanges(
 function getEditorSnapshot(
   state: EditorState,
   view: EditorView,
-): TabEditorState {
+): QueryTabEditorState {
   const query = getSearchQuery(state)
 
   return {

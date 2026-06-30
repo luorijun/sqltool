@@ -2,10 +2,14 @@ import { atom } from "jotai"
 import type { Config } from "@/lib/conn"
 import connApi, { connectionEntriesAtom } from "@/lib/conn/renderer"
 import type {
-  TabEditorState,
+  QueryTabEditorState,
+  QueryTabLoggerState,
+  QueryTabState,
+  QueryTabTableState,
   TabLogEntry,
   TabLogStatus,
-  TabTableState,
+  TabMeta,
+  TabState,
 } from "./index"
 
 let nextTabId = 1
@@ -14,102 +18,87 @@ let nextLogId = 1
 const MAX_TAB_LOG_ENTRIES = 300
 const DEFAULT_CURSOR = { line: 1, col: 1 } as const
 
-type TabMeta = {
-  id: string
-  label: string
-  configId?: string
-}
-
-interface TabLoggerState {
-  query: string
-  statuses: TabLogStatus[]
-  followTail: boolean
-  logs: TabLogEntry[]
-}
-
 type StateAction<T extends object> = T | ((current: T) => T)
-type TabStateMap<T> = Record<string, T>
+type TabStateMap = Record<string, TabState>
+
+type OpenQueryTabOptions = {
+  label?: string
+  configId?: string
+  text?: string
+  autoRun?: boolean
+}
 
 // ====================
 // 标签页
 // ====================
 
 export const tabsAtom = atom<TabMeta[]>([])
+const tabStatesAtom = atom<TabStateMap>({})
 
 // ====================
 // 活跃标签页
 // ====================
 
 export const activeTabIdAtom = atom(null as string | null)
-const tabTableStatesAtom = atom<TabStateMap<TabTableState>>({})
-const tabEditorStatesAtom = atom<TabStateMap<TabEditorState>>({})
-const tabLoggerStatesAtom = atom<TabStateMap<TabLoggerState>>({})
-export const hasActiveTabAtom = atom((get) => {
-  const tabs = get(tabsAtom)
+
+export const activeTabAtom = atom<TabState | null>((get) => {
   const activeTabId = get(activeTabIdAtom)
-  return (
-    tabs.length > 0 &&
-    activeTabId !== null &&
-    activeTabId in get(tabTableStatesAtom) &&
-    activeTabId in get(tabEditorStatesAtom) &&
-    activeTabId in get(tabLoggerStatesAtom)
-  )
+  if (!activeTabId) {
+    return null
+  }
+
+  return get(tabStatesAtom)[activeTabId] ?? null
 })
 
-// 标签页
-const activeTabAtom = atom<TabMeta>((get) => {
-  const activeTabId = get(activeTabIdAtom)
-  return get(tabsAtom).find((tab) => tab.id === activeTabId)
+export const activeQueryTabAtom = atom<QueryTabState | null>((get) => {
+  const tab = get(activeTabAtom)
+  return tab?.kind === "query" ? tab : null
 })
+
+export const hasActiveTabAtom = atom((get) => get(activeTabAtom) !== null)
 
 // 连接配置
-export const activeTabConfigAtom = atom<Config | undefined>((get) => {
-  const configId = get(activeTabAtom).configId
-  if (!configId) {
+export const activeQueryTabConfigAtom = atom<Config | undefined>((get) => {
+  const tab = get(activeQueryTabAtom)
+  if (!tab?.configId) {
     return undefined
   }
 
   return get(connectionEntriesAtom)?.find(
-    (connection) => connection.config.id === configId,
+    (connection) => connection.config.id === tab.configId,
   )?.config
 })
 
 // 表格 ui 状态
-export const activeTabTableStateAtom = atom(
-  (get) => get(tabTableStatesAtom)[get(activeTabAtom).id],
-  (get, set, action: StateAction<TabTableState>) => {
-    const tabId = get(activeTabAtom).id
-    set(tabTableStatesAtom, (states) => {
-      const current = states[tabId]
-      const next = typeof action === "function" ? action(current) : action
-      return Object.is(next, current) ? states : { ...states, [tabId]: next }
-    })
+export const activeQueryTabTableStateAtom = atom(
+  (get) => getActiveQueryTab(get).table,
+  (get, set, action: StateAction<QueryTabTableState>) => {
+    const tabId = getActiveQueryTab(get).id
+    set(tabStatesAtom, (states) =>
+      updateQueryTabTableState(states, tabId, action),
+    )
   },
 )
 
 // 编辑器 ui 状态
-export const activeTabEditorStateAtom = atom(
-  (get) => get(tabEditorStatesAtom)[get(activeTabAtom).id],
-  (get, set, action: StateAction<TabEditorState>) => {
-    const tabId = get(activeTabAtom).id
-    set(tabEditorStatesAtom, (states) => {
-      const current = states[tabId]
-      const next = typeof action === "function" ? action(current) : action
-      return Object.is(next, current) ? states : { ...states, [tabId]: next }
-    })
+export const activeQueryTabEditorStateAtom = atom(
+  (get) => getActiveQueryTab(get).editor,
+  (get, set, action: StateAction<QueryTabEditorState>) => {
+    const tabId = getActiveQueryTab(get).id
+    set(tabStatesAtom, (states) =>
+      updateQueryTabEditorState(states, tabId, action),
+    )
   },
 )
 
 // 日志 ui 状态
-export const activeTabLoggerAtom = atom(
-  (get) => get(tabLoggerStatesAtom)[get(activeTabAtom).id],
-  (get, set, action: StateAction<TabLoggerState>) => {
-    const tabId = get(activeTabAtom).id
-    set(tabLoggerStatesAtom, (states) => {
-      const current = states[tabId]
-      const next = typeof action === "function" ? action(current) : action
-      return Object.is(next, current) ? states : { ...states, [tabId]: next }
-    })
+export const activeQueryTabLoggerAtom = atom(
+  (get) => getActiveQueryTab(get).logger,
+  (get, set, action: StateAction<QueryTabLoggerState>) => {
+    const tabId = getActiveQueryTab(get).id
+    set(tabStatesAtom, (states) =>
+      updateQueryTabLoggerState(states, tabId, action),
+    )
   },
 )
 
@@ -117,43 +106,26 @@ export const activeTabLoggerAtom = atom(
 // actions
 // ====================
 
-export const createTabAtom = atom(
+export const openQueryTabAtom = atom(
   null,
-  async (
-    _get,
-    set,
-    opts?: {
-      label?: string
-      configId?: string
-      text?: string
-      autoRun?: boolean
-    },
-  ) => {
+  async (_get, set, opts?: OpenQueryTabOptions) => {
     const id = String(nextTabId++)
-    const table = createDefaultTableState()
-    const editor = createDefaultEditorState(opts?.text)
     const tab = {
       id,
+      kind: "query",
       label: opts?.label ?? `查询 ${id}`,
       configId: opts?.configId,
-    } satisfies TabMeta
+      table: createDefaultQueryTableState(),
+      editor: createDefaultQueryEditorState(opts?.text),
+      logger: createDefaultQueryLoggerState(),
+    } satisfies QueryTabState
 
-    set(tabsAtom, (tabs) => [...tabs, tab])
-    set(tabTableStatesAtom, (states) => ({ ...states, [id]: table }))
-    set(tabEditorStatesAtom, (states) => ({ ...states, [id]: editor }))
-    set(tabLoggerStatesAtom, (states) => ({
-      ...states,
-      [id]: {
-        query: "",
-        statuses: [],
-        followTail: true,
-        logs: [],
-      },
-    }))
+    set(tabsAtom, (tabs) => [...tabs, toTabMeta(tab)])
+    set(tabStatesAtom, (states) => ({ ...states, [id]: tab }))
     set(activeTabIdAtom, id)
 
-    if (opts?.autoRun && editor.text) {
-      await set(runTabSqlByIdAtom, id)
+    if (opts?.autoRun && tab.editor.text) {
+      await set(runQueryTabSqlByIdAtom, id)
     }
   },
 )
@@ -176,13 +148,11 @@ export const closeTabAtom = atom(null, (get, set, tabId: string) => {
 
   set(tabsAtom, nextTabs)
   set(activeTabIdAtom, nextActiveTabId)
-  set(tabTableStatesAtom, (states) => deleteTabState(states, tabId))
-  set(tabEditorStatesAtom, (states) => deleteTabState(states, tabId))
-  set(tabLoggerStatesAtom, (states) => deleteTabState(states, tabId))
+  set(tabStatesAtom, (states) => deleteTabState(states, tabId))
 })
 
-export const resetActiveTabTableStateAtom = atom(null, (_get, set) => {
-  set(activeTabTableStateAtom, (current) => ({
+export const resetActiveQueryTabTableStateAtom = atom(null, (_get, set) => {
+  set(activeQueryTabTableStateAtom, (current) => ({
     ...current,
     sorting: [],
     visibility: {},
@@ -196,29 +166,29 @@ export const resetActiveTabTableStateAtom = atom(null, (_get, set) => {
 })
 
 // 内部 action atom，复用同一套 SQL 执行流程。
-const runTabSqlByIdAtom = atom(null, async (get, set, tabId: string) => {
-  const tab = get(tabsAtom).find((item) => item.id === tabId)
-  const editor = get(tabEditorStatesAtom)[tabId]
-  if (!tab || !editor) {
+const runQueryTabSqlByIdAtom = atom(null, async (get, set, tabId: string) => {
+  const tab = get(tabStatesAtom)[tabId]
+  if (!tab || tab.kind !== "query") {
     return
   }
 
+  const editor = tab.editor
   const sql = editor.text
   const trimmedSql = sql.trim()
 
   if (!trimmedSql) {
     const finishedAt = Date.now()
 
-    set(tabTableStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, (current) => ({
+    set(tabStatesAtom, (states) =>
+      updateQueryTabTableState(states, tabId, (current) => ({
         ...current,
         status: "error",
         error: "SQL 不能为空",
         dataAt: finishedAt,
       })),
     )
-    set(tabLoggerStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, (current) => ({
+    set(tabStatesAtom, (states) =>
+      updateQueryTabLoggerState(states, tabId, (current) => ({
         ...current,
         logs: trimLogs([
           ...current.logs,
@@ -235,16 +205,16 @@ const runTabSqlByIdAtom = atom(null, async (get, set, tabId: string) => {
   if (!tab.configId) {
     const finishedAt = Date.now()
 
-    set(tabTableStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, (current) => ({
+    set(tabStatesAtom, (states) =>
+      updateQueryTabTableState(states, tabId, (current) => ({
         ...current,
         status: "error",
         error: "该标签页未绑定数据库连接",
         dataAt: finishedAt,
       })),
     )
-    set(tabLoggerStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, (current) => ({
+    set(tabStatesAtom, (states) =>
+      updateQueryTabLoggerState(states, tabId, (current) => ({
         ...current,
         logs: trimLogs([
           ...current.logs,
@@ -268,21 +238,21 @@ const runTabSqlByIdAtom = atom(null, async (get, set, tabId: string) => {
     startedAt,
   })
 
-  set(tabTableStatesAtom, (states) =>
-    updateTabStateMap(states, tabId, (current) => ({
+  set(tabStatesAtom, (states) =>
+    updateQueryTabTableState(states, tabId, (current) => ({
       ...current,
       status: "running",
       error: null,
     })),
   )
-  set(tabEditorStatesAtom, (states) =>
-    updateTabStateMap(states, tabId, (current) => ({
+  set(tabStatesAtom, (states) =>
+    updateQueryTabEditorState(states, tabId, (current) => ({
       ...current,
       status: "running",
     })),
   )
-  set(tabLoggerStatesAtom, (states) =>
-    updateTabStateMap(states, tabId, (current) => ({
+  set(tabStatesAtom, (states) =>
+    updateQueryTabLoggerState(states, tabId, (current) => ({
       ...current,
       logs: trimLogs([...current.logs, runningLog]),
     })),
@@ -304,9 +274,9 @@ const runTabSqlByIdAtom = atom(null, async (get, set, tabId: string) => {
     const durationMs = Math.max(1, Date.now() - startedAt)
     const finishedAt = Date.now()
 
-    set(tabTableStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, {
-        ...createDefaultTableState(),
+    set(tabStatesAtom, (states) =>
+      updateQueryTabTableState(states, tabId, {
+        ...createDefaultQueryTableState(),
         status: "success",
         error: null,
         dataAt: finishedAt,
@@ -322,14 +292,14 @@ const runTabSqlByIdAtom = atom(null, async (get, set, tabId: string) => {
         }),
       }),
     )
-    set(tabEditorStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, (current) => ({
+    set(tabStatesAtom, (states) =>
+      updateQueryTabEditorState(states, tabId, (current) => ({
         ...current,
         status: "idle",
       })),
     )
-    set(tabLoggerStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, (current) => ({
+    set(tabStatesAtom, (states) =>
+      updateQueryTabLoggerState(states, tabId, (current) => ({
         ...current,
         logs: trimLogs(
           upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
@@ -348,22 +318,22 @@ const runTabSqlByIdAtom = atom(null, async (get, set, tabId: string) => {
     const finishedAt = Date.now()
     const message = error instanceof Error ? error.message : "查询执行失败"
 
-    set(tabTableStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, (current) => ({
+    set(tabStatesAtom, (states) =>
+      updateQueryTabTableState(states, tabId, (current) => ({
         ...current,
         status: "error",
         error: message,
         dataAt: finishedAt,
       })),
     )
-    set(tabEditorStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, (current) => ({
+    set(tabStatesAtom, (states) =>
+      updateQueryTabEditorState(states, tabId, (current) => ({
         ...current,
         status: "idle",
       })),
     )
-    set(tabLoggerStatesAtom, (states) =>
-      updateTabStateMap(states, tabId, (current) => ({
+    set(tabStatesAtom, (states) =>
+      updateQueryTabLoggerState(states, tabId, (current) => ({
         ...current,
         logs: trimLogs(
           upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
@@ -380,30 +350,91 @@ const runTabSqlByIdAtom = atom(null, async (get, set, tabId: string) => {
   }
 })
 
-export const runActiveTabSqlAtom = atom(null, async (get, set) => {
-  await set(runTabSqlByIdAtom, get(activeTabAtom).id)
+export const runActiveQueryTabSqlAtom = atom(null, async (get, set) => {
+  const tab = get(activeQueryTabAtom)
+  if (!tab) {
+    return
+  }
+
+  await set(runQueryTabSqlByIdAtom, tab.id)
 })
 
 // helper
 
-function updateTabStateMap<T extends object>(
-  states: TabStateMap<T>,
-  tabId: string,
+function getActiveQueryTab(
+  get: (atom: typeof activeTabAtom) => TabState | null,
+): QueryTabState {
+  const tab = get(activeTabAtom)
+  if (!tab || tab.kind !== "query") {
+    throw new Error("当前活动标签页不是查询标签页")
+  }
+
+  return tab
+}
+
+function toTabMeta(tab: TabState): TabMeta {
+  return {
+    id: tab.id,
+    kind: tab.kind,
+    label: tab.label,
+  }
+}
+
+function applyStateAction<T extends object>(
+  current: T,
   action: StateAction<T>,
-): TabStateMap<T> {
+): T {
+  return typeof action === "function" ? action(current) : action
+}
+
+function updateQueryTabState(
+  states: TabStateMap,
+  tabId: string,
+  action: StateAction<QueryTabState>,
+): TabStateMap {
   const current = states[tabId]
-  if (!current) {
+  if (!current || current.kind !== "query") {
     return states
   }
 
-  const next = typeof action === "function" ? action(current) : action
+  const next = applyStateAction(current, action)
   return Object.is(next, current) ? states : { ...states, [tabId]: next }
 }
 
-function deleteTabState<T>(
-  states: TabStateMap<T>,
+function updateQueryTabTableState(
+  states: TabStateMap,
   tabId: string,
-): TabStateMap<T> {
+  action: StateAction<QueryTabTableState>,
+): TabStateMap {
+  return updateQueryTabState(states, tabId, (current) => {
+    const table = applyStateAction(current.table, action)
+    return Object.is(table, current.table) ? current : { ...current, table }
+  })
+}
+
+function updateQueryTabEditorState(
+  states: TabStateMap,
+  tabId: string,
+  action: StateAction<QueryTabEditorState>,
+): TabStateMap {
+  return updateQueryTabState(states, tabId, (current) => {
+    const editor = applyStateAction(current.editor, action)
+    return Object.is(editor, current.editor) ? current : { ...current, editor }
+  })
+}
+
+function updateQueryTabLoggerState(
+  states: TabStateMap,
+  tabId: string,
+  action: StateAction<QueryTabLoggerState>,
+): TabStateMap {
+  return updateQueryTabState(states, tabId, (current) => {
+    const logger = applyStateAction(current.logger, action)
+    return Object.is(logger, current.logger) ? current : { ...current, logger }
+  })
+}
+
+function deleteTabState(states: TabStateMap, tabId: string): TabStateMap {
   if (!(tabId in states)) {
     return states
   }
@@ -412,7 +443,7 @@ function deleteTabState<T>(
   return nextStates
 }
 
-function createDefaultTableState(): TabTableState {
+function createDefaultQueryTableState(): QueryTabTableState {
   return {
     status: "idle",
     dataAt: null,
@@ -430,7 +461,7 @@ function createDefaultTableState(): TabTableState {
   }
 }
 
-function createDefaultEditorState(text = ""): TabEditorState {
+function createDefaultQueryEditorState(text = ""): QueryTabEditorState {
   return {
     status: "idle",
     text,
@@ -446,6 +477,15 @@ function createDefaultEditorState(text = ""): TabEditorState {
       regexp: false,
       open: false,
     },
+  }
+}
+
+function createDefaultQueryLoggerState(): QueryTabLoggerState {
+  return {
+    query: "",
+    statuses: [],
+    followTail: true,
+    logs: [],
   }
 }
 

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import {
   activeTabIdAtom,
   closeTabAtom,
-  createTabAtom,
+  openQueryTabAtom,
   tabsAtom,
 } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
@@ -27,7 +27,7 @@ export function TabBar() {
   const tabs = useAtomValue(tabsViewAtom)
   const activeTabId = useAtomValue(activeTabIdAtom)
   const setActiveTabId = useSetAtom(activeTabIdAtom)
-  const createTab = useSetAtom(createTabAtom)
+  const openQueryTab = useSetAtom(openQueryTabAtom)
   const closeTab = useSetAtom(closeTabAtom)
 
   return (
@@ -50,7 +50,7 @@ export function TabBar() {
         <Button
           variant="ghost"
           size="icon-xs"
-          onClick={() => createTab()}
+          onClick={() => openQueryTab()}
           title="新建查询"
         >
           <Plus />

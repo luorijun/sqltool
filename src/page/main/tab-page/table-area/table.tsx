@@ -17,10 +17,10 @@ import { ArrowDownAZ, ArrowUpAZ, RotateCcw } from "lucide-react"
 import { type CSSProperties, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import type { QueryResultColumn } from "@/lib/conn"
-import type { TabTableState } from "@/lib/tabs"
+import type { QueryTabTableState } from "@/lib/tabs"
 import {
-  activeTabTableStateAtom,
-  resetActiveTabTableStateAtom,
+  activeQueryTabTableStateAtom,
+  resetActiveQueryTabTableStateAtom,
 } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import {
@@ -36,8 +36,8 @@ import { EmptyState } from "./empty"
 import { ColumnVisibilityMenu, CopyMenu, ExportMenu, HeaderMenu } from "./menus"
 
 export function ResultTable() {
-  const [tableState, setTableState] = useAtom(activeTabTableStateAtom)
-  const resetTabState = useSetAtom(resetActiveTabTableStateAtom)
+  const [tableState, setTableState] = useAtom(activeQueryTabTableStateAtom)
+  const resetTabState = useSetAtom(resetActiveQueryTabTableStateAtom)
 
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(
     () => [
@@ -529,7 +529,7 @@ function getPinnedStyles(column: Column<ResultRow, unknown>): CSSProperties {
 
 function normalizeColumnPinning(
   pinning: ColumnPinningState,
-): TabTableState["pinning"] {
+): QueryTabTableState["pinning"] {
   const left = Array.from(
     new Set([
       ROW_NUMBER_COLUMN_ID,

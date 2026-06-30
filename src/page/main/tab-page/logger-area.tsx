@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import serializeApi from "@/lib/serialize/renderer"
 import type { TabLogEntry as LogEntry, TabLogStatus } from "@/lib/tabs"
-import { activeTabLoggerAtom } from "@/lib/tabs/renderer"
+import { activeQueryTabLoggerAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import { AreaStatusBar, AreaToolbar } from "./bars"
 
@@ -303,7 +303,7 @@ function LogEntryItem({
 }
 
 export default function LoggerArea() {
-  const [state, setState] = useAtom(activeTabLoggerAtom)
+  const [state, setState] = useAtom(activeQueryTabLoggerAtom)
 
   const [expandedEntryIds, setExpandedEntryIds] = useState<
     Record<string, boolean>

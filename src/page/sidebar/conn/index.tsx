@@ -36,7 +36,7 @@ import {
   disconnectConnectionAtom,
   refreshConnectionSchemaAtom,
 } from "@/lib/conn/renderer"
-import { createTabAtom } from "@/lib/tabs/renderer"
+import { openQueryTabAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import { SchemaPanel } from "../schema"
 
@@ -140,9 +140,9 @@ function ConnectionItem(props: {
     }
   }
 
-  const createTab = useSetAtom(createTabAtom)
+  const openQueryTab = useSetAtom(openQueryTabAtom)
   const onNewQuery = () => {
-    createTab({ configId: props.connection.config.id })
+    openQueryTab({ configId: props.connection.config.id })
   }
 
   const isConnected = props.connection.connected

@@ -1,11 +1,11 @@
 import { atom, useAtomValue } from "jotai"
 import { CircleX, Loader2 } from "lucide-react"
-import { activeTabTableStateAtom } from "@/lib/tabs/renderer"
+import { activeQueryTabTableStateAtom } from "@/lib/tabs/renderer"
 import { EmptyState } from "./empty"
 import { ResultTable } from "./table"
 
-const statusAtom = atom((get) => get(activeTabTableStateAtom).status)
-const errorAtom = atom((get) => get(activeTabTableStateAtom).error)
+const statusAtom = atom((get) => get(activeQueryTabTableStateAtom).status)
+const errorAtom = atom((get) => get(activeQueryTabTableStateAtom).error)
 
 export default function TableArea() {
   const status = useAtomValue(statusAtom)
