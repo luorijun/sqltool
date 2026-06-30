@@ -16,17 +16,21 @@ import { useAtom, useSetAtom } from "jotai"
 import { ArrowDownAZ, ArrowUpAZ, RotateCcw } from "lucide-react"
 import { type CSSProperties, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import {
-  compareQueryValues,
-  getQueryValueDisplay,
-  serializeQueryValue,
-} from "@/lib/query-result"
+import type { QueryResultColumn } from "@/lib/conn"
 import type { TabTableState } from "@/lib/tabs"
 import {
   activeTabTableStateAtom,
   resetActiveTabTableStateAtom,
 } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
+import {
+  compareQueryValues,
+  getQueryColumnHeaderTitle,
+  getQueryColumnTypeLabel,
+  getQueryValueDisplay,
+  isQueryColumnRightAligned,
+  serializeQueryValue,
+} from "@/lib/utils/result-set"
 import { AreaStatusBar, AreaToolbar } from "../bars"
 import { EmptyState } from "./empty"
 import { ColumnVisibilityMenu, CopyMenu, ExportMenu, HeaderMenu } from "./menus"
@@ -49,17 +53,36 @@ export function ResultTable() {
         enablePinning: true,
         cell: ({ row }) => row.index + 1,
       },
-      ...tableState.columns.map((column) => ({
-        id: column.id,
-        header: column.name,
-        accessorKey: column.id,
-        size: Math.min(Math.max(column.name.length * 16, 140), 280),
-        minSize: MIN_DATA_COLUMN_WIDTH,
-        sortingFn: (left, right, columnId) =>
-          compareQueryValues(left.getValue(columnId), right.getValue(columnId)),
-        cell: ({ getValue }) => <CellValue value={getValue()} />,
-      })),
+      ...tableState.columns.map((resultColumn) => {
+        const typeLabel = getQueryColumnTypeLabel(resultColumn)
+        const labelWidth = Math.max(
+          resultColumn.name.length,
+          typeLabel?.length ?? 0,
+        )
+
+        return {
+          id: resultColumn.id,
+          header: resultColumn.name,
+          accessorKey: resultColumn.id,
+          size: Math.min(Math.max(labelWidth * 14, 140), 320),
+          minSize: MIN_DATA_COLUMN_WIDTH,
+          sortingFn: (left, right, columnId) =>
+            compareQueryValues(
+              left.getValue(columnId),
+              right.getValue(columnId),
+              resultColumn,
+            ),
+          cell: ({ getValue }) => (
+            <CellValue value={getValue()} column={resultColumn} />
+          ),
+        }
+      }),
     ],
+    [tableState.columns],
+  )
+
+  const columnMetaById = useMemo(
+    () => new Map(tableState.columns.map((column) => [column.id, column])),
     [tableState.columns],
   )
 
@@ -216,14 +239,22 @@ export function ResultTable() {
                     const column = header.column
                     const serial = column.id === ROW_NUMBER_COLUMN_ID
                     const sorted = column.getIsSorted()
-                    const painned = column.getIsPinned()
+                    const pinned = column.getIsPinned()
+                    const resultColumn = serial
+                      ? undefined
+                      : columnMetaById.get(column.id)
 
                     return (
                       <th
                         key={header.id}
+                        title={
+                          resultColumn
+                            ? getQueryColumnHeaderTitle(resultColumn)
+                            : undefined
+                        }
                         className={cn(
-                          "group sticky top-0 z-10 h-8 px-2 text-xs font-mono tracking-wide border-b border-r last:border-r-0 bg-sidebar",
-                          painned && "z-20",
+                          "group sticky top-0 z-10 h-10 px-2 text-xs font-mono tracking-wide border-b border-r last:border-r-0 bg-sidebar",
+                          pinned && "z-20",
                           serial && "text-muted-foreground",
                         )}
                         style={{
@@ -243,15 +274,25 @@ export function ResultTable() {
                                 column.getCanSort() && column.toggleSorting()
                               }
                               title={
-                                column.getCanSort() ? "点击排序" : undefined
+                                resultColumn
+                                  ? column.getCanSort()
+                                    ? `${getQueryColumnHeaderTitle(resultColumn)}\n点击排序`
+                                    : getQueryColumnHeaderTitle(resultColumn)
+                                  : column.getCanSort()
+                                    ? "点击排序"
+                                    : undefined
                               }
                             >
-                              <span className="truncate">
-                                {flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext(),
-                                )}
-                              </span>
+                              {resultColumn ? (
+                                <ColumnHeader column={resultColumn} />
+                              ) : (
+                                <span className="truncate">
+                                  {flexRender(
+                                    header.column.columnDef.header,
+                                    header.getContext(),
+                                  )}
+                                </span>
+                              )}
                               {!serial && sorted === "asc" && (
                                 <ArrowUpAZ className="size-3 shrink-0 text-primary" />
                               )}
@@ -263,6 +304,7 @@ export function ResultTable() {
                             {!serial && (
                               <HeaderMenu
                                 column={column}
+                                columnMeta={resultColumn}
                                 disableHide={visibleDataColumnCount <= 1}
                               />
                             )}
@@ -308,8 +350,17 @@ export function ResultTable() {
                         const isActiveCell =
                           tableState.selected?.rowId === row.id &&
                           tableState.selected.colId === column.id
+                        const resultColumn = serial
+                          ? undefined
+                          : columnMetaById.get(column.id)
                         const rawValue = cell.getValue()
-                        const display = getQueryValueDisplay(rawValue)
+                        const display = getQueryValueDisplay(
+                          rawValue,
+                          resultColumn,
+                        )
+                        const alignRight = resultColumn
+                          ? isQueryColumnRightAligned(resultColumn)
+                          : display.kind === "number"
                         const pinned = column.getIsPinned()
                         return (
                           <td
@@ -319,7 +370,7 @@ export function ResultTable() {
                               pinned && "sticky z-10",
                               serial && "text-right text-muted-foreground",
                               isActiveRow && "bg-accent/20",
-                              display.kind === "number" && "text-right",
+                              alignRight && "text-right",
                               isActiveCell &&
                                 "bg-primary/10 ring-1 ring-inset ring-primary/25",
                             )}
@@ -338,14 +389,15 @@ export function ResultTable() {
                                 type="button"
                                 className={cn(
                                   "block w-full min-w-0 rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-primary/30",
-                                  display.kind === "number"
-                                    ? "text-right"
-                                    : "text-left",
+                                  alignRight ? "text-right" : "text-left",
                                 )}
                                 onClick={() =>
                                   handleCellClick(row.id, column.id)
                                 }
-                                title={serializeQueryValue(rawValue)}
+                                title={serializeQueryValue(
+                                  rawValue,
+                                  resultColumn,
+                                )}
                               >
                                 {flexRender(
                                   cell.column.columnDef.cell,
@@ -377,8 +429,29 @@ export function ResultTable() {
   )
 }
 
-function CellValue({ value }: { value: unknown }) {
-  const display = getQueryValueDisplay(value)
+function ColumnHeader({ column }: { column: QueryResultColumn }) {
+  const typeLabel = getQueryColumnTypeLabel(column)
+
+  return (
+    <span className="grid min-w-0 flex-1 gap-0.5">
+      <span className="truncate leading-4">{column.name}</span>
+      {typeLabel && (
+        <span className="truncate text-[10px] font-normal leading-3 tracking-normal text-muted-foreground/65">
+          {typeLabel}
+        </span>
+      )}
+    </span>
+  )
+}
+
+function CellValue({
+  value,
+  column,
+}: {
+  value: unknown
+  column?: QueryResultColumn
+}) {
+  const display = getQueryValueDisplay(value, column)
 
   if (display.kind === "null") {
     return (
@@ -408,7 +481,8 @@ function CellValue({ value }: { value: unknown }) {
     <span
       className={cn(
         "block truncate font-mono text-xs",
-        display.kind === "json" && "text-muted-foreground",
+        (display.kind === "json" || display.kind === "binary") &&
+          "text-muted-foreground",
       )}
       title={display.text}
     >

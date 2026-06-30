@@ -84,7 +84,38 @@ export interface DbSchema {
 export interface QueryResultColumn {
   id: string
   name: string
+  driver?: DbDriver
+  dbType?: string
+  typeCode?: number | string
+  typeFamily?: QueryColumnTypeFamily
+  schema?: string
+  table?: string
+  sourceColumn?: string
+  sourceTableId?: number
+  sourceColumnId?: number
+  length?: number
+  precision?: number
+  scale?: number
+  nullable?: boolean
+  unsigned?: boolean
+  primaryKey?: boolean
+  autoIncrement?: boolean
+  format?: string
 }
+
+export type QueryColumnTypeFamily =
+  | "number"
+  | "decimal"
+  | "boolean"
+  | "date"
+  | "time"
+  | "datetime"
+  | "json"
+  | "array"
+  | "binary"
+  | "string"
+  | "uuid"
+  | "unknown"
 
 export type QueryResultRow = unknown[]
 

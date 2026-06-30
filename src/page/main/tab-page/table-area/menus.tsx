@@ -22,13 +22,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import type { QueryResultColumn } from "@/lib/conn"
+import serializeApi from "@/lib/serialize/renderer"
+import type { TabTableState } from "@/lib/tabs"
 import {
+  getQueryColumnFlagLabels,
+  getQueryColumnSourceLabel,
+  getQueryColumnTypeLabel,
   serializeMatrixAsDelimitedText,
   serializeQueryValue,
   serializeValuesAsDelimitedText,
-} from "@/lib/query-result"
-import serializeApi from "@/lib/serialize/renderer"
-import type { TabTableState } from "@/lib/tabs"
+} from "@/lib/utils/result-set"
 import {
   type ResultRow,
   type ResultTableInstance,
@@ -318,14 +322,22 @@ export function ExportMenu({
 
 export function HeaderMenu({
   column,
+  columnMeta,
   disableHide,
 }: {
   column: Column<ResultRow, unknown>
+  columnMeta?: QueryResultColumn
   disableHide: boolean
 }) {
   if (column.id === ROW_NUMBER_COLUMN_ID) {
     return null
   }
+
+  const title = columnMeta?.name ?? String(column.columnDef.header ?? column.id)
+  const typeLabel = getQueryColumnTypeLabel(columnMeta)
+  const sourceLabel = getQueryColumnSourceLabel(columnMeta)
+  const flags = getQueryColumnFlagLabels(columnMeta)
+  const hasMetaDetails = Boolean(typeLabel || sourceLabel || flags.length)
 
   return (
     <DropdownMenu>
@@ -344,8 +356,17 @@ export function HeaderMenu({
 
       <DropdownMenuContent side="bottom" align="end">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>
-            {String(column.columnDef.header ?? column.id)}
+          <DropdownMenuLabel className="max-w-72">
+            <span className="block truncate text-foreground">{title}</span>
+            {hasMetaDetails && (
+              <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 font-mono text-[10px] leading-4 text-muted-foreground/70">
+                {typeLabel && <span>{typeLabel}</span>}
+                {sourceLabel && <span>{sourceLabel}</span>}
+                {flags.map((flag) => (
+                  <span key={flag}>{flag}</span>
+                ))}
+              </span>
+            )}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
 

@@ -7,6 +7,11 @@ import type {
 import { connectMySql } from "./mysql"
 import { connectPostgres } from "./postgres"
 
+export interface QueryColumnInput
+  extends Omit<Partial<QueryResultColumn>, "id"> {
+  name: string
+}
+
 export interface ConnectionSession {
   inspect(): Promise<DbSchema[]>
   query(sql: string): Promise<QueryResult>
@@ -90,9 +95,16 @@ export function toRowCount(value: number | string | null): number | undefined {
   return Math.max(0, Math.trunc(count))
 }
 
-export function createQueryColumns(names: string[]): QueryResultColumn[] {
-  return names.map((name, index) => ({
-    id: `${name || "column"}_${index}`,
-    name,
-  }))
+export function createQueryColumns(
+  fields: Array<string | QueryColumnInput>,
+): QueryResultColumn[] {
+  return fields.map((field, index) => {
+    const column = typeof field === "string" ? { name: field } : field
+
+    return {
+      ...column,
+      id: `${column.name || "column"}_${index}`,
+      name: column.name,
+    }
+  })
 }

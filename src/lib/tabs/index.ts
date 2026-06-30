@@ -1,10 +1,12 @@
+import type { QueryResultColumn } from "@/lib/conn"
+
 export interface TabTableState {
   status: "idle" | "running" | "success" | "error"
   error: string | null
   dataAt: number | null
 
   data: Record<string, unknown>[]
-  columns: { id: string; name: string }[]
+  columns: QueryResultColumn[]
 
   visibility: Record<string, boolean>
   sizing: Record<string, number>

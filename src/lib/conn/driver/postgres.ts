@@ -7,7 +7,7 @@ import type {
   QueryResultRow,
 } from ".."
 import { connectSshClient, SshTunnelStream } from "../ssh"
-import type { ConnectionSession } from "."
+import type { ConnectionSession, QueryColumnInput } from "."
 import {
   createConnectionSession,
   createQueryColumns,
@@ -18,6 +18,12 @@ import {
 
 interface PostgresField {
   name: string
+  tableID?: number
+  columnID?: number
+  dataTypeID?: number
+  dataTypeSize?: number
+  dataTypeModifier?: number
+  format?: string
 }
 
 interface PostgresQueryResult<T = QueryResultRow> {
@@ -290,6 +296,170 @@ async function inspectPostgresClient(client: PgClient): Promise<DbSchema[]> {
   return Array.from(schemaMap.values())
 }
 
+const POSTGRES_TYPE_INFO: Record<
+  number,
+  { name: string; family: QueryColumnInput["typeFamily"] }
+> = {
+  16: { name: "bool", family: "boolean" },
+  17: { name: "bytea", family: "binary" },
+  18: { name: "char", family: "string" },
+  19: { name: "name", family: "string" },
+  20: { name: "bigint", family: "number" },
+  21: { name: "smallint", family: "number" },
+  23: { name: "int", family: "number" },
+  25: { name: "text", family: "string" },
+  26: { name: "oid", family: "number" },
+  114: { name: "json", family: "json" },
+  142: { name: "xml", family: "string" },
+  700: { name: "real", family: "number" },
+  701: { name: "double", family: "number" },
+  790: { name: "money", family: "decimal" },
+  1000: { name: "bool[]", family: "array" },
+  1005: { name: "smallint[]", family: "array" },
+  1007: { name: "int[]", family: "array" },
+  1009: { name: "text[]", family: "array" },
+  1015: { name: "varchar[]", family: "array" },
+  1016: { name: "bigint[]", family: "array" },
+  1021: { name: "real[]", family: "array" },
+  1022: { name: "double[]", family: "array" },
+  1042: { name: "char", family: "string" },
+  1043: { name: "varchar", family: "string" },
+  1082: { name: "date", family: "date" },
+  1083: { name: "time", family: "time" },
+  1114: { name: "timestamp", family: "datetime" },
+  1115: { name: "timestamp[]", family: "array" },
+  1182: { name: "date[]", family: "array" },
+  1184: { name: "timestamptz", family: "datetime" },
+  1185: { name: "timestamptz[]", family: "array" },
+  1186: { name: "interval", family: "time" },
+  1266: { name: "timetz", family: "time" },
+  1560: { name: "bit", family: "string" },
+  1562: { name: "varbit", family: "string" },
+  1700: { name: "numeric", family: "decimal" },
+  199: { name: "json[]", family: "array" },
+  1231: { name: "numeric[]", family: "array" },
+  2950: { name: "uuid", family: "uuid" },
+  2951: { name: "uuid[]", family: "array" },
+  3802: { name: "jsonb", family: "json" },
+  3807: { name: "jsonb[]", family: "array" },
+}
+
+function getPostgresModifier(field: PostgresField): number | undefined {
+  return typeof field.dataTypeModifier === "number" &&
+    field.dataTypeModifier >= 0
+    ? field.dataTypeModifier
+    : undefined
+}
+
+function getPostgresLength(field: PostgresField): number | undefined {
+  const modifier = getPostgresModifier(field)
+  if (modifier === undefined) {
+    return undefined
+  }
+
+  if (field.dataTypeID === 1042 || field.dataTypeID === 1043) {
+    return Math.max(0, modifier - 4)
+  }
+
+  return undefined
+}
+
+function getPostgresNumericPrecision(field: PostgresField): number | undefined {
+  if (field.dataTypeID !== 1700) {
+    return undefined
+  }
+
+  const modifier = getPostgresModifier(field)
+  if (modifier === undefined) {
+    return undefined
+  }
+
+  return ((modifier - 4) >> 16) & 0xffff
+}
+
+function getPostgresNumericScale(field: PostgresField): number | undefined {
+  if (field.dataTypeID !== 1700) {
+    return undefined
+  }
+
+  const modifier = getPostgresModifier(field)
+  if (modifier === undefined) {
+    return undefined
+  }
+
+  return (modifier - 4) & 0xffff
+}
+
+function getPostgresTemporalPrecision(
+  field: PostgresField,
+): number | undefined {
+  if (![1083, 1114, 1184, 1266].includes(field.dataTypeID ?? 0)) {
+    return undefined
+  }
+
+  return getPostgresModifier(field)
+}
+
+function getPostgresDbType(field: PostgresField): string | undefined {
+  const typeCode = field.dataTypeID
+  if (typeCode === undefined) {
+    return undefined
+  }
+
+  const info = POSTGRES_TYPE_INFO[typeCode]
+  if (!info) {
+    return undefined
+  }
+
+  const length = getPostgresLength(field)
+  if (length !== undefined) {
+    return `${info.name}(${length})`
+  }
+
+  const precision = getPostgresNumericPrecision(field)
+  if (precision !== undefined) {
+    const scale = getPostgresNumericScale(field)
+    return scale !== undefined
+      ? `${info.name}(${precision},${scale})`
+      : `${info.name}(${precision})`
+  }
+
+  const temporalPrecision = getPostgresTemporalPrecision(field)
+  if (temporalPrecision !== undefined) {
+    return `${info.name}(${temporalPrecision})`
+  }
+
+  return info.name
+}
+
+function getPositivePostgresNumber(
+  value: number | undefined,
+): number | undefined {
+  return typeof value === "number" && value > 0 ? value : undefined
+}
+
+function createPostgresQueryColumn(field: PostgresField): QueryColumnInput {
+  const typeCode = field.dataTypeID
+  const typeInfo =
+    typeCode === undefined ? undefined : POSTGRES_TYPE_INFO[typeCode]
+  const precision =
+    getPostgresNumericPrecision(field) ?? getPostgresTemporalPrecision(field)
+
+  return {
+    name: field.name,
+    driver: "postgres",
+    dbType: getPostgresDbType(field),
+    typeCode,
+    typeFamily: typeInfo?.family ?? "unknown",
+    sourceTableId: getPositivePostgresNumber(field.tableID),
+    sourceColumnId: getPositivePostgresNumber(field.columnID),
+    length: getPostgresLength(field),
+    precision,
+    scale: getPostgresNumericScale(field),
+    format: field.format,
+  }
+}
+
 async function queryPostgresClient(
   client: PgClient,
   sql: string,
@@ -301,7 +471,7 @@ async function queryPostgresClient(
 
   const rows = Array.isArray(result.rows) ? result.rows : []
   const columns = Array.isArray(result.fields)
-    ? createQueryColumns(result.fields.map((field) => field.name))
+    ? createQueryColumns(result.fields.map(createPostgresQueryColumn))
     : []
 
   return {
