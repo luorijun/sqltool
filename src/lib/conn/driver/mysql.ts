@@ -4,7 +4,14 @@ import mysql, {
   type Connection as MySqlConnection,
   type ResultSetHeader,
 } from "mysql2/promise"
-import type { ConfigProfile, DbSchema, DbTable, QueryResult } from ".."
+import type {
+  ConfigProfile,
+  DbSchema,
+  DbTable,
+  QueryResult,
+  SelectQuery,
+} from ".."
+import { compileSelectQuery } from "../query"
 import { connectSshClient, SshTunnelStream } from "../ssh"
 import type { ConnectionSession, QueryColumnInput } from "."
 import {
@@ -425,9 +432,11 @@ function createMySqlQueryColumn(field: FieldPacket): QueryColumnInput {
 async function queryMySqlClient(
   client: MySqlConnection,
   sql: string,
+  values: unknown[] = [],
 ): Promise<QueryResult> {
   const [rows, fields] = await client.query({
     sql,
+    values,
     rowsAsArray: true,
   })
 
@@ -459,6 +468,13 @@ export async function connectMySql(
     },
     query(sql) {
       return queryMySqlClient(client, sql)
+    },
+    async select(query: SelectQuery) {
+      const compiled = compileSelectQuery("mysql", query)
+      return {
+        result: await queryMySqlClient(client, compiled.sql, compiled.params),
+        executedSql: compiled.sql,
+      }
     },
     close: async () => {
       try {

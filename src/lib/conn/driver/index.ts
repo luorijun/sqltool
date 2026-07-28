@@ -3,6 +3,8 @@ import type {
   DbSchema,
   QueryResult,
   QueryResultColumn,
+  SelectQuery,
+  SelectResult,
 } from ".."
 import { connectMySql } from "./mysql"
 import { connectPostgres } from "./postgres"
@@ -15,12 +17,14 @@ export interface QueryColumnInput
 export interface ConnectionSession {
   inspect(): Promise<DbSchema[]>
   query(sql: string): Promise<QueryResult>
+  select(query: SelectQuery): Promise<SelectResult>
   close(): Promise<void>
 }
 
 interface CreateConnectionSessionOptions {
   inspect: () => Promise<DbSchema[]>
   query: (sql: string) => Promise<QueryResult>
+  select: (query: SelectQuery) => Promise<SelectResult>
   close: () => Promise<void>
 }
 
@@ -59,6 +63,7 @@ export function createConnectionSession(
   return {
     inspect: options.inspect,
     query: options.query,
+    select: options.select,
     close,
   }
 }

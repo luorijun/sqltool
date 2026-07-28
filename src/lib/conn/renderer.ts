@@ -6,6 +6,8 @@ import type {
   Connection,
   CreateConfig,
   QueryResult,
+  SelectQuery,
+  SelectResult,
   UpdateConfig,
 } from "./index"
 
@@ -41,6 +43,9 @@ const connApi = {
   },
   query(configId: string, sql: string): Promise<QueryResult> {
     return window.main.conn.query(configId, sql)
+  },
+  select(configId: string, query: SelectQuery): Promise<SelectResult> {
+    return window.main.conn.select(configId, query)
   },
 }
 

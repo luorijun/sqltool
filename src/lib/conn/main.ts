@@ -15,6 +15,9 @@ import {
   QUERY,
   type QueryResult,
   REMOVE,
+  SELECT,
+  type SelectQuery,
+  type SelectResult,
   TEST,
   UPDATE,
   type UpdateConfig,
@@ -239,7 +242,10 @@ async function inspect(configId: string): Promise<Connection> {
   return connection(config)
 }
 
-async function query(configId: string, sql: string): Promise<QueryResult> {
+async function runSessionQuery<T>(
+  configId: string,
+  run: (session: ConnectionSession) => Promise<T>,
+): Promise<T> {
   if (!store.get(`configs.${configId}`)) {
     throw new Error("连接不存在或已删除")
   }
@@ -264,7 +270,7 @@ async function query(configId: string, sql: string): Promise<QueryResult> {
   }
 
   try {
-    return await session.query(sql)
+    return await run(session)
   } finally {
     const currentLock = locks[configId]
     if (currentLock) {
@@ -274,6 +280,17 @@ async function query(configId: string, sql: string): Promise<QueryResult> {
       }
     }
   }
+}
+
+async function query(configId: string, sql: string): Promise<QueryResult> {
+  return runSessionQuery(configId, (session) => session.query(sql))
+}
+
+async function select(
+  configId: string,
+  selectQuery: SelectQuery,
+): Promise<SelectResult> {
+  return runSessionQuery(configId, (session) => session.select(selectQuery))
 }
 
 export function initConn(): void {
@@ -306,5 +323,8 @@ export function initConn(): void {
   })
   ipcMain.handle(QUERY, (_e, configId: string, sql: string) => {
     return query(configId, sql)
+  })
+  ipcMain.handle(SELECT, (_e, configId: string, selectQuery: SelectQuery) => {
+    return select(configId, selectQuery)
   })
 }

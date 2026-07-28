@@ -5,7 +5,9 @@ import type {
   DbTable,
   QueryResult,
   QueryResultRow,
+  SelectQuery,
 } from ".."
+import { compileSelectQuery } from "../query"
 import { connectSshClient, SshTunnelStream } from "../ssh"
 import type { ConnectionSession, QueryColumnInput } from "."
 import {
@@ -463,9 +465,11 @@ function createPostgresQueryColumn(field: PostgresField): QueryColumnInput {
 async function queryPostgresClient(
   client: PgClient,
   sql: string,
+  params: unknown[] = [],
 ): Promise<QueryResult> {
   const result = (await client.query({
     text: sql,
+    values: params,
     rowMode: "array",
   })) as PostgresQueryResult
 
@@ -492,6 +496,17 @@ export async function connectPostgres(
     },
     query(sql) {
       return queryPostgresClient(client, sql)
+    },
+    async select(query: SelectQuery) {
+      const compiled = compileSelectQuery("postgres", query)
+      return {
+        result: await queryPostgresClient(
+          client,
+          compiled.sql,
+          compiled.params,
+        ),
+        executedSql: compiled.sql,
+      }
     },
     close: async () => {
       try {

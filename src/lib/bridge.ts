@@ -4,6 +4,8 @@ import type {
   Connection,
   CreateConfig,
   QueryResult,
+  SelectQuery,
+  SelectResult,
   UpdateConfig,
 } from "./conn"
 import type { SaveTextFileOptions } from "./serialize"
@@ -20,6 +22,7 @@ export interface MainBridge {
     disconnect(configId: string): Promise<Connection>
     inspect(configId: string): Promise<Connection>
     query(configId: string, sql: string): Promise<QueryResult>
+    select(configId: string, query: SelectQuery): Promise<SelectResult>
   }
   serialize: {
     writeClipboardText(text: string): Promise<void>

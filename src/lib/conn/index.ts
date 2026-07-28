@@ -8,6 +8,7 @@ export const CONNECT = "conn:connect"
 export const DISCONNECT = "conn:disconnect"
 export const INSPECT = "conn:inspect"
 export const QUERY = "conn:query"
+export const SELECT = "conn:select"
 
 export type DbDriver = "postgres" | "mysql"
 
@@ -123,6 +124,61 @@ export interface QueryResult {
   columns: QueryResultColumn[]
   rows: QueryResultRow[]
   rowCount?: number
+}
+
+export interface TableSource {
+  schema: string
+  table: string
+}
+
+export type SelectOperator =
+  | "eq"
+  | "ne"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "like"
+  | "notLike"
+  | "in"
+  | "notIn"
+  | "isNull"
+  | "isNotNull"
+  | "and"
+  | "or"
+
+export interface SelectCondition {
+  column?: string
+  operator: SelectOperator
+  value?: unknown
+  conditions?: SelectCondition[]
+}
+
+export type SelectField =
+  | string
+  | {
+      aggregate: "count"
+      column?: string
+      alias?: string
+    }
+
+export interface SelectOrderBy {
+  column: string
+  direction?: "asc" | "desc"
+}
+
+export interface SelectQuery {
+  from: TableSource
+  select?: SelectField[]
+  where?: SelectCondition
+  orderBy?: SelectOrderBy[]
+  limit?: number
+  offset?: number
+}
+
+export interface SelectResult {
+  result: QueryResult
+  executedSql: string
 }
 
 export interface Connection {

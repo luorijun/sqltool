@@ -1,5 +1,5 @@
 import { ipcRenderer } from "electron"
-import type { ConfigProfile, CreateConfig, UpdateConfig } from "."
+import type { ConfigProfile, CreateConfig, SelectQuery, UpdateConfig } from "."
 import {
   CONNECT,
   CREATE,
@@ -9,6 +9,7 @@ import {
   LIST,
   QUERY,
   REMOVE,
+  SELECT,
   TEST,
   UPDATE,
 } from "."
@@ -43,6 +44,9 @@ const conn = {
   },
   query: (configId: string, sql: string) => {
     return ipcRenderer.invoke(QUERY, configId, sql)
+  },
+  select: (configId: string, query: SelectQuery) => {
+    return ipcRenderer.invoke(SELECT, configId, query)
   },
 }
 
