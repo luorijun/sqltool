@@ -21,16 +21,8 @@ import type {
   DbSchema as Schema,
   DbTable as Table,
 } from "@/lib/conn"
-import { openQueryTabAtom } from "@/lib/tabs/renderer"
+import { openViewTabAtom } from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
-
-function quoteIdent(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`
-}
-
-function createPreviewSql(schemaName: string, tableName: string): string {
-  return `SELECT *\nFROM ${quoteIdent(schemaName)}.${quoteIdent(tableName)}\nLIMIT 100;`
-}
 
 function createDefaultExpandedNodes(schemas: Schema[]): Set<string> {
   const next = new Set<string>()
@@ -146,15 +138,16 @@ function TableNode({
   expanded: boolean
   onToggle: () => void
 }) {
-  const openQueryTab = useSetAtom(openQueryTabAtom)
+  const openViewTab = useSetAtom(openViewTabAtom)
 
   const handleOpen = (e: React.MouseEvent) => {
     e.stopPropagation()
-    openQueryTab({
-      label: table.name,
-      text: createPreviewSql(schemaName, table.name),
+    openViewTab({
       configId: conn.id,
-      autoRun: true,
+      source: {
+        schema: schemaName,
+        table: table.name,
+      },
     })
   }
 
@@ -192,7 +185,7 @@ function TableNode({
 
         <button
           type="button"
-          title={`查询 ${table.name}`}
+          title={`查看 ${table.name}`}
           className="hidden group-hover/row:flex items-center justify-center size-5 rounded shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
           onClick={handleOpen}
         >

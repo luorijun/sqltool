@@ -11,25 +11,22 @@ export interface TabMeta {
 export interface QueryTabState {
   id: string
   kind: "query"
-  label: string
   configId?: string
   table: QueryTabTableState
   editor: QueryTabEditorState
-  logger: QueryTabLoggerState
+  logger: TabLoggerState
 }
 
 export interface ViewTabState {
   id: string
   kind: "view"
-  label: string
   configId: string
   source: {
     schema: string
     table: string
   }
   table: ViewTabTableState
-  code: ViewTabCodeState
-  logger: ViewTabLoggerState
+  logger: TabLoggerState
 }
 
 export type TabState = QueryTabState | ViewTabState
@@ -75,7 +72,7 @@ export interface QueryTabEditorState {
   }
 }
 
-export interface QueryTabLoggerState {
+export interface TabLoggerState {
   query: string
   statuses: TabLogStatus[]
   followTail: boolean
@@ -88,30 +85,15 @@ export interface ViewTabTableState {
   dataAt: number | null
   data: Record<string, unknown>[]
   columns: QueryResultColumn[]
-  visibleColumns: string[]
-  columnOrder: string[]
-  filters: Array<{
-    columnId: string
-    operator: string
-    value: unknown
-  }>
-  sorting: Array<{ id: string; desc: boolean }>
+  visibility: Record<string, boolean>
   sizing: Record<string, number>
   pinning: { left: string[]; right: string[] }
   selected: { rowId: string; colId: string } | null
-  limit: number
-  offset: number
-}
-
-export interface ViewTabCodeState {
-  sql: string
-}
-
-export interface ViewTabLoggerState {
-  query: string
-  statuses: TabLogStatus[]
-  followTail: boolean
-  logs: TabLogEntry[]
+  pageIndex: number
+  pageSize: number
+  totalCount: number | null
+  countStatus: "idle" | "running" | "success" | "error"
+  countError: string | null
 }
 
 export type TabLogStatus = "success" | "error" | "running"

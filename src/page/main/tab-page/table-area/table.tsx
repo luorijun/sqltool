@@ -12,16 +12,10 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table"
-import { useAtom, useSetAtom } from "jotai"
 import { ArrowDownAZ, ArrowUpAZ, RotateCcw } from "lucide-react"
-import { type CSSProperties, useMemo } from "react"
+import { type CSSProperties, type ReactNode, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import type { QueryResultColumn } from "@/lib/conn"
-import type { QueryTabTableState } from "@/lib/tabs"
-import {
-  activeQueryTabTableStateAtom,
-  resetActiveQueryTabTableStateAtom,
-} from "@/lib/tabs/renderer"
 import { cn } from "@/lib/utils"
 import {
   compareQueryValues,
@@ -35,10 +29,38 @@ import { AreaStatusBar, AreaToolbar } from "../bars"
 import { EmptyState } from "./empty"
 import { ColumnVisibilityMenu, CopyMenu, ExportMenu, HeaderMenu } from "./menus"
 
-export function ResultTable() {
-  const [tableState, setTableState] = useAtom(activeQueryTabTableStateAtom)
-  const resetTabState = useSetAtom(resetActiveQueryTabTableStateAtom)
+export interface ResultTableState {
+  dataAt: number | null
+  data: Record<string, unknown>[]
+  columns: QueryResultColumn[]
+  visibility: Record<string, boolean>
+  sizing: Record<string, number>
+  pinning: { left: string[]; right: string[] }
+  selected: { rowId: string; colId: string } | null
+  sorting?: Array<{ id: string; desc: boolean }>
+}
 
+interface ResultTableProps<T extends ResultTableState> {
+  tableState: T
+  setTableState: (update: (current: T) => T) => void
+  onReset: () => void
+  enableSorting?: boolean
+  emptyMessage?: string
+  exportNamePrefix?: string
+  toolbarEnd?: ReactNode
+  statusBarEnd?: ReactNode
+}
+
+export function ResultTable<T extends ResultTableState>({
+  tableState,
+  setTableState,
+  onReset,
+  enableSorting = true,
+  emptyMessage = "语句执行成功，但没有可展示的结果集",
+  exportNamePrefix = "query-result",
+  toolbarEnd,
+  statusBarEnd,
+}: ResultTableProps<T>) {
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(
     () => [
       {
@@ -66,6 +88,7 @@ export function ResultTable() {
           accessorKey: resultColumn.id,
           size: Math.min(Math.max(labelWidth * 14, 140), 320),
           minSize: MIN_DATA_COLUMN_WIDTH,
+          enableSorting,
           sortingFn: (left, right, columnId) =>
             compareQueryValues(
               left.getValue(columnId),
@@ -78,7 +101,7 @@ export function ResultTable() {
         }
       }),
     ],
-    [tableState.columns],
+    [enableSorting, tableState.columns],
   )
 
   const columnMetaById = useMemo(
@@ -88,7 +111,7 @@ export function ResultTable() {
 
   const state = useMemo(
     () => ({
-      sorting: tableState.sorting as SortingState,
+      sorting: (tableState.sorting ?? []) as SortingState,
       columnVisibility: tableState.visibility as VisibilityState,
       columnSizing: tableState.sizing as ColumnSizingState,
       columnPinning: normalizeColumnPinning(
@@ -105,6 +128,7 @@ export function ResultTable() {
     getRowId: (_, i) => String(i),
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    enableSorting,
     enableMultiSort: false,
     enableSortingRemoval: true,
     columnResizeMode: "onEnd",
@@ -113,10 +137,19 @@ export function ResultTable() {
       minSize: MIN_DATA_COLUMN_WIDTH,
     },
     onSortingChange: (updater: Updater<SortingState>) => {
-      setTableState((current) => ({
-        ...current,
-        sorting: functionalUpdate(updater, current.sorting as SortingState),
-      }))
+      if (!enableSorting) {
+        return
+      }
+      setTableState(
+        (current) =>
+          ({
+            ...current,
+            sorting: functionalUpdate(
+              updater,
+              (current.sorting ?? []) as SortingState,
+            ),
+          }) as T,
+      )
     },
     onColumnVisibilityChange: (updater: Updater<VisibilityState>) => {
       setTableState((current) => ({
@@ -144,7 +177,7 @@ export function ResultTable() {
   })
 
   const handleResetLayout = () => {
-    resetTabState()
+    onReset()
   }
 
   const handleCellClick = (rowId: string, columnId: string) => {
@@ -160,13 +193,13 @@ export function ResultTable() {
     })
   }
 
-  const exportName = `query-result-${tableState.dataAt ? new Date(tableState.dataAt).toISOString().slice(11, 19).replaceAll(":", "-") : "latest"}`
+  const exportName = `${exportNamePrefix}-${tableState.dataAt ? new Date(tableState.dataAt).toISOString().slice(11, 19).replaceAll(":", "-") : "latest"}`
   const hasDataColumns = tableState.columns.length > 0
   const hasRows = table.getRowModel().rows.length > 0
   const visibleDataColumnCount = table
     .getVisibleLeafColumns()
     .filter((column) => column.id !== ROW_NUMBER_COLUMN_ID).length
-  const sortingSummary = getSortingSummary(table)
+  const sortingSummary = enableSorting ? getSortingSummary(table) : null
   const statusText = !hasDataColumns
     ? "语句执行成功，但没有可展示的结果集"
     : hasRows
@@ -192,6 +225,7 @@ export function ResultTable() {
           disabled={!hasDataColumns}
         />
         <div className="ml-auto" />
+        {toolbarEnd}
         <Button
           variant="ghost"
           size="xs"
@@ -217,16 +251,17 @@ export function ResultTable() {
           </span>{" "}
           列
         </span>
-        <span>当前排序: {sortingSummary}</span>
+        {sortingSummary && <span>当前排序: {sortingSummary}</span>}
         <span>{statusText}</span>
         {!hasRows && tableState.columns.length > 0 && (
           <span>暂无可复制的当前单元格/行</span>
         )}
+        {statusBarEnd}
       </AreaStatusBar>
 
       <div className="flex-1 min-h-0 overflow-auto bg-background">
         {!hasDataColumns ? (
-          <EmptyState message="语句执行成功，但没有可展示的结果集" />
+          <EmptyState message={emptyMessage} />
         ) : (
           <table
             className="border-separate border-spacing-0 text-sm"
@@ -529,7 +564,7 @@ function getPinnedStyles(column: Column<ResultRow, unknown>): CSSProperties {
 
 function normalizeColumnPinning(
   pinning: ColumnPinningState,
-): QueryTabTableState["pinning"] {
+): ResultTableState["pinning"] {
   const left = Array.from(
     new Set([
       ROW_NUMBER_COLUMN_ID,

@@ -54,8 +54,6 @@ A simple SQL client built with React and Electron.
 - 增删改数据
 - 超大结果集提示
 - 虚拟列表
-- 提供更多列元数据
-- 按类型渲染优化
 
 建议依赖：
 

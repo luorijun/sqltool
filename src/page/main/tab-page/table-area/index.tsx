@@ -1,15 +1,16 @@
-import { atom, useAtomValue } from "jotai"
+import { useAtom, useSetAtom } from "jotai"
 import { CircleX, Loader2 } from "lucide-react"
-import { activeQueryTabTableStateAtom } from "@/lib/tabs/renderer"
+import {
+  activeQueryTabTableStateAtom,
+  resetActiveQueryTabTableStateAtom,
+} from "@/lib/tabs/renderer"
 import { EmptyState } from "./empty"
 import { ResultTable } from "./table"
 
-const statusAtom = atom((get) => get(activeQueryTabTableStateAtom).status)
-const errorAtom = atom((get) => get(activeQueryTabTableStateAtom).error)
-
-export default function TableArea() {
-  const status = useAtomValue(statusAtom)
-  const error = useAtomValue(errorAtom)
+export default function QueryTableArea() {
+  const [tableState, setTableState] = useAtom(activeQueryTabTableStateAtom)
+  const resetTableState = useSetAtom(resetActiveQueryTabTableStateAtom)
+  const { status, error } = tableState
 
   if (status === "idle") {
     return <EmptyState message="运行 SQL 语句以查看结果" />
@@ -33,5 +34,11 @@ export default function TableArea() {
     )
   }
 
-  return <ResultTable />
+  return (
+    <ResultTable
+      tableState={tableState}
+      setTableState={setTableState}
+      onReset={resetTableState}
+    />
+  )
 }

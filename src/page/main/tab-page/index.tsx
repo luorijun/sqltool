@@ -1,6 +1,7 @@
 import { useAtomValue } from "jotai"
 import { activeTabAtom } from "@/lib/tabs/renderer"
 import { QueryTabPage } from "./query"
+import { ViewTabPage } from "./view"
 
 export default function TabPage() {
   const tab = useAtomValue(activeTabAtom)
@@ -15,12 +16,4 @@ export default function TabPage() {
     case "view":
       return <ViewTabPage />
   }
-}
-
-function ViewTabPage() {
-  return (
-    <div className="flex size-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
-      View tab 页面尚未实现
-    </div>
-  )
 }
