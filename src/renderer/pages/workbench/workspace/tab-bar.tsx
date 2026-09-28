@@ -1,5 +1,5 @@
 import { atom, useAtomValue, useSetAtom } from "jotai"
-import { Plus, X } from "lucide-react"
+import { Code2, Plus, Table2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/renderer/components/ui/button"
 import { cn } from "@/renderer/components/ui/utils"
@@ -14,6 +14,7 @@ import {
 type TabBarItem = {
   id: string
   label: string
+  kind: "query" | "view"
   dirty: boolean
 }
 
@@ -21,6 +22,7 @@ const tabsViewAtom = atom((get) =>
   get(tabsAtom).map((tab) => ({
     id: tab.id,
     label: tab.label,
+    kind: tab.kind,
     dirty: false,
   })),
 )
@@ -91,12 +93,22 @@ function TabItem({
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
       )}
       onClick={onSelect}
+      title={
+        tab.kind === "view"
+          ? `查看表：${tab.label}`
+          : `自定义查询：${tab.label}`
+      }
     >
       {/* Unsaved dot */}
       {tab.dirty && !active && (
         <span className="size-1.5 rounded-full bg-muted-foreground/60 shrink-0" />
       )}
 
+      {tab.kind === "view" ? (
+        <Table2 className="size-3.5 shrink-0 text-muted-foreground" />
+      ) : (
+        <Code2 className="size-3.5 shrink-0 text-muted-foreground" />
+      )}
       <span className="max-w-35 truncate">{tab.label}</span>
 
       {/* Dirty indicator on active tab */}

@@ -32,6 +32,7 @@ export interface ViewTabState {
     table: string
   }
   table: ViewTabTableState
+  code: CodeView
   logger: TabLoggerState
 }
 
@@ -53,9 +54,12 @@ export interface QueryTabTableState {
   selected: { rowId: string; colId: string } | null
 }
 
-export interface QueryTabEditorState {
+export interface QueryTabEditorState extends CodeView {
   status: "idle" | "running"
   text: string
+}
+
+export interface CodeView {
   cursor: {
     line: number
     col: number
@@ -90,6 +94,7 @@ export interface ViewTabTableState {
   status: "idle" | "running" | "success" | "error"
   error: string | null
   dataAt: number | null
+  sql: string
   requestId?: string
   countRequestId?: string
   generation?: number

@@ -10,6 +10,7 @@ export {
   activeTabLoggerAtom,
   activeViewTabAtom,
   activeViewTabTableStateAtom,
+  bindQueryConfigAtom,
   cancelActiveQueryAtom,
   cancelActiveViewAtom,
   clearLogsAtom,
@@ -31,6 +32,7 @@ export {
   updateLogViewAtom,
   updateQueryEditorAtom,
   updateQueryLayoutAtom,
+  updateViewCodeAtom,
   updateViewLayoutAtom,
 } from "./state"
 export type {

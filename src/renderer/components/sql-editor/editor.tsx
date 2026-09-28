@@ -28,11 +28,13 @@ export interface SqlEditorHandle {
 interface SqlEditorProps {
   value: string
   driver?: DbDriver
+  readOnly?: boolean
+  autoFocus?: boolean
   editorState: EditorViewState
-  onChange: (value: string) => void
+  onChange?: (value: string) => void
   onEditorStateChange: (editorState: EditorViewState) => void
-  onRun: () => void
-  onFormat: () => void
+  onRun?: () => void
+  onFormat?: () => void
 }
 
 const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
@@ -40,6 +42,8 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
     {
       value,
       driver,
+      readOnly = false,
+      autoFocus = false,
       editorState,
       onChange,
       onEditorStateChange,
@@ -52,14 +56,18 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
     const initialValueRef = useRef(value)
     const initialDriverRef = useRef(driver)
     const initialEditorStateRef = useRef(editorState)
+    const initialReadOnlyRef = useRef(readOnly)
+    const initialAutoFocusRef = useRef(autoFocus)
     const [host, setHost] = useState<HTMLDivElement | null>(null)
 
     initialValueRef.current = value
     initialDriverRef.current = driver
     initialEditorStateRef.current = editorState
+    initialReadOnlyRef.current = readOnly
+    initialAutoFocusRef.current = autoFocus
 
     const handleChange = useEffectEvent((nextValue: string) => {
-      onChange(nextValue)
+      onChange?.(nextValue)
     })
 
     const handleEditorStateChange = useEffectEvent(
@@ -69,11 +77,11 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
     )
 
     const handleRun = useEffectEvent(() => {
-      onRun()
+      if (!readOnly) onRun?.()
     })
 
     const handleFormat = useEffectEvent(() => {
-      onFormat()
+      if (!readOnly) onFormat?.()
     })
 
     const setHostRef = useCallback((node: HTMLDivElement | null) => {
@@ -102,6 +110,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
         host,
         value: initialValueRef.current,
         driver: initialDriverRef.current,
+        readOnly: initialReadOnlyRef.current,
         editorState: initialEditorStateRef.current,
         onChange: handleChange,
         onEditorStateChange: handleEditorStateChange,
@@ -110,6 +119,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
       })
 
       controllerRef.current = controller
+      if (initialAutoFocusRef.current) controller.focus()
 
       return () => {
         if (controllerRef.current === controller) {
@@ -123,6 +133,10 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
     useEffect(() => {
       controllerRef.current?.setDriver(driver)
     }, [driver])
+
+    useEffect(() => {
+      controllerRef.current?.setReadOnly(readOnly)
+    }, [readOnly])
 
     useEffect(() => {
       controllerRef.current?.setValue(value)

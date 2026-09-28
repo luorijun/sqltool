@@ -6,6 +6,7 @@ import connApi, {
   sessionEntriesAtom,
 } from "@/renderer/modules/database"
 import type {
+  CodeView,
   EditorView,
   LogView,
   QueryTabEditorState,
@@ -172,6 +173,7 @@ export const openViewTabAtom = atom(
       configId: opts.configId,
       source: { ...opts.source },
       table: createDefaultViewTableState(),
+      code: createDefaultCodeView(),
       logger: createDefaultLoggerState(),
     } satisfies ViewTabState
 
@@ -324,6 +326,7 @@ const loadViewTabPageByIdAtom = atom(null, async (get, set, tabId: string) => {
         error: null,
         dataAt: finishedAt,
         generation,
+        sql: executedSql,
         columns: result.columns,
         data: toTableRows(result),
         selected: null,
@@ -839,6 +842,57 @@ export const cancelActiveQueryAtom = atom(null, async (get, set) => {
   }
 })
 
+export const bindQueryConfigAtom = atom(
+  null,
+  async (
+    get,
+    set,
+    { tabId, configId }: { tabId: string; configId?: string },
+  ) => {
+    const tab = get(tabStatesAtom)[tabId]
+    if (
+      tab?.kind !== "query" ||
+      tab.closing ||
+      tab.editor.status === "running" ||
+      tab.configId === configId
+    )
+      return
+
+    const exists = () =>
+      !configId ||
+      get(connectionEntriesAtom)?.some((entry) => entry.config.id === configId)
+    if (!exists()) throw new Error("连接配置不存在或已删除")
+
+    set(tabStatesAtom, (states) =>
+      updateQueryTabState(states, tabId, (current) => ({
+        ...current,
+        closing: true,
+      })),
+    )
+    try {
+      if (tab.sessionId && !(await connApi.closeTab(tabId))) return
+      if (!exists()) throw new Error("连接配置不存在或已删除")
+      set(tabStatesAtom, (states) =>
+        updateQueryTabState(states, tabId, (current) => ({
+          ...current,
+          configId,
+          sessionId: undefined,
+          requestId: undefined,
+          phase: undefined,
+          cancelRequested: false,
+        })),
+      )
+    } finally {
+      set(tabStatesAtom, (states) =>
+        updateQueryTabState(states, tabId, (current) => ({
+          ...current,
+          closing: false,
+        })),
+      )
+    }
+  },
+)
+
 export const rebuildActiveSessionAtom = atom(null, async (get, set) => {
   const tab = get(activeQueryTabAtom)
   if (!tab?.configId || tab.closing) return
@@ -1046,6 +1100,7 @@ function createDefaultViewTableState(): ViewTabTableState {
     status: "idle",
     error: null,
     dataAt: null,
+    sql: "",
     data: [],
     columns: [],
     visibility: {},
@@ -1092,8 +1147,14 @@ function createDefaultQueryTableState(): QueryTabTableState {
 
 function createDefaultQueryEditorState(text = ""): QueryTabEditorState {
   return {
+    ...createDefaultCodeView(),
     status: "idle",
     text,
+  }
+}
+
+function createDefaultCodeView(): CodeView {
+  return {
     cursor: { ...DEFAULT_CURSOR },
     selections: [{ anchor: 0, head: 0 }],
     mainSelectionIndex: 0,
@@ -1280,6 +1341,21 @@ export const updateQueryEditorAtom = atom(
         },
       }
     })
+  },
+)
+
+export const updateViewCodeAtom = atom(
+  null,
+  (_get, set, { tabId, view }: { tabId: string; view: CodeView }) => {
+    set(tabStatesAtom, (states) =>
+      updateViewTabState(states, tabId, (current) => {
+        const { cursor, selections, mainSelectionIndex, scroll, search } = view
+        return {
+          ...current,
+          code: { cursor, selections, mainSelectionIndex, scroll, search },
+        }
+      }),
+    )
   },
 )
 

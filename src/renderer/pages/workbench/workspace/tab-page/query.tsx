@@ -13,7 +13,7 @@ export function QueryTabPage() {
     <ResizeContainer
       axis="y"
       fixed="first"
-      defaultSize={(containerHeight) => (containerHeight * 2) / 3}
+      defaultSize={(containerHeight) => containerHeight / 3}
       minSize={MIN_TABLE_HEIGHT}
       minRemainingSize={MIN_BOTTOM_HEIGHT}
       className="flex-1 min-h-0"

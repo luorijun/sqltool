@@ -15,10 +15,11 @@ import {
   EditorState,
   type Extension,
 } from "@codemirror/state"
-import { EditorView, keymap } from "@codemirror/view"
+import { EditorView } from "@codemirror/view"
 import { tags } from "@lezer/highlight"
 import { basicSetup } from "codemirror"
 import type { DbDriver } from "@/contracts/database"
+import { createEditorMode, externalUpdate } from "./mode"
 import type { EditorState as EditorViewState } from "./types"
 
 export interface CursorPosition {
@@ -35,11 +36,12 @@ interface CreateSqlEditorControllerOptions {
   host: HTMLDivElement
   value: string
   driver?: DbDriver
+  readOnly?: boolean
   editorState: EditorViewState
-  onChange: (value: string) => void
+  onChange?: (value: string) => void
   onEditorStateChange: (editorState: EditorViewState) => void
-  onRun: () => void
-  onFormat: () => void
+  onRun?: () => void
+  onFormat?: () => void
 }
 
 export interface SqlEditorController {
@@ -47,6 +49,7 @@ export interface SqlEditorController {
   focus: () => void
   openSearch: () => void
   setDriver: (driver?: DbDriver) => void
+  setReadOnly: (readOnly: boolean) => void
   setValue: (value: string) => void
   syncViewState: (editorState: EditorViewState) => void
 }
@@ -325,6 +328,8 @@ export function createSqlEditorController(
   options: CreateSqlEditorControllerOptions,
 ): SqlEditorController {
   const language = new Compartment()
+  const mode = new Compartment()
+  let readOnly = options.readOnly ?? false
   let currentDriver = options.driver
   let destroyed = false
   let applyingExternalChange = false
@@ -351,24 +356,9 @@ export function createSqlEditorController(
         basicSetup,
         search({ top: true }),
         language.of(getSqlExtension(options.driver)),
+        mode.of(createEditorMode(readOnly, options)),
         sqlEditorTheme,
         syntaxHighlighting(sqlHighlightStyle),
-        keymap.of([
-          {
-            key: "Mod-Enter",
-            run: () => {
-              options.onRun()
-              return true
-            },
-          },
-          {
-            key: "Shift-Alt-f",
-            run: () => {
-              options.onFormat()
-              return true
-            },
-          },
-        ]),
         EditorView.contentAttributes.of({
           spellcheck: "false",
           autocorrect: "off",
@@ -381,7 +371,7 @@ export function createSqlEditorController(
           }
 
           if (update.docChanged && !applyingExternalChange) {
-            options.onChange(update.state.doc.toString())
+            options.onChange?.(update.state.doc.toString())
           }
 
           if (
@@ -478,6 +468,23 @@ export function createSqlEditorController(
         effects: language.reconfigure(getSqlExtension(driver)),
       })
     },
+    setReadOnly(nextReadOnly) {
+      if (destroyed || readOnly === nextReadOnly) return
+
+      readOnly = nextReadOnly
+      // The built-in search panel chooses its replace controls when created.
+      const reopenSearch = searchPanelOpen(view.state)
+      syncingSnapshot = true
+      try {
+        if (reopenSearch) closeSearchPanel(view)
+        view.dispatch({
+          effects: mode.reconfigure(createEditorMode(readOnly, options)),
+        })
+        if (reopenSearch) openSearchPanel(view)
+      } finally {
+        syncingSnapshot = false
+      }
+    },
     setValue(value) {
       if (destroyed) {
         return
@@ -507,6 +514,7 @@ export function createSqlEditorController(
       view.dispatch({
         changes: { from: 0, to: currentValue.length, insert: value },
         selection: nextSelection,
+        annotations: externalUpdate.of(true),
       })
       applyingExternalChange = false
     },

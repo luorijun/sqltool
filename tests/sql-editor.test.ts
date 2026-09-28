@@ -1,0 +1,113 @@
+import { describe, expect, test } from "bun:test"
+import {
+  replaceAll,
+  SearchQuery,
+  search,
+  setSearchQuery,
+} from "@codemirror/search"
+import { Compartment, EditorState } from "@codemirror/state"
+import { EditorView, keymap } from "@codemirror/view"
+import {
+  createEditorMode,
+  externalUpdate,
+} from "../src/renderer/components/sql-editor/mode"
+
+describe("SQL editor read-only mode", () => {
+  test("blocks document edits but accepts controlled SQL updates and selection", () => {
+    const state = EditorState.create({
+      doc: "SELECT 1",
+      extensions: [createEditorMode(true, {})],
+    })
+    expect(state.readOnly).toBe(true)
+    expect(state.facet(EditorView.editable)).toBe(false)
+    for (const userEvent of [
+      "input.type",
+      "input.paste",
+      "delete.cut",
+      "undo",
+    ]) {
+      const next = state.update({
+        changes: { from: 0, to: 8, insert: "DELETE" },
+        userEvent,
+      }).state
+      expect(next.doc.toString()).toBe("SELECT 1")
+    }
+    const next = state.update({
+      changes: { from: 0, to: 8, insert: "SELECT 2" },
+      annotations: externalUpdate.of(true),
+      selection: { anchor: 0, head: 6 },
+    }).state
+    expect(next.doc.toString()).toBe("SELECT 2")
+    expect(next.selection.main.to).toBe(6)
+  })
+
+  test("allows searching while replace commands cannot modify SQL", () => {
+    let state = EditorState.create({
+      doc: "SELECT 1",
+      extensions: [search(), createEditorMode(true, {})],
+    })
+    state = state.update({
+      effects: setSearchQuery.of(
+        new SearchQuery({ search: "1", replace: "2" }),
+      ),
+    }).state
+    const view = {
+      state,
+      dispatch: () => {
+        throw new Error("Read-only replace dispatched")
+      },
+    } as unknown as EditorView
+    expect(replaceAll(view)).toBe(false)
+    expect(state.doc.toString()).toBe("SELECT 1")
+  })
+
+  test("only editable mode registers run and format shortcuts", () => {
+    let runs = 0
+    let formats = 0
+    const actions = {
+      onRun: () => {
+        runs++
+      },
+      onFormat: () => {
+        formats++
+      },
+    }
+    const readonly = EditorState.create({
+      extensions: [createEditorMode(true, actions)],
+    })
+    expect(readonly.facet(keymap).flat()).toEqual([])
+    const editable = EditorState.create({
+      extensions: [createEditorMode(false, actions)],
+    })
+    for (const binding of editable.facet(keymap).flat())
+      binding.run?.({} as EditorView)
+    expect(runs).toBe(1)
+    expect(formats).toBe(1)
+    const noActions = EditorState.create({
+      extensions: [createEditorMode(false, {})],
+    })
+    expect(noActions.facet(keymap).flat()).toEqual([])
+  })
+
+  test("switching modes changes editing behavior without replacing the document", () => {
+    const mode = new Compartment()
+    let state = EditorState.create({
+      doc: "SELECT 1",
+      extensions: [mode.of(createEditorMode(false, {}))],
+    })
+    state = state.update({
+      effects: mode.reconfigure(createEditorMode(true, {})),
+    }).state
+    state = state.update({
+      changes: { from: 0, to: 8, insert: "blocked" },
+    }).state
+    expect(state.doc.toString()).toBe("SELECT 1")
+    state = state.update({
+      effects: mode.reconfigure(createEditorMode(false, {})),
+    }).state
+    state = state.update({
+      changes: { from: 0, to: 8, insert: "SELECT 2" },
+    }).state
+    expect(state.doc.toString()).toBe("SELECT 2")
+  })
+})

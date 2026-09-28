@@ -5,6 +5,8 @@ import type {
   ConnResponse,
   ConnSnapshot,
   QueryResult,
+  SelectQuery,
+  SelectResult,
 } from "../src/contracts/database"
 import connApi, {
   applySnapshot,
@@ -13,16 +15,23 @@ import connApi, {
 } from "../src/renderer/modules/database/client"
 import {
   activeQueryTabAtom,
+  activeResultStaleAtom,
+  activeViewTabAtom,
+  bindQueryConfigAtom,
   clearLogsAtom,
   closeTabAtom,
   openQueryTabAtom,
+  openViewTabAtom,
   rebuildActiveSessionAtom,
+  refreshActiveViewTabAtom,
   runActiveQueryTabSqlAtom,
   selectTabAtom,
+  setActiveViewTabPageAtom,
   tabsAtom,
   updateLogViewAtom,
   updateQueryEditorAtom,
   updateQueryLayoutAtom,
+  updateViewCodeAtom,
 } from "../src/renderer/modules/workspace"
 
 const store = getDefaultStore()
@@ -40,6 +49,7 @@ const config: Config = {
 let version = 0
 let snapshot: ConnSnapshot
 let queryCalls = 0
+let selectCalls: SelectQuery[] = []
 const result: QueryResult = { columns: [], rows: [[1]], rowCount: 1 }
 const capture = () => structuredClone({ ...snapshot, version: ++version })
 const ok = <T>(value: T): ConnResponse<T> => ({
@@ -74,13 +84,14 @@ beforeEach(async () => {
     tasks: [],
   }
   queryCalls = 0
+  selectCalls = []
   bridge = {
     sync: async () => capture(),
-    openSession: async (_configId, tabId) => {
+    openSession: async (configId, tabId) => {
       const id = crypto.randomUUID()
       snapshot.sessions.push({
         id,
-        configId: "db",
+        configId,
         tabId,
         kind: "sql",
         status: "ready",
@@ -97,12 +108,292 @@ beforeEach(async () => {
       queryCalls++
       return ok(result)
     },
+    select: async (_configId, _tabId, _requestId, query) => {
+      selectCalls.push(query)
+      return ok({
+        result: { ...result, rows: [[500]] },
+        executedSql: query.select
+          ? "SELECT COUNT(*) FROM items"
+          : `SELECT * FROM items LIMIT ${query.limit} OFFSET ${query.offset}`,
+      })
+    },
     cancel: async () => ok(undefined),
   } as typeof bridge
   globalThis.window = { main: { conn: bridge } } as unknown as Window &
     typeof globalThis
   applySnapshot(capture())
   for (const tab of store.get(tabsAtom)) await store.set(closeTabAtom, tab.id)
+})
+
+describe("table view tabs", () => {
+  const source = { schema: "public", table: "items" }
+  const open = () => store.set(openViewTabAtom, { configId: "db", source })
+  const getView = () => {
+    const tab = store.get(activeViewTabAtom)
+    if (!tab) throw new Error("Missing view tab")
+    return tab
+  }
+
+  test("table operations use structured queries and keep SQL separate from logs", async () => {
+    const id = await open()
+    expect(selectCalls).toEqual([
+      { from: source, limit: 100, offset: 0 },
+      { from: source, select: [{ aggregate: "count", alias: "total" }] },
+    ])
+    expect(store.get(activeViewTabAtom)?.table.sql).toBe(
+      "SELECT * FROM items LIMIT 100 OFFSET 0",
+    )
+    expect(store.get(activeViewTabAtom)?.table.totalCount).toBe(500)
+    store.set(clearLogsAtom, id)
+    expect(store.get(activeViewTabAtom)?.logger.logs).toEqual([])
+    expect(store.get(activeViewTabAtom)?.table.sql).toBe(
+      "SELECT * FROM items LIMIT 100 OFFSET 0",
+    )
+    await store.set(setActiveViewTabPageAtom, 1)
+    expect(store.get(activeViewTabAtom)?.table.sql).toBe(
+      "SELECT * FROM items LIMIT 100 OFFSET 100",
+    )
+    expect(await open()).toBe(id)
+    expect(selectCalls).toHaveLength(3)
+    await store.set(runActiveQueryTabSqlAtom)
+    expect(queryCalls).toBe(0)
+    expect(store.get(activeQueryTabAtom)).toBeNull()
+  })
+
+  test.each([
+    true,
+    false,
+  ])("count responses never replace data SQL (count first: %s)", async (countFirst) => {
+    const page = deferred<ConnResponse<SelectResult>>()
+    const count = deferred<ConnResponse<SelectResult>>()
+    bridge.select = (_configId, _tabId, _requestId, query) =>
+      query.select ? count.promise : page.promise
+    const opening = open()
+    expect(store.get(activeViewTabAtom)?.table.sql).toBe("")
+    const finishPage = () =>
+      page.resolve(ok({ result, executedSql: "SELECT * FROM items" }))
+    const finishCount = () =>
+      count.resolve(
+        ok({
+          result: { ...result, rows: [[500]] },
+          executedSql: "SELECT COUNT(*) FROM items",
+        }),
+      )
+    if (countFirst) finishCount()
+    else finishPage()
+    await tick()
+    expect(store.get(activeViewTabAtom)?.table.sql).toBe(
+      countFirst ? "" : "SELECT * FROM items",
+    )
+    if (countFirst) finishPage()
+    else finishCount()
+    await opening
+    expect(store.get(activeViewTabAtom)?.table.sql).toBe("SELECT * FROM items")
+    expect(
+      store.get(activeViewTabAtom)?.logger.logs.map((log) => log.sql),
+    ).toEqual(["SELECT * FROM items", "SELECT COUNT(*) FROM items"])
+  })
+
+  test("failed refresh keeps the previous result and its SQL", async () => {
+    await open()
+    const before = getView()
+    bridge.select = async () => {
+      throw new Error("connection lost")
+    }
+    await store.set(refreshActiveViewTabAtom)
+    const after = getView()
+    expect(after.table.status).toBe("error")
+    expect(after.table.sql).toBe(before.table.sql)
+    expect(after.table.data).toBe(before.table.data)
+  })
+
+  test("code callbacks retain tab identity and cannot replace generated SQL", async () => {
+    const id = await open()
+    const before = getView()
+    const queryId = store.set(openQueryTabAtom, { initialSql: "query draft" })
+    const view = {
+      ...before.code,
+      text: "DELETE FROM items",
+      scroll: { top: 40, left: 10 },
+      search: { ...before.code.search, query: "items", open: true },
+    }
+    store.set(updateViewCodeAtom, { tabId: id, view })
+    store.set(updateQueryEditorAtom, {
+      tabId: id,
+      update: (current) => ({ ...current, text: "UPDATE items" }),
+    })
+    store.set(updateViewCodeAtom, { tabId: queryId, view })
+    expect(store.get(activeQueryTabAtom)?.editor.text).toBe("query draft")
+    store.set(selectTabAtom, id)
+    expect(store.get(activeViewTabAtom)?.table.sql).toBe(before.table.sql)
+    expect(store.get(activeViewTabAtom)?.code.scroll).toEqual(view.scroll)
+    expect(store.get(activeViewTabAtom)?.code.search).toEqual(view.search)
+    expect(store.get(activeViewTabAtom)?.code).not.toHaveProperty("text")
+    await store.set(closeTabAtom, id)
+    store.set(updateViewCodeAtom, { tabId: id, view })
+    expect(store.get(tabsAtom).map((tab) => tab.id)).toEqual([queryId])
+  })
+
+  test("late data updates its original tab and cannot recreate a closed tab", async () => {
+    for (const close of [false, true]) {
+      const page = deferred<ConnResponse<SelectResult>>()
+      const count = deferred<ConnResponse<SelectResult>>()
+      bridge.select = (_configId, _tabId, _requestId, query) =>
+        query.select ? count.promise : page.promise
+      const opening = store.set(openViewTabAtom, {
+        configId: "db",
+        source: { ...source, table: String(close) },
+      })
+      const id = getView().id
+      const queryId = store.set(openQueryTabAtom, { initialSql: "keep draft" })
+      if (close) await store.set(closeTabAtom, id)
+      page.resolve(ok({ result, executedSql: "SELECT * FROM items" }))
+      count.resolve(
+        ok({
+          result: { ...result, rows: [[500]] },
+          executedSql: "SELECT COUNT(*) FROM items",
+        }),
+      )
+      await opening
+      expect(store.get(activeQueryTabAtom)?.id).toBe(queryId)
+      expect(store.get(activeQueryTabAtom)?.editor.text).toBe("keep draft")
+      if (close)
+        expect(store.get(tabsAtom).some((tab) => tab.id === id)).toBe(false)
+      else {
+        store.set(selectTabAtom, id)
+        expect(store.get(activeViewTabAtom)?.table.sql).toBe(
+          "SELECT * FROM items",
+        )
+      }
+    }
+  })
+})
+
+describe("query config binding", () => {
+  const addConfig = () => {
+    snapshot.connections.push({
+      ...snapshot.connections[0],
+      config: { ...config, id: "other", name: "Other database" },
+    })
+    applySnapshot(capture())
+  }
+
+  test("binding a draft does not connect or run SQL until requested", async () => {
+    const tabId = store.set(openQueryTabAtom, { initialSql: "SELECT 1" })
+    await store.set(bindQueryConfigAtom, { tabId, configId: "db" })
+    expect(store.get(activeQueryTabAtom)?.configId).toBe("db")
+    expect(snapshot.sessions).toEqual([])
+    expect(queryCalls).toBe(0)
+    await store.set(runActiveQueryTabSqlAtom)
+    expect(snapshot.sessions[0].configId).toBe("db")
+    expect(queryCalls).toBe(1)
+  })
+
+  test("switching closes the old session, preserves the draft and marks prior results stale", async () => {
+    addConfig()
+    const tabId = store.set(openQueryTabAtom, {
+      configId: "db",
+      initialSql: "SELECT 1",
+    })
+    await store.set(runActiveQueryTabSqlAtom)
+    const before = store.get(activeQueryTabAtom)
+    await store.set(bindQueryConfigAtom, { tabId, configId: "other" })
+    const after = store.get(activeQueryTabAtom)
+    expect(after?.configId).toBe("other")
+    expect(after?.sessionId).toBeUndefined()
+    expect(after?.editor).toEqual(before?.editor)
+    expect(after?.table).toEqual(before?.table)
+    expect(after?.logger).toEqual(before?.logger)
+    expect(store.get(activeResultStaleAtom)).toBe(true)
+    expect(snapshot.sessions).toEqual([])
+    expect(queryCalls).toBe(1)
+    await store.set(runActiveQueryTabSqlAtom)
+    expect(snapshot.sessions[0].configId).toBe("other")
+    await store.set(bindQueryConfigAtom, { tabId })
+    expect(store.get(activeQueryTabAtom)?.configId).toBeUndefined()
+    expect(snapshot.sessions).toEqual([])
+    expect(store.get(activeQueryTabAtom)?.editor.text).toBe("SELECT 1")
+  })
+
+  test("declining or failing session closure preserves the existing binding", async () => {
+    addConfig()
+    const tabId = store.set(openQueryTabAtom, {
+      configId: "db",
+      initialSql: "SELECT 1",
+    })
+    await store.set(runActiveQueryTabSqlAtom)
+    const before = store.get(activeQueryTabAtom)
+    const close = bridge.closeTab
+    bridge.closeTab = async () => ok(false)
+    await store.set(bindQueryConfigAtom, { tabId, configId: "other" })
+    expect(store.get(activeQueryTabAtom)).toEqual({ ...before, closing: false })
+    bridge.closeTab = async () => {
+      throw new Error("close failed")
+    }
+    await expect(
+      store.set(bindQueryConfigAtom, { tabId, configId: "other" }),
+    ).rejects.toThrow("close failed")
+    expect(store.get(activeQueryTabAtom)).toEqual({ ...before, closing: false })
+    bridge.closeTab = close
+  })
+
+  test("rejects missing configs and ignores view tabs or running queries", async () => {
+    const viewId = await store.set(openViewTabAtom, {
+      configId: "db",
+      source: { schema: "public", table: "items" },
+    })
+    await store.set(bindQueryConfigAtom, { tabId: viewId })
+    expect(store.get(activeViewTabAtom)?.configId).toBe("db")
+    const tabId = store.set(openQueryTabAtom, {
+      configId: "db",
+      initialSql: "SELECT 1",
+    })
+    await expect(
+      store.set(bindQueryConfigAtom, { tabId, configId: "missing" }),
+    ).rejects.toThrow("连接配置不存在或已删除")
+    expect(store.get(activeQueryTabAtom)?.closing).toBeFalsy()
+    const pending = deferred<ConnResponse<QueryResult>>()
+    bridge.query = () => pending.promise
+    const running = store.set(runActiveQueryTabSqlAtom)
+    await tick()
+    await store.set(bindQueryConfigAtom, { tabId })
+    expect(store.get(activeQueryTabAtom)?.configId).toBe("db")
+    pending.resolve(ok(result))
+    await running
+  })
+
+  test("pending binding stays with its tab and blocks concurrent binding or execution", async () => {
+    addConfig()
+    const tabId = store.set(openQueryTabAtom, {
+      configId: "db",
+      initialSql: "SELECT 1",
+    })
+    await store.set(runActiveQueryTabSqlAtom)
+    const pending = deferred<ConnResponse<boolean>>()
+    const close = bridge.closeTab
+    bridge.closeTab = () => pending.promise
+    const switching = store.set(bindQueryConfigAtom, {
+      tabId,
+      configId: "other",
+    })
+    await store.set(bindQueryConfigAtom, { tabId })
+    await store.set(runActiveQueryTabSqlAtom)
+    expect(queryCalls).toBe(1)
+    const second = store.set(openQueryTabAtom, { initialSql: "second draft" })
+    store.set(updateQueryEditorAtom, {
+      tabId,
+      update: (state) => ({ ...state, text: "SELECT 2" }),
+    })
+    pending.resolve(await close(tabId))
+    await switching
+    expect(store.get(activeQueryTabAtom)?.id).toBe(second)
+    expect(store.get(activeQueryTabAtom)?.configId).toBeUndefined()
+    store.set(selectTabAtom, tabId)
+    expect(store.get(activeQueryTabAtom)?.configId).toBe("other")
+    expect(store.get(activeQueryTabAtom)?.editor.text).toBe("SELECT 2")
+    expect(store.get(activeQueryTabAtom)?.closing).toBe(false)
+    bridge.closeTab = close
+  })
 })
 
 describe("renderer state", () => {

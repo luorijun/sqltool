@@ -1,6 +1,7 @@
 # 会话模型验证
 
 - `bun run test:sessions`：无需数据库，覆盖调度、取消竞态、关闭与连接晚到、错误分类、归属校验、服务编排和 IPC 参数校验，以及前端快照和迟到结果。
+- `bun test tests/sql-editor.test.ts tests/conn-renderer.test.ts`：无需数据库或浏览器，覆盖编辑器只读限制，以及 query/view 的查询隔离、SQL 展示、分页、代码区状态和迟到响应。
 - `bun run check:architecture`：检查生产源码的进程隔离、包入口、依赖方向以及文件与包之间的循环（包括类型导入、动态导入和重导出）。此检查已接入 `typecheck` 和 `build`。
 - `bun run test:architecture`：通过合法及非法依赖样例验证检查器。测试可以直接访问实现细节，生产代码仅通过公共入口访问其他包。
 - `docker compose up -d --wait` 后运行 `bun run test:integration`：使用项目的 PostgreSQL 17 / MySQL 8.4 测试库，覆盖事务、临时表、辅助连接隔离、取消、断线、关闭回滚和物理连接释放。测试进程会创建临时 SSH 服务，在直连和 SSH 两条路径上执行；服务仅允许转发到这两个本地测试端口。
