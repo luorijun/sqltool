@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.paths.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.preload.tsbuildinfo",
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src/preload/**/*.ts", "src/contracts/**/*.ts"]
+}

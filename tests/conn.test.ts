@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import type { Config } from "../src/lib/conn"
-import type { ConnectionSession } from "../src/lib/conn/driver"
-import { Sessions } from "../src/lib/conn/sessions"
-import { ConnError, Tasks } from "../src/lib/conn/tasks"
+import type { Config } from "../src/contracts/database"
+import type { ConnectionSession } from "../src/main/database/ports"
+import { Sessions } from "../src/main/database/sessions"
+import { ConnError, Tasks } from "../src/main/database/tasks"
 
 const config: Config = {
   id: "db",

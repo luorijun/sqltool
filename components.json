@@ -5,17 +5,17 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "src/global.css",
+    "css": "src/renderer/app/global.css",
     "baseColor": "gray",
     "cssVariables": true,
     "prefix": ""
   },
   "aliases": {
-    "components": "@/components",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
-    "utils": "@/lib/utils",
-    "hooks": "@/lib/hooks"
+    "components": "@/renderer/components",
+    "ui": "@/renderer/components/ui",
+    "lib": "@/renderer/components/ui",
+    "utils": "@/renderer/components/ui/utils",
+    "hooks": "@/renderer/components/ui/hooks"
   },
   "iconLibrary": "lucide"
 }

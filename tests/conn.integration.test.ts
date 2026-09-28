@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { generateKeyPairSync, randomUUID } from "node:crypto"
 import net from "node:net"
 import { type Connection, Server } from "ssh2"
-import type { Config } from "../src/lib/conn"
-import { connectDriver } from "../src/lib/conn/driver"
-import { Sessions } from "../src/lib/conn/sessions"
+import type { Config } from "../src/contracts/database"
+import { connectDriver } from "../src/main/database/drivers"
+import { Sessions } from "../src/main/database/sessions"
 
 let ssh: Server
 let sshPort: number
@@ -84,7 +84,11 @@ for (const driver of ["postgres", "mysql"] as const) {
           : {}),
       })
       const create = () =>
-        new Sessions({ configs: () => [profile()], confirm: async () => true })
+        new Sessions({
+          connect: connectDriver,
+          configs: () => [profile()],
+          confirm: async () => true,
+        })
       const query = (sessions: Sessions, id: string, sql: string) =>
         sessions.query(id, 1, randomUUID(), sql)
       const scalar = async (sessions: Sessions, id: string, sql: string) =>

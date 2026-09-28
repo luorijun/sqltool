@@ -5,20 +5,25 @@ import type {
   ConnResponse,
   ConnSnapshot,
   QueryResult,
-} from "../src/lib/conn"
+} from "../src/contracts/database"
 import connApi, {
   applySnapshot,
-  connSnapshotAtom,
-} from "../src/lib/conn/renderer"
+  refreshConnectionsAtom,
+  snapshotAtom,
+} from "../src/renderer/modules/database/client"
 import {
   activeQueryTabAtom,
-  activeQueryTabEditorStateAtom,
+  clearLogsAtom,
   closeTabAtom,
   openQueryTabAtom,
   rebuildActiveSessionAtom,
   runActiveQueryTabSqlAtom,
+  selectTabAtom,
   tabsAtom,
-} from "../src/lib/tabs/renderer"
+  updateLogViewAtom,
+  updateQueryEditorAtom,
+  updateQueryLayoutAtom,
+} from "../src/renderer/modules/workspace"
 
 const store = getDefaultStore()
 const config: Config = {
@@ -51,7 +56,7 @@ function deferred<T>() {
 }
 const tick = () => new Promise((r) => setTimeout(r, 0))
 let bridge: typeof window.main.conn
-beforeEach(() => {
+beforeEach(async () => {
   snapshot = {
     version: 0,
     connections: [
@@ -71,8 +76,6 @@ beforeEach(() => {
   queryCalls = 0
   bridge = {
     sync: async () => capture(),
-    list: async () => capture(),
-    get: async () => capture(),
     openSession: async (_configId, tabId) => {
       const id = crypto.randomUUID()
       snapshot.sessions.push({
@@ -99,17 +102,47 @@ beforeEach(() => {
   globalThis.window = { main: { conn: bridge } } as unknown as Window &
     typeof globalThis
   applySnapshot(capture())
-  store.set(tabsAtom, [])
+  for (const tab of store.get(tabsAtom)) await store.set(closeTabAtom, tab.id)
 })
 
 describe("renderer state", () => {
+  test("saving applies the response snapshot without a follow-up sync", async () => {
+    let syncCalls = 0
+    bridge.sync = async () => {
+      syncCalls++
+      throw new Error("sync unavailable")
+    }
+    const created = { ...config, id: "created" }
+    bridge.create = async () => {
+      snapshot.connections.push({ ...snapshot.connections[0], config: created })
+      return ok(created)
+    }
+    bridge.update = async (_id, input) => {
+      const updated = { ...created, ...input }
+      snapshot.connections[1].config = updated
+      return ok(updated)
+    }
+    expect(await connApi.create(config)).toEqual(created)
+    expect(store.get(snapshotAtom)?.connections[1].config).toEqual(created)
+    expect(await connApi.update(created.id, { name: "edited" })).toMatchObject({
+      name: "edited",
+    })
+    expect(store.get(snapshotAtom)?.connections[1].config.name).toBe("edited")
+    expect(syncCalls).toBe(0)
+    await expect(store.set(refreshConnectionsAtom)).rejects.toThrow(
+      "sync unavailable",
+    )
+    expect(syncCalls).toBe(1)
+    expect(store.get(snapshotAtom)?.connections[1].config.name).toBe("edited")
+  })
+
   test("an old response cannot replace a newer snapshot", () => {
     const old = capture(),
       fresh = capture()
     fresh.connections = []
     applySnapshot(fresh)
     applySnapshot(old)
-    expect(store.get(connSnapshotAtom)?.connections).toEqual([])
+    expect(store.get(snapshotAtom)?.connections).toEqual([])
   })
   test("failure responses update session state before surfacing the error", async () => {
     bridge.query = async () => {
@@ -134,7 +167,7 @@ describe("renderer state", () => {
     await expect(connApi.query("lost", "q", "UPDATE x")).rejects.toMatchObject({
       kind: "unknown",
     })
-    expect(store.get(connSnapshotAtom)?.sessions[0].status).toBe("failed")
+    expect(store.get(snapshotAtom)?.sessions[0].status).toBe("failed")
   })
   test("rebuilding a session preserves text and results without executing SQL", async () => {
     store.set(openQueryTabAtom, { configId: "db", initialSql: "SELECT 1" })
@@ -164,7 +197,7 @@ describe("renderer state", () => {
     await running
     expect(store.get(tabsAtom)).toEqual([])
     expect(store.get(activeQueryTabAtom)).toBeNull()
-    expect(store.get(connSnapshotAtom)?.sessions).toEqual([])
+    expect(store.get(snapshotAtom)?.sessions).toEqual([])
   })
   test("a late result updates its old log without replacing the rebuilt session's result", async () => {
     const pending = deferred<ConnResponse<QueryResult>>()
@@ -208,16 +241,80 @@ describe("renderer state", () => {
     expect(store.get(tabsAtom)).toEqual([])
   })
   test("a closed session is not silently recreated or replayed", async () => {
-    store.set(openQueryTabAtom, { configId: "db", initialSql: "SELECT 1" })
+    const tabId = store.set(openQueryTabAtom, {
+      configId: "db",
+      initialSql: "SELECT 1",
+    })
     await store.set(runActiveQueryTabSqlAtom)
     snapshot.sessions[0].status = "closed"
     applySnapshot(capture())
-    store.set(activeQueryTabEditorStateAtom, (current) => ({
-      ...current,
-      text: "UPDATE x",
-    }))
+    store.set(updateQueryEditorAtom, {
+      tabId,
+      update: (current) => ({
+        ...current,
+        text: "UPDATE x",
+      }),
+    })
     await store.set(runActiveQueryTabSqlAtom)
     expect(queryCalls).toBe(1)
     expect(store.get(activeQueryTabAtom)?.table.error).toContain("会话已失效")
+  })
+
+  test("editor callbacks retain their tab identity after switching and cannot revive a closed tab", async () => {
+    const first = store.set(openQueryTabAtom, { initialSql: "first" })
+    const second = store.set(openQueryTabAtom, { initialSql: "second" })
+    store.set(updateQueryEditorAtom, {
+      tabId: first,
+      update: (current) => ({ ...current, text: "edited" }),
+    })
+    expect(store.get(activeQueryTabAtom)?.id).toBe(second)
+    expect(store.get(activeQueryTabAtom)?.editor.text).toBe("second")
+    store.set(selectTabAtom, first)
+    expect(store.get(activeQueryTabAtom)?.editor.text).toBe("edited")
+    await store.set(closeTabAtom, first)
+    store.set(updateQueryEditorAtom, {
+      tabId: first,
+      update: (current) => ({ ...current, text: "late" }),
+    })
+    expect(store.get(tabsAtom).map((tab) => tab.id)).toEqual([second])
+  })
+
+  test("view commands cannot replace query results, execution status or logs", async () => {
+    const tabId = store.set(openQueryTabAtom, {
+      configId: "db",
+      initialSql: "SELECT 1",
+    })
+    await store.set(runActiveQueryTabSqlAtom)
+    const tab = store.get(activeQueryTabAtom)
+    store.set(updateQueryLayoutAtom, {
+      tabId,
+      update: (current) => ({
+        ...current,
+        data: [],
+        status: "running",
+        visibility: { hidden: false },
+      }),
+    })
+    store.set(updateQueryEditorAtom, {
+      tabId,
+      update: (current) => ({
+        ...current,
+        status: "running",
+        text: "SELECT 2",
+      }),
+    })
+    store.set(updateLogViewAtom, {
+      tabId,
+      update: (current) => ({ ...current, query: "filter", logs: [] }),
+    })
+    const updated = store.get(activeQueryTabAtom)
+    expect(updated?.table.data).toBe(tab?.table.data)
+    expect(updated?.table.status).toBe("success")
+    expect(updated?.table.visibility).toEqual({ hidden: false })
+    expect(updated?.editor.status).toBe("idle")
+    expect(updated?.logger.logs).toBe(tab?.logger.logs)
+    expect(updated?.logger.query).toBe("filter")
+    store.set(clearLogsAtom, tabId)
+    expect(store.get(activeQueryTabAtom)?.logger.logs).toEqual([])
   })
 })

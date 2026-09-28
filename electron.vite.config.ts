@@ -8,19 +8,29 @@ import type {
 } from "electron-vite"
 import { defineConfig } from "electron-vite"
 import type { UserConfig } from "vite"
+import { compilerOptions } from "./tsconfig.paths.json"
+
+const alias = Object.fromEntries(
+  Object.entries(compilerOptions.paths).map(([name, [target]]) => [
+    name.replace(/\/\*$/, ""),
+    resolve(__dirname, compilerOptions.baseUrl, target.replace(/\/\*$/, "")),
+  ]),
+)
 
 const mainConfig = {
+  resolve: { alias },
   build: {
     rollupOptions: {
-      input: { index: resolve(__dirname, "src/main.ts") },
+      input: { index: resolve(__dirname, "src/main/app/index.ts") },
     },
   },
 } satisfies UserConfig
 
 const preloadConfig = {
+  resolve: { alias },
   build: {
     rollupOptions: {
-      input: { index: resolve(__dirname, "src/preload.ts") },
+      input: { index: resolve(__dirname, "src/preload/index.ts") },
       output: { format: "cjs" },
     },
   },
@@ -29,7 +39,7 @@ const preloadConfig = {
 const rendererConfig = {
   root: ".",
   plugins: [react(), tailwindcss()],
-  resolve: { alias: { "@/": "/src/" } },
+  resolve: { alias },
   build: {
     rollupOptions: {
       input: { index: resolve(__dirname, "index.html") },

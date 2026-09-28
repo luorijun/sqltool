@@ -15,33 +15,35 @@ SqlTool 是一个面向开发者的本地桌面数据库客户端，定位接近
 - 桌面运行：Electron。
 - 构建与发布：`electron-vite` 组织 main / preload / renderer 三端构建，`electron-builder` 负责桌面应用打包，`electron-updater` 提供打包后应用的更新检查能力。
 - Renderer：React、TypeScript 和 Jotai。
-- 样式与组件：Tailwind CSS v4、Base UI primitives、本地 `src/components/ui`。基础本地组件应基于 Base UI 实现，并沉淀为项目自己的 UI 基础设施。
+- 样式与组件：Tailwind CSS v4、Base UI primitives、本地 `src/renderer/components/ui`。基础本地组件应基于 Base UI 实现，并沉淀为项目自己的 UI 基础设施。
 - 数据库：PostgreSQL 和 MySQL，对应访问依赖主要是 `pg` 和 `mysql2`。
 - 编辑与展示：CodeMirror 承载 SQL 编辑体验，TanStack Table 承载查询结果表格能力。
 
 ### 目录导读
 
-- `src/lib`：应用能力层，承载跨进程领域模块、renderer 侧客户端接口和共享类型。
-- `src/page`：界面组织层，承载应用框架、侧边栏、主工作区等页面结构。
-- `src/components/ui`：本地基础 UI 组件层。
-- `src/global.css`：Tailwind v4 主题变量和全局样式。
+- `src/contracts`：跨进程请求、结果、快照、API 签名和通道；不依赖任一运行端的实现。
+- `src/main/app`：启动、窗口、存储与确认能力的组装，以及退出清理。
+- `src/main/database`：连接配置、会话、任务、结构缓存、查询编译与驱动；`main/ipc` 负责参数校验和调用者身份，`main/system` 负责文件及剪贴板能力。
+- `src/preload`：只按契约暴露明确的调用方法。
+- `src/renderer/app`：应用挂载、初始化、全局同步和样式。
+- `src/renderer/pages/workbench`：工作台页面，组织侧边栏、编辑区、数据浏览和反馈。
+- `src/renderer/modules`：数据库快照缓存、工作区状态与命令，以及系统客户端。
+- `src/renderer/components`：通过参数与回调接入的编辑器、结果表格、运行日志和基础 UI。
+- `src/renderer/app/global.css`：Tailwind v4 主题变量和全局样式。
 - `electron.vite.config.ts`：Electron main / preload / renderer 三端构建配置。
 - `electron-builder.yml`：桌面应用打包配置。
 
-### 领域模块模式
+### 包边界
 
-跨进程能力按领域组织在 `src/lib` 下，稳定模式是 `src/lib/<domain>/{index,main,preload,renderer}.ts`。这个模式同时表达领域边界和进程边界：main 侧负责真实能力实现，preload 负责受控桥接，renderer 侧负责提供页面可用的客户端接口。
+完整规则见 [架构约定](docs/architecture.md)。先按运行环境隔离，再按业务职责分包。跨包使用 `@/`（映射到 `src/`），仅访问公共 `index.ts` / `index.tsx`，基础 UI 可以使用 `ui/button` 等子入口；包内通过相对路径引用具体文件，不反向导入自身入口。路径映射统一维护在 `tsconfig.paths.json`。禁止跨进程实现依赖和循环依赖，包括类型依赖。
 
-- `index.ts` 放置领域类型、IPC channel 名称和 main / preload / renderer 之间共享的定义。
-- `main.ts` 放置 main 侧能力实现，负责调用 Electron、Node、数据库驱动等只能在主进程侧执行的能力。
-- `preload.ts` 放置 IPC 调用包装，并通过全局桥接接口暴露给 renderer。
-- `renderer.ts` 放置 renderer 侧客户端接口，以及该领域在客户端需要维护的全局缓存和状态同步逻辑。
+数据库服务通过接口接收驱动、配置存储和确认能力，应用入口负责组装。工作区按标签页标识拥有查询、分页、结果和日志状态；外部通过公开命令更新状态。展示组件定义自身的参数类型，不依赖工作区状态类型。
 
 ### 请求响应模式
 
-当前结构更接近请求响应模式，也可以借助 MVC 的视角理解。`src/page` 主要负责界面展示和交互组织，不直接访问数据库驱动、文件系统或 Electron 主进程对象。`src/lib/<domain>/renderer.ts` 是 renderer 侧访问领域能力的客户端接口和缓存层，`src/lib/<domain>/main.ts` 是 main 侧的实际能力实现。
+典型数据流是：页面调用工作区或数据库模块的公共命令，客户端通过 preload 发起请求，IPC 层校验参数并确定窗口身份，数据库服务处理后返回结果与快照；客户端合并快照，工作区更新相应标签页状态，驱动页面刷新。
 
-典型数据流是：页面组件发起动作，调用对应领域的 renderer 客户端接口；renderer 客户端接口通过 preload 暴露的桥接能力发起 IPC 请求；main 侧完成实际处理并返回结果；renderer 侧再更新缓存或状态，驱动页面刷新。
+`bun run typecheck` 包含架构边界检查和 main / preload / renderer 各自的 TypeScript 检查。`bun run test:architecture` 验证边界检查器；会话、客户端及数据库集成测试见 [测试说明](tests/README.md)。测试可以访问包内实现，生产源码不能。
 
 ## 本地测试数据库
 
