@@ -1,7 +1,8 @@
-import { useAtom, useSetAtom } from "jotai"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { CircleX, Loader2 } from "lucide-react"
 import {
   activeQueryTabTableStateAtom,
+  activeResultStaleAtom,
   resetActiveQueryTabTableStateAtom,
 } from "@/lib/tabs/renderer"
 import { EmptyState } from "./empty"
@@ -11,6 +12,7 @@ export default function QueryTableArea() {
   const [tableState, setTableState] = useAtom(activeQueryTabTableStateAtom)
   const resetTableState = useSetAtom(resetActiveQueryTabTableStateAtom)
   const { status, error } = tableState
+  const stale = useAtomValue(activeResultStaleAtom)
 
   if (status === "idle") {
     return <EmptyState message="运行 SQL 语句以查看结果" />
@@ -25,7 +27,7 @@ export default function QueryTableArea() {
     )
   }
 
-  if (status === "error") {
+  if (status === "error" && !tableState.dataAt) {
     return (
       <EmptyState
         icon={<CircleX className="size-8 text-destructive/40 stroke-[1.25]" />}
@@ -39,6 +41,12 @@ export default function QueryTableArea() {
       tableState={tableState}
       setTableState={setTableState}
       onReset={resetTableState}
+      statusBarEnd={
+        <>
+          {(stale || status === "error") && <span>此前执行的结果</span>}
+          {error && <span className="text-destructive">{error}</span>}
+        </>
+      }
     />
   )
 }

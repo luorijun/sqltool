@@ -12,6 +12,11 @@ export interface QueryTabState {
   id: string
   kind: "query"
   configId?: string
+  sessionId?: string
+  requestId?: string
+  phase?: "connecting" | "running" | "cancelling"
+  cancelRequested?: boolean
+  closing?: boolean
   table: QueryTabTableState
   editor: QueryTabEditorState
   logger: TabLoggerState
@@ -21,6 +26,7 @@ export interface ViewTabState {
   id: string
   kind: "view"
   configId: string
+  closing?: boolean
   source: {
     schema: string
     table: string
@@ -35,6 +41,7 @@ export interface QueryTabTableState {
   status: "idle" | "running" | "success" | "error"
   error: string | null
   dataAt: number | null
+  sessionId?: string
 
   data: Record<string, unknown>[]
   columns: QueryResultColumn[]
@@ -83,6 +90,9 @@ export interface ViewTabTableState {
   status: "idle" | "running" | "success" | "error"
   error: string | null
   dataAt: number | null
+  requestId?: string
+  countRequestId?: string
+  generation?: number
   data: Record<string, unknown>[]
   columns: QueryResultColumn[]
   visibility: Record<string, boolean>
@@ -96,7 +106,12 @@ export interface ViewTabTableState {
   countError: string | null
 }
 
-export type TabLogStatus = "success" | "error" | "running"
+export type TabLogStatus =
+  | "success"
+  | "error"
+  | "running"
+  | "cancelled"
+  | "unknown"
 
 export interface TabLogEntry {
   id: string

@@ -6,6 +6,7 @@ import type {
   SelectQuery,
   SelectResult,
 } from ".."
+import { ConnError, withTimeout } from "../tasks"
 import { connectMySql } from "./mysql"
 import { connectPostgres } from "./postgres"
 
@@ -19,6 +20,9 @@ export interface ConnectionSession {
   query(sql: string): Promise<QueryResult>
   select(query: SelectQuery): Promise<SelectResult>
   close(): Promise<void>
+  destroy(): void
+  cancel(): Promise<void>
+  onFailure(listener: (error: Error) => void): () => void
 }
 
 interface CreateConnectionSessionOptions {
@@ -26,6 +30,9 @@ interface CreateConnectionSessionOptions {
   query: (sql: string) => Promise<QueryResult>
   select: (query: SelectQuery) => Promise<SelectResult>
   close: () => Promise<void>
+  destroy: () => void
+  cancel: (active: () => boolean) => Promise<void>
+  watch: (fail: (error: Error) => void) => void
 }
 
 export function connectDriver(
@@ -43,17 +50,56 @@ export function createConnectionSession(
   options: CreateConnectionSessionOptions,
 ): ConnectionSession {
   let closePromise: Promise<void> | null = null
+  let closed = false
+  let active = false
+  let failure: Error | null = null
+  const listeners = new Set<(error: Error) => void>()
+  const fail = (error: Error) => {
+    if (closed || failure) return
+    failure = error
+    for (const listener of listeners) listener(error)
+  }
+  options.watch(fail)
+
+  const execute = async <T>(run: () => Promise<T>): Promise<T> => {
+    if (closed || failure) throw new ConnError(failure?.message ?? "会话已关闭")
+    active = true
+    try {
+      return await run()
+    } catch (error) {
+      // mysql2 can deliver fatal connection errors only through a query callback.
+      const fault = error as { fatal?: boolean; severity?: string }
+      if (
+        fault.fatal ||
+        fault.severity === "FATAL" ||
+        fault.severity === "PANIC"
+      )
+        fail(error as Error)
+      if (failure || closed)
+        throw new ConnError(
+          `结果未知：${failure?.message ?? "连接已断开"}，请核实数据库状态`,
+          "unknown",
+        )
+      const code = error as { code?: string; errno?: number }
+      if (code.code === "57014" || code.errno === 1317)
+        throw new ConnError("查询已取消；事务可能仍需回滚", "cancelled")
+      throw error
+    } finally {
+      active = false
+    }
+  }
 
   const close = async () => {
     if (closePromise) {
       return closePromise
     }
 
+    closed = true
     closePromise = (async () => {
       try {
-        await options.close()
+        await withTimeout(options.close())
       } catch {
-        // ignore close failure to keep close idempotent
+        options.destroy()
       }
     })()
 
@@ -61,9 +107,21 @@ export function createConnectionSession(
   }
 
   return {
-    inspect: options.inspect,
-    query: options.query,
-    select: options.select,
+    inspect: () => execute(options.inspect),
+    query: (sql) => execute(() => options.query(sql)),
+    select: (query) => execute(() => options.select(query)),
+    cancel: () => options.cancel(() => active && !closed && !failure),
+    destroy: () => {
+      closed = true
+      options.destroy()
+    },
+    onFailure: (listener) => {
+      listeners.add(listener)
+      if (failure) listener(failure)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
     close,
   }
 }

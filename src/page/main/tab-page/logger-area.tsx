@@ -37,7 +37,13 @@ import { cn } from "@/lib/utils"
 import { AreaStatusBar, AreaToolbar } from "./bars"
 
 const STICKY_BOTTOM_OFFSET = 24
-const TAB_LOG_STATUSES: TabLogStatus[] = ["success", "error", "running"]
+const TAB_LOG_STATUSES: TabLogStatus[] = [
+  "success",
+  "error",
+  "running",
+  "cancelled",
+  "unknown",
+]
 
 const STATUS_META: Record<
   TabLogStatus,
@@ -47,6 +53,16 @@ const STATUS_META: Record<
     iconClassName: string
   }
 > = {
+  cancelled: {
+    label: "已取消",
+    badgeClassName: "bg-muted text-muted-foreground",
+    iconClassName: "text-muted-foreground",
+  },
+  unknown: {
+    label: "结果未知",
+    badgeClassName: "bg-amber-500/10 text-amber-600",
+    iconClassName: "text-amber-500",
+  },
   success: {
     label: "成功",
     badgeClassName: "bg-green-500/10 text-green-600 dark:text-green-400",
@@ -116,6 +132,8 @@ function StatusIcon({ status }: { status: LogEntry["status"] }) {
         />
       )
     case "error":
+    case "cancelled":
+    case "unknown":
       return (
         <CircleX
           className={cn("size-3.5 shrink-0", STATUS_META[status].iconClassName)}

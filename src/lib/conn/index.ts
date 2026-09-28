@@ -9,6 +9,11 @@ export const DISCONNECT = "conn:disconnect"
 export const INSPECT = "conn:inspect"
 export const QUERY = "conn:query"
 export const SELECT = "conn:select"
+export const OPEN_SESSION = "conn:open-session"
+export const CLOSE_SESSION = "conn:close-session"
+export const CLOSE_TAB = "conn:close-tab"
+export const CANCEL = "conn:cancel"
+export const SYNC = "conn:sync"
 
 export type DbDriver = "postgres" | "mysql"
 
@@ -186,4 +191,45 @@ export interface Connection {
   connected: boolean
   schema: DbSchema[] | null
   error: string | null
+  sessionCount: number
+  failedCount: number
+  generation: number
 }
+
+export type SessionStatus =
+  | "idle"
+  | "connecting"
+  | "ready"
+  | "closing"
+  | "closed"
+  | "failed"
+export type TaskStatus = "queued" | "connecting" | "running" | "cancelling"
+export type FailureKind = "error" | "cancelled" | "unknown"
+
+export interface SessionSnapshot {
+  id: string
+  configId: string
+  tabId?: string
+  kind: "sql" | "schema" | "browse"
+  status: SessionStatus
+  used: boolean
+  error: string | null
+}
+
+export interface TaskSnapshot {
+  id: string
+  sessionId: string
+  tabId?: string
+  status: TaskStatus
+}
+
+export interface ConnSnapshot {
+  version: number
+  connections: Connection[]
+  sessions: SessionSnapshot[]
+  tasks: TaskSnapshot[]
+}
+
+export type ConnResponse<T> = {
+  snapshot: ConnSnapshot
+} & ({ ok: true; value: T } | { ok: false; error: string; kind: FailureKind })

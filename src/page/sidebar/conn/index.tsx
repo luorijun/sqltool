@@ -109,8 +109,12 @@ function ConnectionItem(props: {
 
   const disconnectConnection = useSetAtom(disconnectConnectionAtom)
   const handleDisconnect = async () => {
-    await disconnectConnection(props.connection.config.id)
-    toast.success(`"${name}" 已断开`)
+    try {
+      const connection = await disconnectConnection(props.connection.config.id)
+      if (connection) toast.success(`"${name}" 已断开`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "断开失败")
+    }
   }
 
   const refreshConnectionSchema = useSetAtom(refreshConnectionSchemaAtom)
@@ -145,7 +149,10 @@ function ConnectionItem(props: {
     openQueryTab({ configId: props.connection.config.id })
   }
 
-  const isConnected = props.connection.connected
+  const isConnected =
+    props.connection.connected ||
+    props.connection.sessionCount > 0 ||
+    props.connection.failedCount > 0
   const isBusy = props.action !== undefined
   const displayError =
     props.action === "connect" || props.action === "inspect"
@@ -176,6 +183,8 @@ function ConnectionItem(props: {
             <p className="truncate text-sm font-medium leading-tight">
               {props.connection.config.name ?? "未命名"}
               <ConnectionStatusBadge
+                failedCount={props.connection.failedCount}
+                sessionCount={props.connection.sessionCount}
                 connected={props.connection.connected}
                 error={props.connection.error}
                 action={props.action}
@@ -335,6 +344,8 @@ function ConnectionItem(props: {
 }
 
 function ConnectionStatusBadge(props: {
+  failedCount: number
+  sessionCount: number
   connected: boolean
   error: string | null
   action?: "connect" | "disconnect" | "inspect"
@@ -354,6 +365,15 @@ function ConnectionStatusBadge(props: {
   if (props.connected && props.error) {
     return <Badge variant="warning">结构异常</Badge>
   }
+
+  if (props.failedCount > 0)
+    return (
+      <Badge variant="warning">
+        {props.connected ? "部分会话异常" : "会话异常"}
+      </Badge>
+    )
+  if (!props.connected && props.sessionCount > 0)
+    return <Badge variant="muted">会话待连接</Badge>
 
   if (props.connected) {
     return <Badge variant="success">已连接</Badge>

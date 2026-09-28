@@ -9,6 +9,7 @@ import type {
 } from ".."
 import { compileSelectQuery } from "../query"
 import { connectSshClient, SshTunnelStream } from "../ssh"
+import { withTimeout } from "../tasks"
 import type { ConnectionSession, QueryColumnInput } from "."
 import {
   createConnectionSession,
@@ -88,7 +89,13 @@ async function connectDirectPostgres(
     connectionTimeoutMillis: POSTGRES_CONNECTION_TIMEOUT_MS,
   })
 
-  await client.connect()
+  client.on("error", () => {})
+  try {
+    await client.connect()
+  } catch (error) {
+    client.connection.stream.destroy()
+    throw error
+  }
 
   return { client }
 }
@@ -113,6 +120,7 @@ async function connectPostgresViaSsh(
     connectionTimeoutMillis: POSTGRES_CONNECTION_TIMEOUT_MS,
     stream,
   })
+  client.on("error", () => {})
 
   try {
     await client.connect()
@@ -120,7 +128,8 @@ async function connectPostgresViaSsh(
     return {
       client,
       closeTransport: () => {
-        ssh.end()
+        stream.destroy()
+        ssh.destroy()
       },
     }
   } catch (error) {
@@ -491,6 +500,28 @@ export async function connectPostgres(
   const { client, closeTransport } = await createPostgresClient(profile)
 
   return createConnectionSession({
+    watch(fail) {
+      client.on("error", fail)
+      client.on("end", () => fail(new Error("数据库连接已断开")))
+    },
+    destroy() {
+      client.connection.stream.destroy()
+      closeTransport?.()
+    },
+    async cancel(active) {
+      const control = await createPostgresClient(profile)
+      try {
+        if (active())
+          await withTimeout(
+            control.client.query("SELECT pg_cancel_backend($1)", [
+              client.processID,
+            ]),
+          )
+      } finally {
+        control.client.connection.stream.destroy()
+        control.closeTransport?.()
+      }
+    },
     inspect() {
       return inspectPostgresClient(client)
     },
@@ -512,7 +543,7 @@ export async function connectPostgres(
       try {
         await client.end()
       } catch {
-        // ignore close failure and always release SSH transport
+        client.connection.stream.destroy()
       } finally {
         closeTransport?.()
       }

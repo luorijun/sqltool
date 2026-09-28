@@ -1,5 +1,6 @@
 import { atom, useAtomValue, useSetAtom } from "jotai"
 import { Plus, X } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
   activeTabIdAtom,
@@ -40,7 +41,13 @@ export function TabBar() {
             tab={tab}
             active={activeTabId === tab.id}
             onSelect={() => setActiveTabId(tab.id)}
-            onClose={() => closeTab(tab.id)}
+            onClose={() => {
+              void closeTab(tab.id).catch((error) =>
+                toast.error(
+                  error instanceof Error ? error.message : "关闭失败",
+                ),
+              )
+            }}
           />
         ))}
       </div>

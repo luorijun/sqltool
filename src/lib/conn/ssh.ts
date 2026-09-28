@@ -326,6 +326,8 @@ export async function connectSshClient(ssh: SshConfig): Promise<SshClient> {
       cleanup()
 
       const reason = error instanceof Error ? error : new Error(message)
+      client.on("error", () => {})
+      client.destroy()
       reject(reason)
     }
 
@@ -348,6 +350,8 @@ export async function connectSshClient(ssh: SshConfig): Promise<SshClient> {
     client.once("ready", () => {
       settled = true
       cleanup()
+      // Keep an error listener even between handshake and tunnel construction.
+      client.on("error", () => {})
       resolve(client)
     })
 
@@ -390,6 +394,16 @@ export class SshTunnelStream extends Duplex {
   constructor(ssh: SshClient) {
     super()
     this.#ssh = ssh
+    ssh.on("error", this.#onError)
+    ssh.on("end", this.#onEnd)
+    ssh.on("close", this.#onEnd)
+  }
+
+  #onError = (error: Error) => {
+    this.destroy(error)
+  }
+  #onEnd = () => {
+    this.destroy(new Error("SSH 连接已断开"))
   }
 
   connect(port: number, host: string): this {
@@ -511,6 +525,9 @@ export class SshTunnelStream extends Duplex {
     error: Error | null,
     callback: (error?: Error | null) => void,
   ): void {
+    this.#ssh.off("error", this.#onError)
+    this.#ssh.off("end", this.#onEnd)
+    this.#ssh.off("close", this.#onEnd)
     const channel = this.#channel
     this.#channel = null
     this.#connecting = false

@@ -6,6 +6,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -14,14 +15,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  activeResultStaleAtom,
   activeViewTabAtom,
   activeViewTabTableStateAtom,
+  cancelActiveViewAtom,
   refreshActiveViewTabAtom,
   resetActiveViewTabTableStateAtom,
   setActiveViewTabPageAtom,
   setActiveViewTabPageSizeAtom,
 } from "@/lib/tabs/renderer"
-import { EmptyState } from "./empty"
 import { ResultTable } from "./table"
 
 const PAGE_SIZES = [50, 100, 200]
@@ -29,6 +31,13 @@ const PAGE_SIZES = [50, 100, 200]
 export default function ViewTableArea() {
   const [tableState, setTableState] = useAtom(activeViewTabTableStateAtom)
   const viewTab = useAtomValue(activeViewTabAtom)
+  const stale = useAtomValue(activeResultStaleAtom)
+  const cancel = useSetAtom(cancelActiveViewAtom)
+  const stop = () => {
+    void cancel().catch((error) =>
+      toast.error(error instanceof Error ? error.message : "取消失败"),
+    )
+  }
   const resetTableState = useSetAtom(resetActiveViewTabTableStateAtom)
   const refresh = useSetAtom(refreshActiveViewTabAtom)
   const setPage = useSetAtom(setActiveViewTabPageAtom)
@@ -38,10 +47,13 @@ export default function ViewTableArea() {
     tableState.status === "running" && tableState.dataAt === null
   if (tableState.status === "idle" || initialLoading) {
     return (
-      <EmptyState
-        icon={<Loader2 className="size-8 animate-spin text-primary/40" />}
-        message="正在加载数据表..."
-      />
+      <div className="flex size-full flex-col items-center justify-center gap-3">
+        <Loader2 className="size-8 animate-spin text-primary/40" />
+        <p className="text-xs text-muted-foreground">正在加载数据表...</p>
+        <Button variant="outline" size="xs" onClick={stop}>
+          停止加载
+        </Button>
+      </div>
     )
   }
 
@@ -87,6 +99,11 @@ export default function ViewTableArea() {
       exportNamePrefix={viewTab ? `${viewTab.source.table}-data` : "table-data"}
       toolbarEnd={
         <div className="flex items-center gap-1">
+          {(busy || tableState.countStatus === "running") && (
+            <Button variant="outline" size="xs" onClick={stop}>
+              停止
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="xs"
@@ -148,6 +165,8 @@ export default function ViewTableArea() {
       }
       statusBarEnd={
         <>
+          <span>独立浏览连接 · 仅查看已提交数据</span>
+          {stale && <span>此前执行的结果</span>}
           <span title={tableState.countError ?? undefined}>{countText}</span>
           {tableState.error && (
             <span className="text-destructive">{tableState.error}</span>

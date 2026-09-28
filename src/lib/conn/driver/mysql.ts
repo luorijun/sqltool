@@ -13,6 +13,7 @@ import type {
 } from ".."
 import { compileSelectQuery } from "../query"
 import { connectSshClient, SshTunnelStream } from "../ssh"
+import { withTimeout } from "../tasks"
 import type { ConnectionSession, QueryColumnInput } from "."
 import {
   createConnectionSession,
@@ -53,6 +54,15 @@ interface ConnectedMySqlClient {
   closeTransport?: () => void
 }
 
+function destroyMySqlClient(client: MySqlConnection): void {
+  client.destroy()
+  // mysql2's public destroy() only ends the socket; force cleanup must close it.
+  const core = client as MySqlConnection & {
+    connection: { stream: { destroy(): void } }
+  }
+  core.connection.stream.destroy()
+}
+
 async function connectDirectMySql(
   profile: ConfigProfile,
 ): Promise<ConnectedMySqlClient> {
@@ -63,6 +73,7 @@ async function connectDirectMySql(
     user: profile.username,
     password: profile.password,
     database: profile.database,
+    connectTimeout: 20_000,
   })
 
   return { client }
@@ -85,13 +96,15 @@ async function connectMySqlViaSsh(
       user: profile.username,
       password: profile.password,
       database: profile.database,
+      connectTimeout: 20_000,
       stream: () => new SshTunnelStream(ssh).connect(port, profile.host),
     })
 
     return {
       client,
       closeTransport: () => {
-        ssh.end()
+        destroyMySqlClient(client)
+        ssh.destroy()
       },
     }
   } catch (error) {
@@ -463,6 +476,26 @@ export async function connectMySql(
   const { client, closeTransport } = await createMySqlClient(profile)
 
   return createConnectionSession({
+    watch(fail) {
+      client.on("error", fail)
+      client.on("end", () => fail(new Error("数据库连接已断开")))
+    },
+    destroy() {
+      destroyMySqlClient(client)
+      closeTransport?.()
+    },
+    async cancel(active) {
+      const control = await createMySqlClient(profile)
+      try {
+        if (active())
+          await withTimeout(
+            control.client.query(`KILL QUERY ${Number(client.threadId)}`),
+          )
+      } finally {
+        destroyMySqlClient(control.client)
+        control.closeTransport?.()
+      }
+    },
     inspect() {
       return inspectMySqlClient(client)
     },
@@ -480,7 +513,7 @@ export async function connectMySql(
       try {
         await client.end()
       } catch {
-        client.destroy()
+        destroyMySqlClient(client)
       } finally {
         closeTransport?.()
       }

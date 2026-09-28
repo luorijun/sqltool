@@ -1,7 +1,8 @@
 import type {
   Config,
   ConfigProfile,
-  Connection,
+  ConnResponse,
+  ConnSnapshot,
   CreateConfig,
   QueryResult,
   SelectQuery,
@@ -13,16 +14,30 @@ import type { SaveTextFileOptions } from "./serialize"
 export interface MainBridge {
   conn: {
     test(profile: ConfigProfile): Promise<void>
-    list(): Promise<Connection[]>
-    get(id: string): Promise<Connection | undefined>
-    create(input: CreateConfig): Promise<Config>
-    update(id: string, input: UpdateConfig): Promise<Config>
-    remove(id: string): Promise<void>
-    connect(configId: string): Promise<Connection>
-    disconnect(configId: string): Promise<Connection>
-    inspect(configId: string): Promise<Connection>
-    query(configId: string, sql: string): Promise<QueryResult>
-    select(configId: string, query: SelectQuery): Promise<SelectResult>
+    list(): Promise<ConnSnapshot>
+    get(id: string): Promise<ConnSnapshot>
+    sync(): Promise<ConnSnapshot>
+    create(input: CreateConfig): Promise<ConnResponse<Config>>
+    update(id: string, input: UpdateConfig): Promise<ConnResponse<Config>>
+    remove(id: string): Promise<ConnResponse<void>>
+    connect(configId: string): Promise<ConnResponse<void>>
+    disconnect(configId: string): Promise<ConnResponse<boolean>>
+    inspect(configId: string): Promise<ConnResponse<void>>
+    openSession(configId: string, tabId: string): Promise<ConnResponse<string>>
+    closeSession(sessionId: string): Promise<ConnResponse<boolean>>
+    closeTab(tabId: string): Promise<ConnResponse<boolean>>
+    cancel(requestId: string): Promise<ConnResponse<void>>
+    query(
+      sessionId: string,
+      requestId: string,
+      sql: string,
+    ): Promise<ConnResponse<QueryResult>>
+    select(
+      configId: string,
+      tabId: string,
+      requestId: string,
+      query: SelectQuery,
+    ): Promise<ConnResponse<SelectResult>>
   }
   serialize: {
     writeClipboardText(text: string): Promise<void>

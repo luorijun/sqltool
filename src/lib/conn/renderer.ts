@@ -1,199 +1,144 @@
-import { atom } from "jotai"
+import { atom, getDefaultStore } from "jotai"
 import type { Setter } from "jotai/vanilla"
 import type {
-  Config,
   ConfigProfile,
-  Connection,
+  ConnResponse,
+  ConnSnapshot,
   CreateConfig,
-  QueryResult,
+  FailureKind,
   SelectQuery,
-  SelectResult,
   UpdateConfig,
-} from "./index"
+} from "."
 
 type ConnectionAction = "connect" | "disconnect" | "inspect"
+export const connSnapshotAtom = atom<ConnSnapshot | null>(
+  null as ConnSnapshot | null,
+)
+export const connectionEntriesAtom = atom(
+  (get) => get(connSnapshotAtom)?.connections ?? null,
+)
+export const sessionEntriesAtom = atom(
+  (get) => get(connSnapshotAtom)?.sessions ?? [],
+)
+export const connectionActionAtom = atom<
+  Record<string, ConnectionAction | undefined>
+>({})
+
+export function applySnapshot(snapshot: ConnSnapshot): void {
+  const store = getDefaultStore()
+  const current = store.get(connSnapshotAtom)
+  if (!current || snapshot.version > current.version)
+    store.set(connSnapshotAtom, snapshot)
+}
+
+export class RequestError extends Error {
+  readonly kind: FailureKind
+  constructor(message: string, kind: FailureKind) {
+    super(message)
+    this.kind = kind
+  }
+}
+
+async function unwrap<T>(request: Promise<ConnResponse<T>>): Promise<T> {
+  const response = await request
+  applySnapshot(response.snapshot)
+  if (response.ok === false)
+    throw new RequestError(response.error, response.kind)
+  return response.value
+}
+
+function currentConnection(id: string) {
+  const connection = getDefaultStore()
+    .get(connSnapshotAtom)
+    ?.connections.find((c) => c.config.id === id)
+  if (!connection) throw new Error("连接不存在或已删除")
+  return connection
+}
 
 const connApi = {
-  test(profile: ConfigProfile): Promise<void> {
+  test(profile: ConfigProfile) {
     return window.main.conn.test(profile)
   },
-  list(): Promise<Connection[]> {
-    return window.main.conn.list()
+  async sync() {
+    const snapshot = await window.main.conn.sync()
+    applySnapshot(snapshot)
+    return getDefaultStore().get(connSnapshotAtom) ?? snapshot
   },
-  get(id: string): Promise<Connection | undefined> {
-    return window.main.conn.get(id)
+  async list() {
+    return (await connApi.sync()).connections
   },
-  create(input: CreateConfig): Promise<Config> {
-    return window.main.conn.create(input)
+  async get(id: string) {
+    return (await connApi.list()).find((c) => c.config.id === id)
   },
-  update(id: string, input: UpdateConfig): Promise<Config> {
-    return window.main.conn.update(id, input)
+  create(input: CreateConfig) {
+    return unwrap(window.main.conn.create(input))
   },
-  remove(id: string): Promise<void> {
-    return window.main.conn.remove(id)
+  update(id: string, input: UpdateConfig) {
+    return unwrap(window.main.conn.update(id, input))
   },
-  connect(configId: string): Promise<Connection> {
-    return window.main.conn.connect(configId)
+  remove(id: string) {
+    return unwrap(window.main.conn.remove(id))
   },
-  disconnect(configId: string): Promise<Connection> {
-    return window.main.conn.disconnect(configId)
+  async connect(id: string) {
+    await unwrap(window.main.conn.connect(id))
+    return currentConnection(id)
   },
-  inspect(configId: string): Promise<Connection> {
-    return window.main.conn.inspect(configId)
+  async disconnect(id: string) {
+    if (!(await unwrap(window.main.conn.disconnect(id)))) return undefined
+    return currentConnection(id)
   },
-  query(configId: string, sql: string): Promise<QueryResult> {
-    return window.main.conn.query(configId, sql)
+  async inspect(id: string) {
+    await unwrap(window.main.conn.inspect(id))
+    return currentConnection(id)
   },
-  select(configId: string, query: SelectQuery): Promise<SelectResult> {
-    return window.main.conn.select(configId, query)
+  openSession(id: string, tabId: string) {
+    return unwrap(window.main.conn.openSession(id, tabId))
+  },
+  closeSession(id: string) {
+    return unwrap(window.main.conn.closeSession(id))
+  },
+  closeTab(tabId: string) {
+    return unwrap(window.main.conn.closeTab(tabId))
+  },
+  cancel(id: string) {
+    return unwrap(window.main.conn.cancel(id))
+  },
+  query(id: string, requestId: string, sql: string) {
+    return unwrap(window.main.conn.query(id, requestId, sql))
+  },
+  select(id: string, tabId: string, requestId: string, query: SelectQuery) {
+    return unwrap(window.main.conn.select(id, tabId, requestId, query))
   },
 }
-
 export default connApi
 
-const CONNECTIONS_NOT_LOADED = Symbol("connections-not-loaded")
-type ConnectionEntriesState = Connection[] | typeof CONNECTIONS_NOT_LOADED
-type ConnectionActionState = Record<string, ConnectionAction | undefined>
-
-function replaceEntryState(
-  entries: ConnectionEntriesState,
-  configId: string,
-  connection: Connection,
-): ConnectionEntriesState {
-  if (entries === CONNECTIONS_NOT_LOADED) {
-    return entries
-  }
-
-  const index = entries.findIndex((entry) => entry.config.id === configId)
-  if (index === -1) {
-    return entries
-  }
-
-  const current = entries[index]
-  if (Object.is(current, connection)) {
-    return entries
-  }
-
-  const next = [...entries]
-  next[index] = connection
-  return next
-}
-
-const _connectionEntriesAtom = atom<ConnectionEntriesState>(
-  CONNECTIONS_NOT_LOADED,
+export const refreshConnectionsAtom = atom(null, () => connApi.list())
+export const ensureConnectionsLoadedAtom = atom(
+  null,
+  async (get, set) => get(connectionEntriesAtom) ?? set(refreshConnectionsAtom),
 )
-const _connectionActionAtom = atom<ConnectionActionState>({})
 
-export const connectionEntriesAtom = atom((get) => {
-  const entries = get(_connectionEntriesAtom)
-  return entries === CONNECTIONS_NOT_LOADED ? null : entries
-})
-
-export const connectionActionAtom = atom((get) => get(_connectionActionAtom))
-
-export const refreshConnectionsAtom = atom(null, async (_get, set) => {
-  const entries = await connApi.list()
-  set(_connectionEntriesAtom, entries)
-  return entries
-})
-
-export const ensureConnectionsLoadedAtom = atom(null, async (get, set) => {
-  const entries = get(_connectionEntriesAtom)
-  if (entries !== CONNECTIONS_NOT_LOADED) {
-    return entries
-  }
-
-  return set(refreshConnectionsAtom)
-})
-
-async function runConnectionAction(
-  set: Setter,
-  configId: string,
-  action: ConnectionAction,
-  run: () => Promise<Connection>,
-): Promise<Connection> {
-  set(_connectionActionAtom, (actions) => ({
-    ...actions,
-    [configId]: action,
-  }))
-
-  let error: unknown
-
+async function runAction(set: Setter, id: string, action: ConnectionAction) {
+  set(connectionActionAtom, (current) => ({ ...current, [id]: action }))
   try {
-    const connection = await run()
-    set(_connectionEntriesAtom, (entries) =>
-      replaceEntryState(entries, configId, connection),
-    )
-    return connection
-  } catch (caughtError) {
-    error = caughtError
+    return await connApi[action](id)
   } finally {
-    set(_connectionActionAtom, (actions) => {
-      if (!actions[configId]) {
-        return actions
-      }
-
-      const next = { ...actions }
-      delete next[configId]
+    set(connectionActionAtom, (current) => {
+      const next = { ...current }
+      delete next[id]
       return next
     })
   }
-
-  throw error
 }
-
-export const connectConnectionAtom = atom(
-  null,
-  async (_get, set, configId: string) => {
-    return runConnectionAction(set, configId, "connect", () =>
-      connApi.connect(configId),
-    )
-  },
+export const connectConnectionAtom = atom(null, (_get, set, id: string) =>
+  runAction(set, id, "connect"),
 )
-
-export const disconnectConnectionAtom = atom(
-  null,
-  async (_get, set, configId: string) => {
-    return runConnectionAction(set, configId, "disconnect", () =>
-      connApi.disconnect(configId),
-    )
-  },
+export const disconnectConnectionAtom = atom(null, (_get, set, id: string) =>
+  runAction(set, id, "disconnect"),
 )
-
-export const refreshConnectionSchemaAtom = atom(
-  null,
-  async (get, set, configId: string) => {
-    let current = get(connectionEntriesAtom)?.find(
-      (entry) => entry.config.id === configId,
-    )
-
-    if (!current?.connected) {
-      current = await runConnectionAction(set, configId, "connect", () =>
-        connApi.connect(configId),
-      )
-
-      if (!current.connected) {
-        return current
-      }
-    }
-
-    return runConnectionAction(set, configId, "inspect", () =>
-      connApi.inspect(configId),
-    )
-  },
+export const refreshConnectionSchemaAtom = atom(null, (_get, set, id: string) =>
+  runAction(set, id, "inspect"),
 )
-
-export const deleteConnectionAtom = atom(
-  null,
-  async (_get, set, configId: string) => {
-    await connApi.remove(configId)
-    set(_connectionEntriesAtom, (entries) => {
-      if (entries === CONNECTIONS_NOT_LOADED) {
-        return entries
-      }
-
-      const next = entries.filter((entry) => entry.config.id !== configId)
-      return next.length === entries.length ? entries : next
-    })
-  },
+export const deleteConnectionAtom = atom(null, (_get, _set, id: string) =>
+  connApi.remove(id),
 )

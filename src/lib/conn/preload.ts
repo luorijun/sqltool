@@ -1,15 +1,20 @@
 import { ipcRenderer } from "electron"
 import type { ConfigProfile, CreateConfig, SelectQuery, UpdateConfig } from "."
 import {
+  CANCEL,
+  CLOSE_SESSION,
+  CLOSE_TAB,
   CONNECT,
   CREATE,
   DISCONNECT,
   GET,
   INSPECT,
   LIST,
+  OPEN_SESSION,
   QUERY,
   REMOVE,
   SELECT,
+  SYNC,
   TEST,
   UPDATE,
 } from "."
@@ -42,11 +47,23 @@ const conn = {
   inspect: (configId: string) => {
     return ipcRenderer.invoke(INSPECT, configId)
   },
-  query: (configId: string, sql: string) => {
-    return ipcRenderer.invoke(QUERY, configId, sql)
+  sync: () => ipcRenderer.invoke(SYNC),
+  openSession: (configId: string, tabId: string) =>
+    ipcRenderer.invoke(OPEN_SESSION, configId, tabId),
+  closeSession: (sessionId: string) =>
+    ipcRenderer.invoke(CLOSE_SESSION, sessionId),
+  closeTab: (tabId: string) => ipcRenderer.invoke(CLOSE_TAB, tabId),
+  cancel: (requestId: string) => ipcRenderer.invoke(CANCEL, requestId),
+  query: (sessionId: string, requestId: string, sql: string) => {
+    return ipcRenderer.invoke(QUERY, sessionId, requestId, sql)
   },
-  select: (configId: string, query: SelectQuery) => {
-    return ipcRenderer.invoke(SELECT, configId, query)
+  select: (
+    configId: string,
+    tabId: string,
+    requestId: string,
+    query: SelectQuery,
+  ) => {
+    return ipcRenderer.invoke(SELECT, configId, tabId, requestId, query)
   },
 }
 

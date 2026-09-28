@@ -18,6 +18,8 @@
     "build": "bun run typecheck && electron-vite build",
     "make": "bun run build && electron-builder",
     "test": "bun run make -- --dir --publish never",
+    "test:sessions": "bun test tests/conn.test.ts tests/conn-renderer.test.ts",
+    "test:integration": "bun test tests/conn.integration.test.ts --timeout 30000",
     "typecheck": "tsc -b",
     "lint": "bunx --bun biome check --write"
   },
