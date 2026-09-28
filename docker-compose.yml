@@ -1,0 +1,41 @@
+name: sqltool-test
+
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:15432:5432"
+    environment:
+      POSTGRES_DB: sqltool_test
+      POSTGRES_USER: sqltool
+      POSTGRES_PASSWORD: sqltool
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U sqltool -d sqltool_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  mysql:
+    image: mysql:8.4
+    ports:
+      - "127.0.0.1:13306:3306"
+    environment:
+      MYSQL_DATABASE: sqltool_test
+      MYSQL_USER: sqltool
+      MYSQL_PASSWORD: sqltool
+      MYSQL_ROOT_PASSWORD: sqltool_root
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u sqltool -D sqltool_test -e 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  mysql-data:

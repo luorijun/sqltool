@@ -42,3 +42,11 @@ SqlTool 是一个面向开发者的本地桌面数据库客户端，定位接近
 当前结构更接近请求响应模式，也可以借助 MVC 的视角理解。`src/page` 主要负责界面展示和交互组织，不直接访问数据库驱动、文件系统或 Electron 主进程对象。`src/lib/<domain>/renderer.ts` 是 renderer 侧访问领域能力的客户端接口和缓存层，`src/lib/<domain>/main.ts` 是 main 侧的实际能力实现。
 
 典型数据流是：页面组件发起动作，调用对应领域的 renderer 客户端接口；renderer 客户端接口通过 preload 暴露的桥接能力发起 IPC 请求；main 侧完成实际处理并返回结果；renderer 侧再更新缓存或状态，驱动页面刷新。
+
+## 本地测试数据库
+
+根目录 `docker-compose.yml` 提供专门用于开发和功能测试的 PostgreSQL、MySQL 环境。在项目根目录运行 `docker compose up -d --wait` 启动，运行 `docker compose down` 停止并保留数据；运行 `docker compose down -v` 删除测试数据后，再启动即可重建空库。
+
+- PostgreSQL：`127.0.0.1:15432`；MySQL：`127.0.0.1:13306`。
+- 两者数据库名均为 `sqltool_test`，用户名和密码均为 `sqltool`；MySQL 管理员账号为 `root`，密码为 `sqltool_root`，可通过容器内客户端使用。
+- 这套环境及其中的数据均可随时丢弃。后续开发可按测试需要任意修改配置、创建或删除数据库对象、增删改数据、停止或重建容器、删除数据卷，无需额外确认。此授权仅限该 Compose 测试环境，不适用于其他数据库或开发服务。
