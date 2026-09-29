@@ -50,7 +50,7 @@ export interface QueryTabTableState {
   visibility: Record<string, boolean>
   sizing: Record<string, number>
   sorting: Array<{ id: string; desc: boolean }>
-  pinning: { left: string[]; right: string[] }
+  pinning: { start: string[]; end: string[] }
   selected: { rowId: string; colId: string } | null
 }
 
@@ -102,7 +102,7 @@ export interface ViewTabTableState {
   columns: QueryResultColumn[]
   visibility: Record<string, boolean>
   sizing: Record<string, number>
-  pinning: { left: string[]; right: string[] }
+  pinning: { start: string[]; end: string[] }
   selected: { rowId: string; colId: string } | null
   pageIndex: number
   pageSize: number

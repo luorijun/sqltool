@@ -239,8 +239,8 @@ export const resetActiveQueryTabTableStateAtom = atom(null, (get, set) => {
       visibility: {},
       sizing: {},
       pinning: {
-        left: [],
-        right: [],
+        start: [],
+        end: [],
       },
       selected: null,
     }),
@@ -256,8 +256,8 @@ export const resetActiveViewTabTableStateAtom = atom(null, (get, set) => {
       visibility: {},
       sizing: {},
       pinning: {
-        left: [],
-        right: [],
+        start: [],
+        end: [],
       },
       selected: null,
     }),
@@ -939,7 +939,7 @@ export const cancelActiveViewAtom = atom(null, async (get) => {
   const ids = [
     tab.table.status === "running" ? tab.table.requestId : undefined,
     tab.table.countStatus === "running" ? tab.table.countRequestId : undefined,
-  ].filter(Boolean)
+  ].filter((id) => id !== undefined)
   await Promise.all(ids.map((id) => connApi.cancel(id)))
 })
 
@@ -990,7 +990,7 @@ function updateQueryTabState(
   action: StateAction<QueryTabState>,
 ): TabStateMap {
   const current = states[tabId]
-  if (!current || current.kind !== "query") {
+  if (current?.kind !== "query") {
     return states
   }
 
@@ -1004,7 +1004,7 @@ function updateViewTabState(
   action: StateAction<ViewTabState>,
 ): TabStateMap {
   const current = states[tabId]
-  if (!current || current.kind !== "view") {
+  if (current?.kind !== "view") {
     return states
   }
 
@@ -1106,8 +1106,8 @@ function createDefaultViewTableState(): ViewTabTableState {
     visibility: {},
     sizing: {},
     pinning: {
-      left: [],
-      right: [],
+      start: [],
+      end: [],
     },
     selected: null,
     pageIndex: 0,
@@ -1138,8 +1138,8 @@ function createDefaultQueryTableState(): QueryTabTableState {
     visibility: {},
     sizing: {},
     pinning: {
-      left: [],
-      right: [],
+      start: [],
+      end: [],
     },
     selected: null,
   }
@@ -1247,7 +1247,7 @@ export const updateQueryLayoutAtom = atom(
   ) => {
     set(tabStatesAtom, (states) => {
       const tab = states[tabId]
-      if (!tab || tab.kind !== "query") return states
+      if (tab?.kind !== "query") return states
       const next = update(tab.table)
       if (next === tab.table) return states
       const { visibility, sizing, sorting, pinning, selected } = next
@@ -1287,7 +1287,7 @@ export const updateViewLayoutAtom = atom(
   ) => {
     set(tabStatesAtom, (states) => {
       const tab = states[tabId]
-      if (!tab || tab.kind !== "view") return states
+      if (tab?.kind !== "view") return states
       const next = update(tab.table)
       if (next === tab.table) return states
       const { visibility, sizing, pinning, selected } = next
@@ -1320,7 +1320,7 @@ export const updateQueryEditorAtom = atom(
   ) => {
     set(tabStatesAtom, (states) => {
       const tab = states[tabId]
-      if (!tab || tab.kind !== "query") return states
+      if (tab?.kind !== "query") return states
       const next = update(tab.editor)
       if (next === tab.editor) return states
       const { text, cursor, selections, mainSelectionIndex, scroll, search } =

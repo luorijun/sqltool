@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { ComponentProps, ReactNode } from "react"
 import {
   type Control,
   Controller,
@@ -16,6 +16,7 @@ export function FormField<
   name: N
   label: ReactNode
   description?: ReactNode
+  group?: boolean
   children: ControllerProps<F, N>["render"]
 }) {
   return (
@@ -28,6 +29,10 @@ export function FormField<
           label={props.label}
           description={props.description}
           errors={[fProps.fieldState.error]}
+          invalid={fProps.fieldState.invalid}
+          touched={fProps.fieldState.isTouched}
+          dirty={fProps.fieldState.isDirty}
+          group={props.group}
         >
           {props.children(fProps)}
         </FormInput>
@@ -36,19 +41,30 @@ export function FormField<
   )
 }
 
-export function FormInput<
-  F extends FieldValues,
-  N extends FieldPath<F>,
->(props: {
-  name: N
+export function FormInput(props: {
+  name: string
   label: ReactNode
   description?: ReactNode
-  errors?: { message?: string }[]
+  errors?: ComponentProps<typeof FieldError>["errors"]
+  invalid?: boolean
+  touched?: boolean
+  dirty?: boolean
+  group?: boolean
   children: ReactNode
 }) {
   return (
-    <Field>
-      <FieldLabel>{props.label}</FieldLabel>
+    <Field
+      name={props.name}
+      invalid={props.invalid ?? props.errors?.some(Boolean)}
+      touched={props.touched}
+      dirty={props.dirty}
+    >
+      <FieldLabel
+        nativeLabel={!props.group}
+        render={props.group ? <span /> : undefined}
+      >
+        {props.label}
+      </FieldLabel>
       {props.description && (
         <FieldDescription>{props.description}</FieldDescription>
       )}

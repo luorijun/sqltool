@@ -38,8 +38,10 @@ export default function ViewTableArea() {
   const tableState = useAtomValue(activeViewTabTableStateAtom)
   const tabId = useAtomValue(activeTabIdAtom)
   const update = useSetAtom(updateViewLayoutAtom)
-  const setTableState = (change: (current: ResultLayout) => ResultLayout) =>
+  const setTableState = (change: (current: ResultLayout) => ResultLayout) => {
+    if (tabId === null) return
     update({ tabId, update: change })
+  }
   const viewTab = useAtomValue(activeViewTabAtom)
   const stale = useAtomValue(activeResultStaleAtom)
   const cancel = useSetAtom(cancelActiveViewAtom)

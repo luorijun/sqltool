@@ -1,4 +1,8 @@
-import { Client as PgClient } from "pg"
+import {
+  Client as PgClient,
+  type FieldDef as PgField,
+  type QueryResultRow as PgRow,
+} from "pg"
 import type {
   ConfigProfile,
   DbSchema,
@@ -20,22 +24,6 @@ import {
   toRowCount,
 } from "./shared"
 import { connectSshClient, SshTunnelStream } from "./ssh"
-
-interface PostgresField {
-  name: string
-  tableID?: number
-  columnID?: number
-  dataTypeID?: number
-  dataTypeSize?: number
-  dataTypeModifier?: number
-  format?: string
-}
-
-interface PostgresQueryResult<T = QueryResultRow> {
-  rows?: T[]
-  fields?: PostgresField[]
-  rowCount?: number | null
-}
 
 interface SchemaRow {
   schema_name: string
@@ -120,7 +108,7 @@ async function connectPostgresViaSsh(
     password: profile.password,
     database: profile.database,
     connectionTimeoutMillis: POSTGRES_CONNECTION_TIMEOUT_MS,
-    stream,
+    stream: () => stream,
   })
   client.on("error", () => {})
 
@@ -151,7 +139,7 @@ async function createPostgresClient(
   return connectPostgresViaSsh(profile)
 }
 
-async function queryRows<T>(
+async function queryRows<T extends PgRow>(
   client: PgClient,
   sql: string,
   values?: unknown[],
@@ -374,14 +362,14 @@ const POSTGRES_TYPE_INFO: Record<
   3807: { name: "jsonb[]", family: "array" },
 }
 
-function getPostgresModifier(field: PostgresField): number | undefined {
+function getPostgresModifier(field: PgField): number | undefined {
   return typeof field.dataTypeModifier === "number" &&
     field.dataTypeModifier >= 0
     ? field.dataTypeModifier
     : undefined
 }
 
-function getPostgresLength(field: PostgresField): number | undefined {
+function getPostgresLength(field: PgField): number | undefined {
   const modifier = getPostgresModifier(field)
   if (modifier === undefined) {
     return undefined
@@ -394,7 +382,7 @@ function getPostgresLength(field: PostgresField): number | undefined {
   return undefined
 }
 
-function getPostgresNumericPrecision(field: PostgresField): number | undefined {
+function getPostgresNumericPrecision(field: PgField): number | undefined {
   if (field.dataTypeID !== 1700) {
     return undefined
   }
@@ -407,7 +395,7 @@ function getPostgresNumericPrecision(field: PostgresField): number | undefined {
   return ((modifier - 4) >> 16) & 0xffff
 }
 
-function getPostgresNumericScale(field: PostgresField): number | undefined {
+function getPostgresNumericScale(field: PgField): number | undefined {
   if (field.dataTypeID !== 1700) {
     return undefined
   }
@@ -420,9 +408,7 @@ function getPostgresNumericScale(field: PostgresField): number | undefined {
   return (modifier - 4) & 0xffff
 }
 
-function getPostgresTemporalPrecision(
-  field: PostgresField,
-): number | undefined {
+function getPostgresTemporalPrecision(field: PgField): number | undefined {
   if (![1083, 1114, 1184, 1266].includes(field.dataTypeID ?? 0)) {
     return undefined
   }
@@ -430,7 +416,7 @@ function getPostgresTemporalPrecision(
   return getPostgresModifier(field)
 }
 
-function getPostgresDbType(field: PostgresField): string | undefined {
+function getPostgresDbType(field: PgField): string | undefined {
   const typeCode = field.dataTypeID
   if (typeCode === undefined) {
     return undefined
@@ -468,7 +454,7 @@ function getPositivePostgresNumber(
   return typeof value === "number" && value > 0 ? value : undefined
 }
 
-function createPostgresQueryColumn(field: PostgresField): QueryColumnInput {
+function createPostgresQueryColumn(field: PgField): QueryColumnInput {
   const typeCode = field.dataTypeID
   const typeInfo =
     typeCode === undefined ? undefined : POSTGRES_TYPE_INFO[typeCode]
@@ -495,11 +481,11 @@ async function queryPostgresClient(
   sql: string,
   params: unknown[] = [],
 ): Promise<QueryResult> {
-  const result = (await client.query({
+  const result = await client.query<QueryResultRow>({
     text: sql,
     values: params,
     rowMode: "array",
-  })) as PostgresQueryResult
+  })
 
   const rows = Array.isArray(result.rows) ? result.rows : []
   const columns = Array.isArray(result.fields)
@@ -518,6 +504,14 @@ export async function connectPostgres(
 ): Promise<ConnectionSession> {
   const { client, closeTransport } = await createPostgresClient(profile)
 
+  // pg supplies the backend PID at connection time but omits it from its public types.
+  const pid = "processID" in client ? client.processID : undefined
+  if (typeof pid !== "number") {
+    client.connection.stream.destroy()
+    closeTransport?.()
+    throw new Error("无法获取 PostgreSQL 后端进程标识")
+  }
+
   return createConnectionSession({
     watch(fail) {
       client.on("error", fail)
@@ -532,9 +526,7 @@ export async function connectPostgres(
       try {
         if (active())
           await withTimeout(
-            control.client.query("SELECT pg_cancel_backend($1)", [
-              client.processID,
-            ]),
+            control.client.query("SELECT pg_cancel_backend($1)", [pid]),
           )
       } finally {
         control.client.connection.stream.destroy()

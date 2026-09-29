@@ -2,7 +2,7 @@
 
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react"
 import type * as React from "react"
-import { cn } from "./utils"
+import { cn } from "tailwind-variants"
 
 function ScrollArea({
   className,

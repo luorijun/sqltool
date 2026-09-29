@@ -1,24 +1,21 @@
 import {
-  type Column,
-  type ColumnDef,
   type ColumnPinningState,
   type ColumnSizingState,
+  type ColumnVisibilityState,
   flexRender,
   functionalUpdate,
-  getCoreRowModel,
-  getSortedRowModel,
   type SortingState,
   type Updater,
-  useReactTable,
-  type VisibilityState,
+  useTable,
 } from "@tanstack/react-table"
 import { ArrowDownAZ, ArrowUpAZ, RotateCcw } from "lucide-react"
 import { type CSSProperties, type ReactNode, useMemo } from "react"
+import { cn } from "tailwind-variants"
 import type { QueryResultColumn } from "@/contracts/database"
 import { Button } from "@/renderer/components/ui/button"
 import { AreaStatusBar, AreaToolbar } from "@/renderer/components/ui/panel-bar"
-import { cn } from "@/renderer/components/ui/utils"
 import { EmptyState } from "./empty"
+import { features } from "./features"
 import {
   compareQueryValues,
   getQueryColumnHeaderTitle,
@@ -30,8 +27,9 @@ import {
 import { ColumnVisibilityMenu, CopyMenu, ExportMenu, HeaderMenu } from "./menus"
 import {
   type ResultActions,
+  type ResultColumn,
+  type ResultColumnDef,
   type ResultLayout,
-  type ResultRow,
   type ResultTableInstance,
   type ResultTableState,
   ROW_NUMBER_COLUMN_ID,
@@ -61,7 +59,7 @@ export function ResultTable({
   toolbarEnd,
   statusBarEnd,
 }: ResultTableProps) {
-  const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(
+  const columns = useMemo<ResultColumnDef[]>(
     () => [
       {
         id: ROW_NUMBER_COLUMN_ID,
@@ -75,7 +73,7 @@ export function ResultTable({
         enablePinning: true,
         cell: ({ row }) => row.index + 1,
       },
-      ...tableState.columns.map((resultColumn) => {
+      ...tableState.columns.map<ResultColumnDef>((resultColumn) => {
         const typeLabel = getQueryColumnTypeLabel(resultColumn)
         const labelWidth = Math.max(
           resultColumn.name.length,
@@ -89,14 +87,14 @@ export function ResultTable({
           size: Math.min(Math.max(labelWidth * 14, 140), 320),
           minSize: MIN_DATA_COLUMN_WIDTH,
           enableSorting,
-          sortingFn: (left, right, columnId) =>
+          sortFn: (left, right, columnId) =>
             compareQueryValues(
               left.getValue(columnId),
               right.getValue(columnId),
               resultColumn,
             ),
-          cell: ({ getValue }) => (
-            <CellValue value={getValue()} column={resultColumn} />
+          cell: ({ cell }) => (
+            <CellValue value={cell.getValue()} column={resultColumn} />
           ),
         }
       }),
@@ -114,18 +112,17 @@ export function ResultTable({
       sorting: tableState.sorting ?? [],
       columnVisibility: tableState.visibility,
       columnSizing: tableState.sizing,
-      columnPinning: normalizeColumnPinning(tableState.pinning),
+      columnPinning: normalizePinning(tableState.pinning),
     }),
     [tableState],
   )
 
-  const table = useReactTable({
+  const table = useTable({
+    features,
     data: tableState.data,
     columns,
     state,
     getRowId: (_, i) => String(i),
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     enableSorting,
     enableMultiSort: false,
     enableSortingRemoval: true,
@@ -143,7 +140,7 @@ export function ResultTable({
         sorting: functionalUpdate(updater, current.sorting ?? []),
       }))
     },
-    onColumnVisibilityChange: (updater: Updater<VisibilityState>) => {
+    onColumnVisibilityChange: (updater: Updater<ColumnVisibilityState>) => {
       onLayoutChange((current) => ({
         ...current,
         visibility: functionalUpdate(updater, current.visibility),
@@ -158,9 +155,7 @@ export function ResultTable({
     onColumnPinningChange: (updater: Updater<ColumnPinningState>) => {
       onLayoutChange((current) => ({
         ...current,
-        pinning: normalizeColumnPinning(
-          functionalUpdate(updater, current.pinning),
-        ),
+        pinning: normalizePinning(functionalUpdate(updater, current.pinning)),
       }))
     },
   })
@@ -521,7 +516,7 @@ function CellValue({
 const MIN_DATA_COLUMN_WIDTH = 96
 const ROW_NUMBER_COLUMN_WIDTH = 52
 
-function getSortLabel(column: Column<ResultRow, unknown>): string {
+function getSortLabel(column: ResultColumn): string {
   const sorted = column.getIsSorted()
   if (sorted === "asc") {
     return "升序"
@@ -534,44 +529,32 @@ function getSortLabel(column: Column<ResultRow, unknown>): string {
   return "未排序"
 }
 
-function getPinnedStyles(column: Column<ResultRow, unknown>): CSSProperties {
+function getPinnedStyles(column: ResultColumn): CSSProperties {
   const pinned = column.getIsPinned()
-  if (pinned === "left") {
+  if (pinned === "start") {
     return {
-      left: `${column.getStart("left")}px`,
+      insetInlineStart: `${column.getStart("start")}px`,
     }
   }
-  if (pinned === "right") {
+  if (pinned === "end") {
     return {
-      right: `${column.getAfter("right")}px`,
+      insetInlineEnd: `${column.getAfter("end")}px`,
     }
   }
   return {}
 }
 
-function normalizeColumnPinning(
+export function normalizePinning(
   pinning: ColumnPinningState,
-): ResultTableState["pinning"] {
-  const left = Array.from(
-    new Set([
-      ROW_NUMBER_COLUMN_ID,
-      ...(pinning.left ?? []).filter((id) => id !== ROW_NUMBER_COLUMN_ID),
-    ]),
-  )
-  const leftIds = new Set(left)
-  const right = Array.from(
-    new Set(
-      (pinning.right ?? []).filter(
-        (id) => id !== ROW_NUMBER_COLUMN_ID && !leftIds.has(id),
-      ),
-    ),
-  )
-
-  return { left, right }
+): ColumnPinningState {
+  const start = [...new Set([ROW_NUMBER_COLUMN_ID, ...pinning.start])]
+  const startIds = new Set(start)
+  const end = [...new Set(pinning.end.filter((id) => !startIds.has(id)))]
+  return { start, end }
 }
 
 function getSortingSummary(table: ResultTableInstance): string {
-  const sorting = table.getState().sorting[0]
+  const sorting = table.state.sorting[0]
   if (!sorting) {
     return "未排序"
   }

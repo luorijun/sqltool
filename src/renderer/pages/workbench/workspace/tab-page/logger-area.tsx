@@ -13,11 +13,15 @@ export default function LoggerArea() {
   const tabId = useAtomValue(activeTabIdAtom)
   const clear = useSetAtom(clearLogsAtom)
   const update = useSetAtom(updateLogViewAtom)
-  const setState = (change: (current: LogView) => LogView) =>
+  const setState = (change: (current: LogView) => LogView) => {
+    if (tabId === null) return
     update({ tabId, update: change })
+  }
   return (
     <RunLog
-      onClear={() => clear(tabId)}
+      onClear={() => {
+        if (tabId !== null) clear(tabId)
+      }}
       state={state}
       onChange={setState}
       onCopy={copyText}

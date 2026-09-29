@@ -49,7 +49,7 @@ export function registerIpc(database: Database): void {
   handle(
     db.INSPECT,
     z.tuple([id, tableSource.optional()]),
-    (owner, id, source) => api(owner).inspect(id, source),
+    (owner, id, source = undefined) => api(owner).inspect(id, source),
   )
   handle(db.OPEN_SESSION, z.tuple([id, id]), (owner, id, tabId) =>
     api(owner).openSession(id, tabId),

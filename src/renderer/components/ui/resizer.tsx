@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { cn } from "./utils"
+import { cn } from "tailwind-variants"
 
 type ResizeAxis = "x" | "y"
 type FixedPane = "first" | "second"

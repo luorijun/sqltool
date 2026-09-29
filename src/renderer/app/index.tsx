@@ -28,4 +28,6 @@ function App() {
   return <Workbench />
 }
 
-createRoot(document.getElementById("root")).render(<App />)
+const root = document.getElementById("root")
+if (!root) throw new Error("应用挂载节点不存在")
+createRoot(root).render(<App />)

@@ -7,10 +7,25 @@ import {
 } from "@codemirror/search"
 import { Compartment, EditorState } from "@codemirror/state"
 import { EditorView, keymap } from "@codemirror/view"
+import { format } from "sql-formatter"
 import {
   createEditorMode,
   externalUpdate,
 } from "../../src/renderer/components/sql-editor/mode"
+
+test.each(["postgresql", "mysql"] as const)(
+  "%s formatting preserves literals and is stable on repeated formatting",
+  (language) => {
+    const sql =
+      "select 'MiXeD  text; -- literal' as label, amount from items where amount between 1 and 10;"
+    const options = { language, tabWidth: 2, keywordCase: "upper" as const }
+    const formatted = format(sql, options)
+    expect(formatted).toContain("SELECT")
+    expect(formatted).toContain("'MiXeD  text; -- literal'")
+    expect(formatted).toContain("BETWEEN 1 AND 10")
+    expect(format(formatted, options)).toBe(formatted)
+  },
+)
 
 describe("SQL editor read-only mode", () => {
   test("blocks document edits but accepts controlled SQL updates and selection", () => {

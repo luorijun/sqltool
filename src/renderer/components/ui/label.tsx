@@ -1,6 +1,6 @@
 import type * as React from "react"
 
-import { cn } from "./utils"
+import { cn } from "tailwind-variants"
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
   return (

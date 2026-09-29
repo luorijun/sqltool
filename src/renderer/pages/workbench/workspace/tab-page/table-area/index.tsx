@@ -18,8 +18,10 @@ export default function QueryTableArea() {
   const tableState = useAtomValue(activeQueryTabTableStateAtom)
   const tabId = useAtomValue(activeTabIdAtom)
   const update = useSetAtom(updateQueryLayoutAtom)
-  const setTableState = (change: (current: ResultLayout) => ResultLayout) =>
+  const setTableState = (change: (current: ResultLayout) => ResultLayout) => {
+    if (tabId === null) return
     update({ tabId, update: change })
+  }
   const resetTableState = useSetAtom(resetActiveQueryTabTableStateAtom)
   const { status, error } = tableState
   const stale = useAtomValue(activeResultStaleAtom)

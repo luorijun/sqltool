@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { cn } from "tailwind-variants"
 import { Button } from "@/renderer/components/ui/button"
 import {
   DropdownMenu,
@@ -29,7 +30,6 @@ import {
 import { Input } from "@/renderer/components/ui/input"
 import { AreaStatusBar, AreaToolbar } from "@/renderer/components/ui/panel-bar"
 import { ScrollArea } from "@/renderer/components/ui/scroll-area"
-import { cn } from "@/renderer/components/ui/utils"
 import type { LogEntry, LogState, LogStatus, LogView } from "./types"
 
 const STICKY_BOTTOM_OFFSET = 24

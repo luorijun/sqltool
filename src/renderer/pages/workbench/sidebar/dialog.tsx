@@ -11,6 +11,7 @@ import type {
 } from "@/contracts/database"
 import { Badge } from "@/renderer/components/ui/badge"
 import { Button } from "@/renderer/components/ui/button"
+import { ChoiceGroup } from "@/renderer/components/ui/choice-group"
 import {
   Dialog,
   DialogClose,
@@ -24,7 +25,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/renderer/components/ui/field"
-import { FormField, FormInput } from "@/renderer/components/ui/form"
+import { FormField } from "@/renderer/components/ui/form"
 import { Input } from "@/renderer/components/ui/input"
 import { ScrollArea } from "@/renderer/components/ui/scroll-area"
 import {
@@ -33,7 +34,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/renderer/components/ui/tabs"
-import { cn } from "@/renderer/components/ui/utils"
 import connApi from "@/renderer/modules/database"
 import z from "./validation"
 
@@ -76,7 +76,7 @@ const sshAuthOptions = [
   icon: typeof KeyRound
 }>
 
-const schema = z
+export const schema = z
   .object({
     driver: z.enum(["postgres", "mysql"]),
     name: z.string().trim().min(1, "连接名称不能为空"),
@@ -321,7 +321,6 @@ export function ConnDialog({
   }
 
   const formId = useId()
-  const driver = form.watch("driver")
   const sshValues = form.watch("ssh")
   const sshState = getSshState(sshValues)
 
@@ -335,19 +334,27 @@ export function ConnDialog({
         <ScrollArea viewportClassName="p-3">
           <form id={formId} onSubmit={form.handleSubmit(save)}>
             <FieldGroup>
-              <FormInput
+              <FormField
+                control={form.control}
                 name="driver"
                 label="数据库"
-                errors={[form.formState.errors.driver]}
+                group
               >
-                <DriverChoiceGroup
-                  value={driver}
-                  onChange={(value) => form.setValue("driver", value)}
-                />
-              </FormInput>
+                {({ field }) => (
+                  <ChoiceGroup
+                    options={driverOptions}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    onBlur={field.onBlur}
+                    inputRef={field.ref}
+                  />
+                )}
+              </FormField>
 
               <FormField control={form.control} name="name" label="连接名称">
-                {(fProps) => <Input {...fProps.field} />}
+                {({ field: { onChange, ...field } }) => (
+                  <Input {...field} onValueChange={onChange} />
+                )}
               </FormField>
 
               <Tabs defaultValue="database">
@@ -410,10 +417,22 @@ function DatabasePanel(props: { form: ConnForm }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField control={props.form.control} name="host" label="数据库主机">
-          {(fProps) => <Input {...fProps.field} placeholder={defaults.host} />}
+          {({ field: { onChange, ...field } }) => (
+            <Input
+              {...field}
+              onValueChange={onChange}
+              placeholder={defaults.host}
+            />
+          )}
         </FormField>
         <FormField control={props.form.control} name="port" label="数据库端口">
-          {(fProps) => <Input {...fProps.field} placeholder={defaults.port} />}
+          {({ field: { onChange, ...field } }) => (
+            <Input
+              {...field}
+              onValueChange={onChange}
+              placeholder={defaults.port}
+            />
+          )}
         </FormField>
       </div>
 
@@ -423,19 +442,25 @@ function DatabasePanel(props: { form: ConnForm }) {
           name="username"
           label="数据库账号"
         >
-          {(fProps) => <Input {...fProps.field} />}
+          {({ field: { onChange, ...field } }) => (
+            <Input {...field} onValueChange={onChange} />
+          )}
         </FormField>
         <FormField
           control={props.form.control}
           name="password"
           label="数据库密码"
         >
-          {(fProps) => <Input {...fProps.field} type="password" />}
+          {({ field: { onChange, ...field } }) => (
+            <Input {...field} onValueChange={onChange} type="password" />
+          )}
         </FormField>
       </div>
 
       <FormField control={props.form.control} name="database" label="库名">
-        {(fProps) => <Input {...fProps.field} />}
+        {({ field: { onChange, ...field } }) => (
+          <Input {...field} onValueChange={onChange} />
+        )}
       </FormField>
     </FieldSet>
   )
@@ -455,14 +480,18 @@ function SSHPanel(props: { form: ConnForm }) {
           name="ssh.host"
           label="SSH 主机"
         >
-          {(fProps) => <Input {...fProps.field} />}
+          {({ field: { onChange, ...field } }) => (
+            <Input {...field} onValueChange={onChange} />
+          )}
         </FormField>
         <FormField
           control={props.form.control}
           name="ssh.port"
           label="SSH 端口"
         >
-          {(fProps) => <Input {...fProps.field} placeholder="22" />}
+          {({ field: { onChange, ...field } }) => (
+            <Input {...field} onValueChange={onChange} placeholder="22" />
+          )}
         </FormField>
       </div>
 
@@ -471,90 +500,37 @@ function SSHPanel(props: { form: ConnForm }) {
         name="ssh.username"
         label="SSH 账号"
       >
-        {(fProps) => <Input {...fProps.field} />}
+        {({ field: { onChange, ...field } }) => (
+          <Input {...field} onValueChange={onChange} />
+        )}
       </FormField>
 
-      <FormInput
+      <FormField
+        control={props.form.control}
         name="ssh.authType"
         label="认证方式"
-        errors={[props.form.formState.errors.ssh?.authType]}
+        group
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          {sshAuthOptions.map((option) => {
-            const active = authType === option.value
-            const Icon = option.icon
-
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={active}
-                className={cn(
-                  "rounded-xl border p-4 text-left transition-colors",
-                  "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
-                  active
-                    ? "border-primary bg-primary/5"
-                    : "border-border bg-card hover:bg-accent/40",
-                )}
-                onClick={() =>
-                  props.form.setValue("ssh.authType", option.value)
-                }
-              >
-                <div className="flex items-center gap-3">
-                  <Icon className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="text-sm font-medium">{option.label}</span>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {option.description}
-                </p>
-              </button>
-            )
-          })}
-        </div>
-      </FormInput>
+        {({ field }) => (
+          <ChoiceGroup
+            options={sshAuthOptions}
+            value={field.value}
+            onValueChange={field.onChange}
+            onBlur={field.onBlur}
+            inputRef={field.ref}
+          />
+        )}
+      </FormField>
 
       <FormField
         control={props.form.control}
         name="ssh.secret"
         label={secretLabel}
       >
-        {(fProps) => <Input {...fProps.field} type="password" />}
+        {({ field: { onChange, ...field } }) => (
+          <Input {...field} onValueChange={onChange} type="password" />
+        )}
       </FormField>
     </FieldSet>
-  )
-}
-
-function DriverChoiceGroup(props: {
-  value: DbDriver
-  onChange: (value: DbDriver) => void
-}) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {driverOptions.map((option) => {
-        const active = props.value === option.value
-        const Icon = option.icon
-
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            className={cn(
-              "rounded-xl border p-4 text-left transition-colors",
-              "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
-              active
-                ? "border-primary bg-primary/5"
-                : "border-border bg-card hover:bg-accent/40",
-            )}
-            onClick={() => props.onChange(option.value)}
-          >
-            <div className="flex items-center gap-3">
-              <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <span className="text-sm font-medium">{option.label}</span>
-            </div>
-          </button>
-        )
-      })}
-    </div>
   )
 }

@@ -1,24 +1,21 @@
-import { cva, type VariantProps } from "class-variance-authority"
 import { AlertCircle, CheckCircle2, Info, TriangleAlert } from "lucide-react"
-import { cn } from "./utils"
+import { cn, tv, type VariantProps } from "tailwind-variants"
 
-const alertVariants = cva(
-  "relative flex gap-3 rounded-xl border px-4 py-3 text-sm",
-  {
-    variants: {
-      variant: {
-        default: "border-border bg-card text-foreground",
-        info: "border-primary/20 bg-primary/5 text-foreground",
-        success: "border-emerald-500/20 bg-emerald-500/5 text-foreground",
-        warning: "border-amber-500/20 bg-amber-500/5 text-foreground",
-        destructive: "border-destructive/20 bg-destructive/5 text-foreground",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
+const alertVariants = tv({
+  base: "relative flex gap-3 rounded-xl border px-4 py-3 text-sm",
+  variants: {
+    variant: {
+      default: "border-border bg-card text-foreground",
+      info: "border-primary/20 bg-primary/5 text-foreground",
+      success: "border-emerald-500/20 bg-emerald-500/5 text-foreground",
+      warning: "border-amber-500/20 bg-amber-500/5 text-foreground",
+      destructive: "border-destructive/20 bg-destructive/5 text-foreground",
     },
   },
-)
+  defaultVariants: {
+    variant: "default",
+  },
+})
 
 function Alert({
   className,
@@ -31,7 +28,7 @@ function Alert({
       role="alert"
       data-slot="alert"
       data-variant={variant}
-      className={cn(alertVariants({ variant }), className)}
+      className={alertVariants({ variant, className })}
       {...props}
     >
       {children}

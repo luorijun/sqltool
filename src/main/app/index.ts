@@ -58,8 +58,8 @@ const createWindow = () => {
   // A renderer reload loses its tab ownership just like a destroyed renderer.
   mainWindow.webContents.on(
     "did-start-navigation",
-    (_event, _url, inPlace, mainFrame) => {
-      if (mainFrame && !inPlace)
+    ({ isSameDocument, isMainFrame }) => {
+      if (isMainFrame && !isSameDocument)
         void database
           .closeOwner(owner, true)
           .catch((error) => console.error("清理会话失败", error))

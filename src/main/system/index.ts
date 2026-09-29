@@ -2,8 +2,8 @@ import { writeFile } from "node:fs/promises"
 import { BrowserWindow, clipboard, dialog } from "electron"
 import type { SaveTextFileOptions } from "@/contracts/system"
 
-export function writeClipboardText(text: string): void {
-  clipboard.writeText(text)
+export function writeClipboardText(text: string): Promise<void> {
+  return clipboard.writeText(text)
 }
 export async function saveTextFile(
   owner: number,

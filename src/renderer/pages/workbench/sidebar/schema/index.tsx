@@ -13,13 +13,13 @@ import {
   TriangleAlert,
 } from "lucide-react"
 import { type KeyboardEvent, useRef } from "react"
+import { cn } from "tailwind-variants"
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuTrigger,
 } from "@/renderer/components/ui/context-menu"
 import { ScrollArea } from "@/renderer/components/ui/scroll-area"
-import { cn } from "@/renderer/components/ui/utils"
 import { ConnectionLabel, DriverIcon } from "../conn"
 import { type NodeActions, NodeMenu } from "../menu"
 import type { TreeNode } from "../tree"

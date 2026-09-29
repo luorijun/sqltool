@@ -95,43 +95,47 @@ describe("query workspace", () => {
     expect(query).toHaveBeenCalledTimes(1)
   })
 
-  test.each([
-    false,
-    true,
-  ])("late query results stay with the original tab (closed: %s)", async (closed) => {
-    const started = Promise.withResolvers<void>()
-    const pending = Promise.withResolvers<ConnResponse<QueryResult>>()
-    env.bridge.query = () => {
-      started.resolve()
-      return pending.promise
-    }
-    const first = store.set(openQueryTabAtom, {
-      configId: "db",
-      initialSql: "SELECT 1",
-    })
-    const running = store.set(runActiveQueryTabSqlAtom)
-    try {
-      await started.promise
-      const response = env.ok(result)
-      const second = store.set(openQueryTabAtom, { initialSql: "second draft" })
-      if (closed) await store.set(closeTabAtom, first)
-      pending.resolve(response)
-      await running
-      expect(store.get(activeQueryTabAtom)?.id).toBe(second)
-      expect(store.get(activeQueryTabAtom)?.editor.text).toBe("second draft")
-      expect(store.get(activeQueryTabAtom)?.table.data).toEqual([])
-      if (closed)
-        expect(store.get(tabsAtom).some((tab) => tab.id === first)).toBe(false)
-      else {
-        store.set(selectTabAtom, first)
-        expect(store.get(activeQueryTabAtom)?.table.status).toBe("success")
-        expect(store.get(activeQueryTabAtom)?.table.data).toHaveLength(1)
+  test.each([false, true])(
+    "late query results stay with the original tab (closed: %s)",
+    async (closed) => {
+      const started = Promise.withResolvers<void>()
+      const pending = Promise.withResolvers<ConnResponse<QueryResult>>()
+      env.bridge.query = () => {
+        started.resolve()
+        return pending.promise
       }
-    } finally {
-      pending.resolve(env.ok(result))
-      await running
-    }
-  })
+      const first = store.set(openQueryTabAtom, {
+        configId: "db",
+        initialSql: "SELECT 1",
+      })
+      const running = store.set(runActiveQueryTabSqlAtom)
+      try {
+        await started.promise
+        const response = env.ok(result)
+        const second = store.set(openQueryTabAtom, {
+          initialSql: "second draft",
+        })
+        if (closed) await store.set(closeTabAtom, first)
+        pending.resolve(response)
+        await running
+        expect(store.get(activeQueryTabAtom)?.id).toBe(second)
+        expect(store.get(activeQueryTabAtom)?.editor.text).toBe("second draft")
+        expect(store.get(activeQueryTabAtom)?.table.data).toEqual([])
+        if (closed)
+          expect(store.get(tabsAtom).some((tab) => tab.id === first)).toBe(
+            false,
+          )
+        else {
+          store.set(selectTabAtom, first)
+          expect(store.get(activeQueryTabAtom)?.table.status).toBe("success")
+          expect(store.get(activeQueryTabAtom)?.table.data).toHaveLength(1)
+        }
+      } finally {
+        pending.resolve(env.ok(result))
+        await running
+      }
+    },
+  )
 
   test("rebuilding does not replay SQL and an older result cannot overwrite a new run", async () => {
     const started = Promise.withResolvers<void>()
@@ -195,60 +199,60 @@ describe("query workspace", () => {
 })
 
 describe("table workspace", () => {
-  test.each([
-    false,
-    true,
-  ])("count and data responses keep separate results (count first: %s)", async (countFirst) => {
-    const page = Promise.withResolvers<ConnResponse<SelectResult>>()
-    const count = Promise.withResolvers<ConnResponse<SelectResult>>()
-    const source = { schema: "public", table: "items" }
-    const select = mock<typeof env.bridge.select>(
-      (_configId, _tabId, _requestId, query) =>
-        query.select ? count.promise : page.promise,
-    )
-    env.bridge.select = select
-    const opening = store.set(openViewTabAtom, { configId: "db", source })
-    const data = { result, executedSql: "page SQL" }
-    const total = {
-      result: { ...result, rows: [[250]] },
-      executedSql: "count SQL",
-    }
-    const received = Promise.withResolvers<void>()
-    const unsubscribe = store.sub(activeViewTabAtom, () => {
-      const table = store.get(activeViewTabAtom)?.table
-      if (countFirst ? table?.totalCount === 250 : table?.sql === "page SQL")
-        received.resolve()
-    })
-    try {
-      if (countFirst) count.resolve(env.ok(total))
-      else page.resolve(env.ok(data))
-      await received.promise
-      if (countFirst) page.resolve(env.ok(data))
-      else count.resolve(env.ok(total))
-      const id = await opening
-      expect(store.get(activeViewTabAtom)?.table.sql).toBe("page SQL")
-      expect(store.get(activeViewTabAtom)?.table.totalCount).toBe(250)
-      expect(store.get(activeViewTabAtom)?.table.data).toHaveLength(1)
-      env.bridge.select = mock(async () =>
-        env.ok({ result, executedSql: "next page SQL" }),
+  test.each([false, true])(
+    "count and data responses keep separate results (count first: %s)",
+    async (countFirst) => {
+      const page = Promise.withResolvers<ConnResponse<SelectResult>>()
+      const count = Promise.withResolvers<ConnResponse<SelectResult>>()
+      const source = { schema: "public", table: "items" }
+      const select = mock<typeof env.bridge.select>(
+        (_configId, _tabId, _requestId, query) =>
+          query.select ? count.promise : page.promise,
       )
-      await store.set(setActiveViewTabPageAtom, 1)
-      expect(env.bridge.select).toHaveBeenCalledWith(
-        "db",
-        id,
-        expect.any(String),
-        { from: source, limit: 100, offset: 100 },
-      )
-      expect(store.get(activeViewTabAtom)?.table.sql).toBe("next page SQL")
-      const query = mock(async () => env.ok(result))
-      env.bridge.query = query
-      await store.set(runActiveQueryTabSqlAtom)
-      expect(query).not.toHaveBeenCalled()
-    } finally {
-      unsubscribe()
-      page.resolve(env.ok(data))
-      count.resolve(env.ok(total))
-      await opening
-    }
-  })
+      env.bridge.select = select
+      const opening = store.set(openViewTabAtom, { configId: "db", source })
+      const data = { result, executedSql: "page SQL" }
+      const total = {
+        result: { ...result, rows: [[250]] },
+        executedSql: "count SQL",
+      }
+      const received = Promise.withResolvers<void>()
+      const unsubscribe = store.sub(activeViewTabAtom, () => {
+        const table = store.get(activeViewTabAtom)?.table
+        if (countFirst ? table?.totalCount === 250 : table?.sql === "page SQL")
+          received.resolve()
+      })
+      try {
+        if (countFirst) count.resolve(env.ok(total))
+        else page.resolve(env.ok(data))
+        await received.promise
+        if (countFirst) page.resolve(env.ok(data))
+        else count.resolve(env.ok(total))
+        const id = await opening
+        expect(store.get(activeViewTabAtom)?.table.sql).toBe("page SQL")
+        expect(store.get(activeViewTabAtom)?.table.totalCount).toBe(250)
+        expect(store.get(activeViewTabAtom)?.table.data).toHaveLength(1)
+        env.bridge.select = mock(async () =>
+          env.ok({ result, executedSql: "next page SQL" }),
+        )
+        await store.set(setActiveViewTabPageAtom, 1)
+        expect(env.bridge.select).toHaveBeenCalledWith(
+          "db",
+          id,
+          expect.any(String),
+          { from: source, limit: 100, offset: 100 },
+        )
+        expect(store.get(activeViewTabAtom)?.table.sql).toBe("next page SQL")
+        const query = mock(async () => env.ok(result))
+        env.bridge.query = query
+        await store.set(runActiveQueryTabSqlAtom)
+        expect(query).not.toHaveBeenCalled()
+      } finally {
+        unsubscribe()
+        page.resolve(env.ok(data))
+        count.resolve(env.ok(total))
+        await opening
+      }
+    },
+  )
 })

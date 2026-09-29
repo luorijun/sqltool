@@ -134,7 +134,7 @@ async function resolveLocalSshConfig(
   }
 }
 
-async function readExpandedSshConfig(
+export async function readExpandedSshConfig(
   entryPath: string,
   visited: Set<string>,
 ): Promise<string> {
@@ -162,14 +162,10 @@ async function readExpandedSshConfig(
       line.type === LineType.DIRECTIVE &&
       line.param.toLowerCase() === "include"
     ) {
-      const patterns = (
+      const patterns =
         typeof line.value === "string"
-          ? line.value
-          : line.value.map((item) => item.val).join(" ")
-      )
-        .split(/\s+/)
-        .map((item) => item.trim())
-        .filter(Boolean)
+          ? [line.value]
+          : line.value.map((item) => item.val)
 
       for (const rawPattern of patterns) {
         const pattern = expandHomePath(rawPattern)
@@ -444,7 +440,7 @@ export class SshTunnelStream extends Duplex {
       this.#connecting = false
       this.#connected = true
 
-      channel.on("data", (chunk) => {
+      channel.on("data", (chunk: Buffer) => {
         if (!this.push(chunk)) {
           channel.pause()
         }
@@ -458,7 +454,7 @@ export class SshTunnelStream extends Duplex {
         this.push(null)
       })
 
-      channel.on("error", (channelError) => {
+      channel.on("error", (channelError: Error) => {
         this.destroy(channelError)
       })
 

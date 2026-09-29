@@ -2,9 +2,9 @@ import { useAtomValue, useSetAtom } from "jotai"
 import { LoaderCircle } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
+import { cn } from "tailwind-variants"
 import type { Config } from "@/contracts/database"
 import { ScrollArea } from "@/renderer/components/ui/scroll-area"
-import { cn } from "@/renderer/components/ui/utils"
 import {
   connectConnectionAtom,
   connectionActionAtom,

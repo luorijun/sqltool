@@ -76,8 +76,10 @@ export default function CoreArea() {
   const state = useAtomValue(activeQueryTabEditorStateAtom)
 
   const update = useSetAtom(updateQueryEditorAtom)
-  const setState = (change: (current: EditorState) => EditorState) =>
+  const setState = (change: (current: EditorState) => EditorState) => {
+    if (tabId === null) return
     update({ tabId, update: change })
+  }
 
   const runSql = useSetAtom(runActiveQueryTabSqlAtom)
 

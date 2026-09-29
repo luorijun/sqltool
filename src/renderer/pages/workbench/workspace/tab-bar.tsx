@@ -1,8 +1,8 @@
 import { atom, useAtomValue, useSetAtom } from "jotai"
 import { Code2, Plus, Table2, X } from "lucide-react"
 import { toast } from "sonner"
+import { cn } from "tailwind-variants"
 import { Button } from "@/renderer/components/ui/button"
-import { cn } from "@/renderer/components/ui/utils"
 import {
   activeTabIdAtom,
   closeTabAtom,

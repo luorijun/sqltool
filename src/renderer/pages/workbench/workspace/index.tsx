@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai"
-import { cn } from "@/renderer/components/ui/utils"
+import { cn } from "tailwind-variants"
 import { hasActiveTabAtom } from "@/renderer/modules/workspace"
 import { EmptyPage } from "./empty-page"
 import { TabBar } from "./tab-bar"

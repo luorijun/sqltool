@@ -3,11 +3,11 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "skipLibCheck": true,
     "noEmit": true,
-    "baseUrl": ".",
+    "strict": true,
+    "noUncheckedSideEffectImports": true,
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "files": [],

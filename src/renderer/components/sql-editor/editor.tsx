@@ -1,5 +1,5 @@
 import {
-  forwardRef,
+  type Ref,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -26,6 +26,8 @@ export interface SqlEditorHandle {
 }
 
 interface SqlEditorProps {
+  ref?: Ref<SqlEditorHandle>
+
   value: string
   driver?: DbDriver
   readOnly?: boolean
@@ -37,117 +39,113 @@ interface SqlEditorProps {
   onFormat?: () => void
 }
 
-const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
-  function SqlEditor(
-    {
-      value,
-      driver,
-      readOnly = false,
-      autoFocus = false,
-      editorState,
-      onChange,
-      onEditorStateChange,
-      onRun,
-      onFormat,
+function SqlEditor({
+  ref,
+  value,
+  driver,
+  readOnly = false,
+  autoFocus = false,
+  editorState,
+  onChange,
+  onEditorStateChange,
+  onRun,
+  onFormat,
+}: SqlEditorProps) {
+  const controllerRef = useRef<SqlEditorController | null>(null)
+  const initialValueRef = useRef(value)
+  const initialDriverRef = useRef(driver)
+  const initialEditorStateRef = useRef(editorState)
+  const initialReadOnlyRef = useRef(readOnly)
+  const initialAutoFocusRef = useRef(autoFocus)
+  const [host, setHost] = useState<HTMLDivElement | null>(null)
+
+  initialValueRef.current = value
+  initialDriverRef.current = driver
+  initialEditorStateRef.current = editorState
+  initialReadOnlyRef.current = readOnly
+  initialAutoFocusRef.current = autoFocus
+
+  const handleChange = useEffectEvent((nextValue: string) => {
+    onChange?.(nextValue)
+  })
+
+  const handleEditorStateChange = useEffectEvent(
+    (nextEditorState: EditorViewState) => {
+      onEditorStateChange(nextEditorState)
     },
+  )
+
+  const handleRun = useEffectEvent(() => {
+    if (!readOnly) onRun?.()
+  })
+
+  const handleFormat = useEffectEvent(() => {
+    if (!readOnly) onFormat?.()
+  })
+
+  const setHostRef = useCallback((node: HTMLDivElement | null) => {
+    setHost(node)
+  }, [])
+
+  useImperativeHandle(
     ref,
-  ) {
-    const controllerRef = useRef<SqlEditorController | null>(null)
-    const initialValueRef = useRef(value)
-    const initialDriverRef = useRef(driver)
-    const initialEditorStateRef = useRef(editorState)
-    const initialReadOnlyRef = useRef(readOnly)
-    const initialAutoFocusRef = useRef(autoFocus)
-    const [host, setHost] = useState<HTMLDivElement | null>(null)
-
-    initialValueRef.current = value
-    initialDriverRef.current = driver
-    initialEditorStateRef.current = editorState
-    initialReadOnlyRef.current = readOnly
-    initialAutoFocusRef.current = autoFocus
-
-    const handleChange = useEffectEvent((nextValue: string) => {
-      onChange?.(nextValue)
-    })
-
-    const handleEditorStateChange = useEffectEvent(
-      (nextEditorState: EditorViewState) => {
-        onEditorStateChange(nextEditorState)
+    () => ({
+      focus() {
+        controllerRef.current?.focus()
       },
-    )
+      openSearch() {
+        controllerRef.current?.openSearch()
+      },
+    }),
+    [],
+  )
 
-    const handleRun = useEffectEvent(() => {
-      if (!readOnly) onRun?.()
+  useLayoutEffect(() => {
+    if (!host) {
+      return
+    }
+
+    const controller = createSqlEditorController({
+      host,
+      value: initialValueRef.current,
+      driver: initialDriverRef.current,
+      readOnly: initialReadOnlyRef.current,
+      editorState: initialEditorStateRef.current,
+      onChange: handleChange,
+      onEditorStateChange: handleEditorStateChange,
+      onRun: handleRun,
+      onFormat: handleFormat,
     })
 
-    const handleFormat = useEffectEvent(() => {
-      if (!readOnly) onFormat?.()
-    })
+    controllerRef.current = controller
+    if (initialAutoFocusRef.current) controller.focus()
 
-    const setHostRef = useCallback((node: HTMLDivElement | null) => {
-      setHost(node)
-    }, [])
-
-    useImperativeHandle(
-      ref,
-      () => ({
-        focus() {
-          controllerRef.current?.focus()
-        },
-        openSearch() {
-          controllerRef.current?.openSearch()
-        },
-      }),
-      [],
-    )
-
-    useLayoutEffect(() => {
-      if (!host) {
-        return
+    return () => {
+      if (controllerRef.current === controller) {
+        controllerRef.current = null
       }
 
-      const controller = createSqlEditorController({
-        host,
-        value: initialValueRef.current,
-        driver: initialDriverRef.current,
-        readOnly: initialReadOnlyRef.current,
-        editorState: initialEditorStateRef.current,
-        onChange: handleChange,
-        onEditorStateChange: handleEditorStateChange,
-        onRun: handleRun,
-        onFormat: handleFormat,
-      })
+      controller.destroy()
+    }
+  }, [host])
 
-      controllerRef.current = controller
-      if (initialAutoFocusRef.current) controller.focus()
+  useEffect(() => {
+    controllerRef.current?.setDriver(driver)
+  }, [driver])
 
-      return () => {
-        if (controllerRef.current === controller) {
-          controllerRef.current = null
-        }
+  useEffect(() => {
+    controllerRef.current?.setReadOnly(readOnly)
+  }, [readOnly])
 
-        controller.destroy()
-      }
-    }, [host])
+  useEffect(() => {
+    controllerRef.current?.setValue(value)
+  }, [value])
 
-    useEffect(() => {
-      controllerRef.current?.setDriver(driver)
-    }, [driver])
+  useEffect(() => {
+    controllerRef.current?.syncViewState(editorState)
+  }, [editorState])
 
-    useEffect(() => {
-      controllerRef.current?.setReadOnly(readOnly)
-    }, [readOnly])
+  return <div ref={setHostRef} className="size-full min-w-0 min-h-0" />
+}
 
-    useEffect(() => {
-      controllerRef.current?.setValue(value)
-    }, [value])
-
-    useEffect(() => {
-      controllerRef.current?.syncViewState(editorState)
-    }, [editorState])
-
-    return <div ref={setHostRef} className="size-full min-w-0 min-h-0" />
-  },
-)
-
-export { SqlEditor, getSelectionStats }
+export { getSelectionStats, SqlEditor }

@@ -1,4 +1,3 @@
-import type { Column } from "@tanstack/react-table"
 import {
   ArrowDownAZ,
   ArrowUpAZ,
@@ -32,7 +31,7 @@ import {
 } from "./format"
 import type { ResultActions, ResultTableState } from "./types"
 import {
-  type ResultRow,
+  type ResultColumn,
   type ResultTableInstance,
   ROW_NUMBER_COLUMN_ID,
 } from "./types"
@@ -44,7 +43,7 @@ interface ExportPayload {
 
 type ExportFormat = "csv" | "tsv"
 
-function buildExportPayload(table: ResultTableInstance): ExportPayload {
+export function buildExportPayload(table: ResultTableInstance): ExportPayload {
   const exportColumns = table
     .getVisibleLeafColumns()
     .filter((column) => column.id !== ROW_NUMBER_COLUMN_ID)
@@ -313,7 +312,7 @@ export function HeaderMenu({
   columnMeta,
   disableHide,
 }: {
-  column: Column<ResultRow, unknown>
+  column: ResultColumn
   columnMeta?: QueryResultColumn
   disableHide: boolean
 }) {
@@ -375,11 +374,11 @@ export function HeaderMenu({
 
           <DropdownMenuItem
             onClick={() =>
-              column.pin(column.getIsPinned() === "left" ? false : "left")
+              column.pin(column.getIsPinned() === "start" ? false : "start")
             }
           >
             <Pin className="size-3.5" />
-            {column.getIsPinned() === "left" ? "取消固定" : "固定到左侧"}
+            {column.getIsPinned() === "start" ? "取消固定" : "固定到左侧"}
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={disableHide}

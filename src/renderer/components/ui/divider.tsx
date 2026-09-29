@@ -1,7 +1,7 @@
 "use client"
 
 import { Separator as SeparatorPrimitive } from "@base-ui/react"
-import { cn } from "./utils"
+import { cn } from "tailwind-variants"
 
 function Divider({
   className,

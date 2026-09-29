@@ -3,8 +3,8 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react"
 import { XIcon } from "lucide-react"
 import type * as React from "react"
+import { cn } from "tailwind-variants"
 import { Button } from "./button"
-import { cn } from "./utils"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />

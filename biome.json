@@ -15,7 +15,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
         "noLabelWithoutControl": "off",
         "useSemanticElements": "off"
@@ -43,5 +43,18 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["package.json"],
+      "assist": {
+        "actions": {
+          "source": {
+            "useSortedPackageJson": "off",
+            "useSortedKeys": "off"
+          }
+        }
+      }
+    }
+  ]
 }

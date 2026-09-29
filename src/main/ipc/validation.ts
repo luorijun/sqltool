@@ -2,7 +2,7 @@ import { z } from "zod"
 
 export const id = z.string().min(1)
 export const text = z.string()
-export const tableSource = z.object({ schema: id, table: id }).strict()
+export const tableSource = z.strictObject({ schema: id, table: id })
 export const profile = z.object({
   driver: z.enum(["postgres", "mysql"]),
   host: text,
