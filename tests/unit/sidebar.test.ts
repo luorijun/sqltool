@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import type { Connection } from "../src/contracts/database"
+import type { Connection } from "../../src/contracts/database"
 import {
   buildTree,
   canRefresh,
   nodeKey,
   selectedNode,
   visibleNodes,
-} from "../src/renderer/pages/workbench/sidebar/tree"
+} from "../../src/renderer/pages/workbench/sidebar/tree"
 
 const connection: Connection = {
   config: {
@@ -37,7 +37,7 @@ const connection: Connection = {
 }
 
 describe("sidebar tree state", () => {
-  test("refresh preserves selection and expansion by identity; a removed table falls back to its group", () => {
+  test("updated tree data keeps object identity and a missing object falls back to its parent", () => {
     const key = nodeKey("db", "public", "tables", "items")
     const expanded = new Set([
       nodeKey("db"),
@@ -57,7 +57,7 @@ describe("sidebar tree state", () => {
     expect(selectedNode(buildTree([]), key)).toBeUndefined()
   })
 
-  test("collapsing a parent preserves nested expansion and keeps the selected target visible", () => {
+  test("visibility and selection follow parent expansion", () => {
     const nodes = buildTree([connection])
     const key = nodeKey("db", "public", "tables", "items")
     const expanded = new Set([

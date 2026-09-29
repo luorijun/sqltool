@@ -10,7 +10,7 @@ import { EditorView, keymap } from "@codemirror/view"
 import {
   createEditorMode,
   externalUpdate,
-} from "../src/renderer/components/sql-editor/mode"
+} from "../../src/renderer/components/sql-editor/mode"
 
 describe("SQL editor read-only mode", () => {
   test("blocks document edits but accepts controlled SQL updates and selection", () => {
@@ -75,12 +75,20 @@ describe("SQL editor read-only mode", () => {
     const readonly = EditorState.create({
       extensions: [createEditorMode(true, actions)],
     })
-    expect(readonly.facet(keymap).flat()).toEqual([])
+    const shortcuts = ["Mod-Enter", "Shift-Alt-f"]
+    expect(
+      readonly
+        .facet(keymap)
+        .flat()
+        .filter((binding) => shortcuts.includes(binding.key ?? "")),
+    ).toEqual([])
     const editable = EditorState.create({
       extensions: [createEditorMode(false, actions)],
     })
-    for (const binding of editable.facet(keymap).flat())
-      binding.run?.({} as EditorView)
+    const bindings = editable.facet(keymap).flat()
+    expect(bindings.map((binding) => binding.key)).toEqual(shortcuts)
+    for (const key of shortcuts)
+      bindings.find((binding) => binding.key === key)?.run?.({} as EditorView)
     expect(runs).toBe(1)
     expect(formats).toBe(1)
     const noActions = EditorState.create({

@@ -43,7 +43,7 @@ SqlTool 是一个面向开发者的本地桌面数据库客户端，定位接近
 
 典型数据流是：页面调用工作区或数据库模块的公共命令，客户端通过 preload 发起请求，IPC 层校验参数并确定窗口身份，数据库服务处理后返回结果与快照；客户端合并快照，工作区更新相应标签页状态，驱动页面刷新。
 
-`bun run typecheck` 包含架构边界检查和 main / preload / renderer 各自的 TypeScript 检查。`bun run test:architecture` 验证边界检查器；会话、客户端及数据库集成测试见 [测试说明](tests/README.md)。测试可以访问包内实现，生产源码不能。
+`bun run typecheck` 检查 main / preload / renderer 及测试代码的类型。`bun run test` 运行无需数据库的测试，`bun run test:integration` 运行数据库集成测试，见 [测试说明](tests/README.md)。测试可以访问包内实现，生产源码不能。
 
 ## 本地测试数据库
 

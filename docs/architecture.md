@@ -130,6 +130,5 @@ renderer/components/业务组件 → components/ui、contracts（所需类型）
 ## 约束检查
 
 - main、preload、renderer 使用各自的 TypeScript 检查环境。
-- 自动检查非法跨包导入、内部路径访问和循环依赖，覆盖类型导入。
 - 目录、路径别名和 TypeScript 的 `include` 不能单独保证依赖边界。
 - 结构调整保持业务行为和状态同步语义稳定，使用现有会话、客户端及数据库集成测试验证相关改动。

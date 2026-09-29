@@ -6,6 +6,6 @@
     { "path": "./tsconfig.preload.json" },
     { "path": "./tsconfig.node.json" },
     { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.dev.json" }
+    { "path": "./tsconfig.test.json" }
   ]
 }

@@ -5,7 +5,7 @@
   "productName": "SqlTool",
   "description": "A simple GUI database client tool",
   "author": "luorijun",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "homepage": "https://github.com/luorijun/sqltool",
   "repository": {
     "type": "git",
@@ -17,13 +17,11 @@
     "dev": "electron-vite",
     "build": "bun run typecheck && electron-vite build",
     "make": "bun run build && electron-builder",
-    "test": "bun run make -- --dir --publish never",
-    "test:sessions": "bun test tests/conn.test.ts tests/conn-renderer.test.ts tests/database.test.ts",
-    "test:architecture": "bun test tests/architecture.test.ts",
-    "check:architecture": "bun scripts/check-architecture.ts",
-    "test:integration": "bun test tests/conn.integration.test.ts --timeout 30000",
-    "typecheck": "bun run check:architecture && tsc -b",
-    "lint": "bunx --bun biome check --write"
+    "test": "bun test --isolate ./tests/unit",
+    "test:integration": "bun test --isolate ./tests/integration --timeout 30000",
+    "typecheck": "tsc -b",
+    "lint": "biome check",
+    "lint:fix": "biome check --write"
   },
   "dependencies": {
     "pg": "^8.20.0",
@@ -40,6 +38,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-table": "^8.21.3",
+    "@types/bun": "1.4.2",
     "@types/node": "^25.0.3",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
