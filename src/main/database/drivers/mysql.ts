@@ -10,6 +10,7 @@ import type {
   DbTable,
   QueryResult,
   SelectQuery,
+  TableSource,
 } from "@/contracts/database"
 import type { ConnectionSession } from "../ports"
 import { compileSelectQuery } from "../query"
@@ -135,6 +136,7 @@ async function queryRows<T extends RowDataPacket>(
 
 async function inspectMySqlClient(
   client: MySqlConnection,
+  source?: TableSource,
 ): Promise<DbSchema[]> {
   const [schemaRow] = await queryRows<RowDataPacket & { schema_name: string }>(
     client,
@@ -144,6 +146,9 @@ async function inspectMySqlClient(
 
   if (!schemaName) {
     return []
+  }
+  if (source && source.schema !== schemaName) {
+    throw new Error("目标表不属于当前数据库")
   }
 
   const tables = await queryRows<TableRow>(
@@ -156,9 +161,10 @@ async function inspectMySqlClient(
       FROM information_schema.TABLES
       WHERE TABLE_SCHEMA = ?
         AND TABLE_TYPE = 'BASE TABLE'
+        ${source ? "AND TABLE_NAME = ?" : ""}
       ORDER BY TABLE_NAME
     `,
-    [schemaName],
+    source ? [schemaName, source.table] : [schemaName],
   )
 
   const columns = await queryRows<ColumnRow>(
@@ -192,14 +198,19 @@ async function inspectMySqlClient(
        AND fk.TABLE_NAME = c.TABLE_NAME
        AND fk.COLUMN_NAME = c.COLUMN_NAME
       WHERE c.TABLE_SCHEMA = ?
+        ${source ? "AND c.TABLE_NAME = ?" : ""}
       ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
     `,
-    [schemaName, schemaName, schemaName],
+    source
+      ? [schemaName, schemaName, schemaName, source.table]
+      : [schemaName, schemaName, schemaName],
   )
 
-  const views = await queryRows<ViewRow>(
-    client,
-    `
+  const views = source
+    ? []
+    : await queryRows<ViewRow>(
+        client,
+        `
       SELECT
         TABLE_SCHEMA AS schema_name,
         TABLE_NAME AS view_name
@@ -207,12 +218,14 @@ async function inspectMySqlClient(
       WHERE TABLE_SCHEMA = ?
       ORDER BY TABLE_NAME
     `,
-    [schemaName],
-  )
+        [schemaName],
+      )
 
-  const functions = await queryRows<FunctionRow>(
-    client,
-    `
+  const functions = source
+    ? []
+    : await queryRows<FunctionRow>(
+        client,
+        `
       SELECT
         ROUTINE_SCHEMA AS schema_name,
         ROUTINE_NAME AS function_name
@@ -220,8 +233,8 @@ async function inspectMySqlClient(
       WHERE ROUTINE_SCHEMA = ?
       ORDER BY ROUTINE_TYPE, ROUTINE_NAME
     `,
-    [schemaName],
-  )
+        [schemaName],
+      )
 
   const schema: DbSchema = {
     name: schemaName,
@@ -497,8 +510,8 @@ export async function connectMySql(
         control.closeTransport?.()
       }
     },
-    inspect() {
-      return inspectMySqlClient(client)
+    inspect(source) {
+      return inspectMySqlClient(client, source)
     },
     query(sql) {
       return queryMySqlClient(client, sql)

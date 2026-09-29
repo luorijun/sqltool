@@ -1,5 +1,4 @@
 import type {
-  DbSchema,
   QueryResult,
   QueryResultColumn,
   SelectQuery,
@@ -14,7 +13,7 @@ export interface QueryColumnInput
 }
 
 interface CreateConnectionSessionOptions {
-  inspect: () => Promise<DbSchema[]>
+  inspect: ConnectionSession["inspect"]
   query: (sql: string) => Promise<QueryResult>
   select: (query: SelectQuery) => Promise<SelectResult>
   close: () => Promise<void>
@@ -86,7 +85,7 @@ export function createConnectionSession(
   }
 
   return {
-    inspect: () => execute(options.inspect),
+    inspect: (source) => execute(() => options.inspect(source)),
     query: (sql) => execute(() => options.query(sql)),
     select: (query) => execute(() => options.select(query)),
     cancel: () => options.cancel(() => active && !closed && !failure),

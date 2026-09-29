@@ -41,8 +41,8 @@ export function createDatabase(options: DatabaseOptions) {
           sessions.respond(owner, () => sessions.connect(id, owner)),
         disconnect: (id) =>
           sessions.respond(owner, () => sessions.disconnect(id, owner)),
-        inspect: (id) =>
-          sessions.respond(owner, () => sessions.inspect(id, owner)),
+        inspect: (id, source) =>
+          sessions.respond(owner, () => sessions.inspect(id, owner, source)),
         openSession: (id, tabId) =>
           sessions.respond(owner, () => sessions.open(id, owner, tabId)),
         closeTab: (tabId) =>

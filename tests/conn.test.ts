@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { Config } from "../src/contracts/database"
+import type { Config, DbSchema } from "../src/contracts/database"
 import type { ConnectionSession } from "../src/main/database/ports"
 import { Sessions } from "../src/main/database/sessions"
 import { ConnError, Tasks } from "../src/main/database/tasks"
@@ -168,6 +168,68 @@ describe("task scheduling", () => {
 })
 
 describe("session lifecycle", () => {
+  test("table refresh updates only the selected table, preserves other objects, and removes dropped tables", async () => {
+    const f = fake()
+    const sessions = manager(async () => f.client)
+    const initial: DbSchema[] = [
+      {
+        name: "public",
+        tables: [
+          { name: "z", columns: [{ name: "old", type: "int" }] },
+          { name: "a", columns: [] },
+        ],
+        views: [{ name: "v" }],
+        functions: [{ name: "f" }],
+      },
+      {
+        name: "other",
+        tables: [{ name: "z", columns: [] }],
+        views: [],
+        functions: [],
+      },
+    ]
+    const source = { schema: "public", table: "z" }
+    try {
+      f.client.inspect = async () => structuredClone(initial)
+      await sessions.inspect("db", 1)
+      f.client.inspect = async (target) => {
+        expect(target).toEqual(source)
+        return [
+          {
+            name: "public",
+            tables: [{ name: "z", columns: [{ name: "new", type: "text" }] }],
+            views: [],
+            functions: [],
+          },
+        ]
+      }
+      await sessions.inspect("db", 1, source)
+      const updated = sessions.snapshot(1).connections[0].schema
+      if (!updated) throw new Error("Missing refreshed schema")
+      expect(updated[0].tables.map((table) => table.name)).toEqual(["z", "a"])
+      expect(updated[0].tables[0].columns[0].name).toBe("new")
+      expect(updated[0].tables[1]).toEqual(initial[0].tables[1])
+      expect(updated[0].views).toEqual(initial[0].views)
+      expect(updated[0].functions).toEqual(initial[0].functions)
+      expect(updated[1]).toEqual(initial[1])
+      f.client.inspect = async () => {
+        throw new Error("denied")
+      }
+      await expect(sessions.inspect("db", 1, source)).rejects.toThrow("denied")
+      expect(sessions.snapshot(1).connections[0].schema).toEqual(updated)
+      expect(sessions.snapshot(1).connections[0].error).toBeNull()
+      f.client.inspect = async () => []
+      await sessions.inspect("db", 1, source)
+      expect(
+        sessions
+          .snapshot(1)
+          .connections[0].schema?.[0].tables.map((table) => table.name),
+      ).toEqual(["a"])
+    } finally {
+      await sessions.closeOwner(1, true)
+    }
+  })
+
   test("lazy creation, per-tab reuse, isolated helpers and session limit", async () => {
     const clients: ReturnType<typeof fake>[] = []
     const sessions = manager(

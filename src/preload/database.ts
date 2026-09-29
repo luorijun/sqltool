@@ -4,6 +4,7 @@ import type {
   CreateConfig,
   DatabaseApi,
   SelectQuery,
+  TableSource,
   UpdateConfig,
 } from "@/contracts/database"
 import {
@@ -41,8 +42,8 @@ const conn: DatabaseApi = {
   disconnect: (configId: string) => {
     return ipcRenderer.invoke(DISCONNECT, configId)
   },
-  inspect: (configId: string) => {
-    return ipcRenderer.invoke(INSPECT, configId)
+  inspect: (configId: string, source?: TableSource) => {
+    return ipcRenderer.invoke(INSPECT, configId, source)
   },
   sync: () => ipcRenderer.invoke(SYNC),
   openSession: (configId: string, tabId: string) =>

@@ -5,9 +5,10 @@ import type {
   QueryResult,
   SelectQuery,
   SelectResult,
+  TableSource,
 } from "@/contracts/database"
 export interface ConnectionSession {
-  inspect(): Promise<DbSchema[]>
+  inspect(source?: TableSource): Promise<DbSchema[]>
   query(sql: string): Promise<QueryResult>
   select(query: SelectQuery): Promise<SelectResult>
   close(): Promise<void>

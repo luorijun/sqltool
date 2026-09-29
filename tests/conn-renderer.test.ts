@@ -10,6 +10,10 @@ import type {
 } from "../src/contracts/database"
 import connApi, {
   applySnapshot,
+  connectConnectionAtom,
+  connectionActionAtom,
+  disconnectConnectionAtom,
+  refreshConnectionSchemaAtom,
   refreshConnectionsAtom,
   snapshotAtom,
 } from "../src/renderer/modules/database/client"
@@ -123,6 +127,78 @@ beforeEach(async () => {
     typeof globalThis
   applySnapshot(capture())
   for (const tab of store.get(tabsAtom)) await store.set(closeTabAtom, tab.id)
+})
+
+describe("sidebar connection actions", () => {
+  test("connecting loads structure once and rejects conflicting actions until it finishes", async () => {
+    const ready = deferred<void>()
+    const calls: string[] = []
+    snapshot.connections[0].connected = false
+    applySnapshot(capture())
+    bridge.connect = async () => {
+      calls.push("connect")
+      await ready.promise
+      snapshot.connections[0].connected = true
+      return ok(undefined)
+    }
+    bridge.inspect = async () => {
+      calls.push("inspect")
+      snapshot.connections[0].schema = [
+        { name: "public", tables: [], views: [], functions: [] },
+      ]
+      return ok(undefined)
+    }
+    const first = store.set(connectConnectionAtom, "db")
+    const second = store.set(connectConnectionAtom, "db")
+    expect(store.get(connectionActionAtom).db).toBe("connect")
+    await expect(store.set(disconnectConnectionAtom, "db")).rejects.toThrow(
+      "正在处理中",
+    )
+    ready.resolve()
+    await Promise.all([first, second])
+    expect(calls).toEqual(["connect", "inspect"])
+    expect(store.get(snapshotAtom)?.connections[0].schema).toHaveLength(1)
+    expect(store.get(connectionActionAtom).db).toBeUndefined()
+  })
+
+  test("a structure failure keeps the connection available and permits a targeted retry", async () => {
+    const source = { schema: "public", table: "items" }
+    bridge.connect = async () => ok(undefined)
+    bridge.inspect = async () => {
+      throw new Error("结构读取失败")
+    }
+    await expect(store.set(connectConnectionAtom, "db")).rejects.toThrow(
+      "结构读取失败",
+    )
+    expect(store.get(snapshotAtom)?.connections[0].connected).toBe(true)
+    expect(store.get(connectionActionAtom).db).toBeUndefined()
+    bridge.inspect = async (id, target) => {
+      expect(id).toBe("db")
+      expect(target).toEqual(source)
+      return ok(undefined)
+    }
+    await store.set(refreshConnectionSchemaAtom, { id: "db", source })
+    expect(selectCalls).toHaveLength(0)
+    expect(queryCalls).toBe(0)
+  })
+
+  test("a failed connection never inspects, and a cancelled disconnect preserves its result", async () => {
+    let inspected = false
+    bridge.connect = async () => {
+      throw new Error("连接失败")
+    }
+    bridge.inspect = async () => {
+      inspected = true
+      return ok(undefined)
+    }
+    await expect(store.set(connectConnectionAtom, "db")).rejects.toThrow(
+      "连接失败",
+    )
+    expect(inspected).toBe(false)
+    bridge.disconnect = async () => ok(false)
+    expect(await store.set(disconnectConnectionAtom, "db")).toBeUndefined()
+    expect(store.get(snapshotAtom)?.connections[0].connected).toBe(true)
+  })
 })
 
 describe("table view tabs", () => {

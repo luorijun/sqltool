@@ -7,6 +7,7 @@ import type {
   CreateConfig,
   FailureKind,
   SelectQuery,
+  TableSource,
   UpdateConfig,
 } from "@/contracts/database"
 
@@ -77,8 +78,8 @@ const connApi = {
     if (!(await unwrap(window.main.conn.disconnect(id)))) return undefined
     return currentConnection(id)
   },
-  async inspect(id: string) {
-    await unwrap(window.main.conn.inspect(id))
+  async inspect(id: string, source?: TableSource) {
+    await unwrap(window.main.conn.inspect(id, source))
     return currentConnection(id)
   },
   openSession(id: string, tabId: string) {
@@ -101,17 +102,43 @@ export default connApi
 
 export const refreshConnectionsAtom = atom(null, () => connApi.sync())
 
-async function runAction(set: Setter, id: string, action: ConnectionAction) {
-  set(actionsAtom, (current) => ({ ...current, [id]: action }))
-  try {
-    return await connApi[action](id)
-  } finally {
-    set(actionsAtom, (current) => {
-      const next = { ...current }
-      delete next[id]
-      return next
-    })
+const pending = new Map<
+  string,
+  { key: string; promise: ReturnType<typeof connApi.disconnect> }
+>()
+
+function runAction(
+  set: Setter,
+  id: string,
+  action: ConnectionAction,
+  source?: TableSource,
+) {
+  const key = JSON.stringify([action, source])
+  const current = pending.get(id)
+  if (current) {
+    if (current.key === key) return current.promise
+    return Promise.reject(new Error("连接正在处理中，请稍后重试"))
   }
+  set(actionsAtom, (current) => ({ ...current, [id]: action }))
+  const promise = Promise.resolve()
+    .then(async () => {
+      if (action === "connect") {
+        await connApi.connect(id)
+        return connApi.inspect(id)
+      }
+      if (action === "inspect") return connApi.inspect(id, source)
+      return connApi.disconnect(id)
+    })
+    .finally(() => {
+      pending.delete(id)
+      set(actionsAtom, (current) => {
+        const next = { ...current }
+        delete next[id]
+        return next
+      })
+    })
+  pending.set(id, { key, promise })
+  return promise
 }
 export const connectConnectionAtom = atom(null, (_get, set, id: string) =>
   runAction(set, id, "connect"),
@@ -119,8 +146,12 @@ export const connectConnectionAtom = atom(null, (_get, set, id: string) =>
 export const disconnectConnectionAtom = atom(null, (_get, set, id: string) =>
   runAction(set, id, "disconnect"),
 )
-export const refreshConnectionSchemaAtom = atom(null, (_get, set, id: string) =>
-  runAction(set, id, "inspect"),
+export const refreshConnectionSchemaAtom = atom(
+  null,
+  (_get, set, target: string | { id: string; source: TableSource }) =>
+    typeof target === "string"
+      ? runAction(set, target, "inspect")
+      : runAction(set, target.id, "inspect", target.source),
 )
 export const deleteConnectionAtom = atom(null, (_get, _set, id: string) =>
   connApi.remove(id),

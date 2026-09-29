@@ -6,6 +6,7 @@ import type {
   QueryResult,
   QueryResultRow,
   SelectQuery,
+  TableSource,
 } from "@/contracts/database"
 import type { ConnectionSession } from "../ports"
 import { compileSelectQuery } from "../query"
@@ -150,24 +151,33 @@ async function createPostgresClient(
   return connectPostgresViaSsh(profile)
 }
 
-async function queryRows<T>(client: PgClient, sql: string): Promise<T[]> {
-  const result = await client.query<T>(sql)
+async function queryRows<T>(
+  client: PgClient,
+  sql: string,
+  values?: unknown[],
+): Promise<T[]> {
+  const result = await client.query<T>(sql, values)
   return Array.isArray(result.rows) ? result.rows : []
 }
 
-async function inspectPostgresClient(client: PgClient): Promise<DbSchema[]> {
+async function inspectPostgresClient(
+  client: PgClient,
+  source?: TableSource,
+): Promise<DbSchema[]> {
   const schemaFilter = excludeSystemSchemas("n.nspname")
   const viewSchemaFilter = excludeSystemSchemas("table_schema")
 
-  const schemas = await queryRows<SchemaRow>(
-    client,
-    `
+  const schemas = source
+    ? []
+    : await queryRows<SchemaRow>(
+        client,
+        `
       SELECT n.nspname AS schema_name
       FROM pg_namespace n
       WHERE ${schemaFilter}
       ORDER BY n.nspname
     `,
-  )
+      )
 
   const tables = await queryRows<TableRow>(
     client,
@@ -181,8 +191,10 @@ async function inspectPostgresClient(client: PgClient): Promise<DbSchema[]> {
       LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
       WHERE c.relkind IN ('r', 'p')
         AND ${schemaFilter}
+        ${source ? "AND n.nspname = $1 AND c.relname = $2" : ""}
       ORDER BY n.nspname, c.relname
     `,
+    source ? [source.schema, source.table] : undefined,
   )
 
   const columns = await queryRows<ColumnRow>(
@@ -215,13 +227,17 @@ async function inspectPostgresClient(client: PgClient): Promise<DbSchema[]> {
         AND a.attnum > 0
         AND NOT a.attisdropped
         AND ${schemaFilter}
+        ${source ? "AND n.nspname = $1 AND c.relname = $2" : ""}
       ORDER BY n.nspname, c.relname, a.attnum
     `,
+    source ? [source.schema, source.table] : undefined,
   )
 
-  const views = await queryRows<ViewRow>(
-    client,
-    `
+  const views = source
+    ? []
+    : await queryRows<ViewRow>(
+        client,
+        `
       SELECT
         table_schema AS schema_name,
         table_name AS view_name
@@ -229,11 +245,13 @@ async function inspectPostgresClient(client: PgClient): Promise<DbSchema[]> {
       WHERE ${viewSchemaFilter}
       ORDER BY table_schema, table_name
     `,
-  )
+      )
 
-  const functions = await queryRows<FunctionRow>(
-    client,
-    `
+  const functions = source
+    ? []
+    : await queryRows<FunctionRow>(
+        client,
+        `
       SELECT
         n.nspname AS schema_name,
         p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS function_name
@@ -243,7 +261,7 @@ async function inspectPostgresClient(client: PgClient): Promise<DbSchema[]> {
         AND ${schemaFilter}
       ORDER BY n.nspname, p.proname, function_name
     `,
-  )
+      )
 
   const schemaMap = new Map<string, DbSchema>()
   const tableMap = new Map<string, DbTable>()
@@ -523,8 +541,8 @@ export async function connectPostgres(
         control.closeTransport?.()
       }
     },
-    inspect() {
-      return inspectPostgresClient(client)
+    inspect(source) {
+      return inspectPostgresClient(client, source)
     },
     query(sql) {
       return queryPostgresClient(client, sql)

@@ -5,6 +5,7 @@ import type {
   ConnSnapshot,
   SelectQuery,
   SessionSnapshot,
+  TableSource,
 } from "@/contracts/database"
 import { Catalog } from "./catalog"
 import type { Confirm, Connect, ConnectionSession } from "./ports"
@@ -291,7 +292,11 @@ export class Sessions {
     )
   }
 
-  async inspect(configId: string, owner: number): Promise<void> {
+  async inspect(
+    configId: string,
+    owner: number,
+    source?: TableSource,
+  ): Promise<void> {
     const session = this.create(configId, owner, "schema")
     try {
       const schema = await this.run(
@@ -299,18 +304,20 @@ export class Sessions {
         owner,
         randomUUID(),
         undefined,
-        (client) => client.inspect(),
+        (client) => client.inspect(source),
       )
       if (
         this.entries.get(session.id) === session &&
         session.status === "ready"
       ) {
-        this.catalog.setSchema(configId, schema)
+        if (source) this.catalog.setTable(configId, source, schema)
+        else this.catalog.setSchema(configId, schema)
       }
     } catch (error) {
       if (
         this.entries.get(session.id) === session &&
-        session.status !== "closed"
+        session.status !== "closed" &&
+        !source
       )
         this.catalog.setError(
           configId,

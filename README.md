@@ -10,11 +10,7 @@ A simple SQL client built with React and Electron.
 
 ### 问题
 
-- 隐式处理连接与关闭：执行需要连接的操作时，自动检查连接状态并在必要时建立连接；当连接不再需要时，自动关闭连接
-  - 编辑连接时，如果未关闭连接，提示用户是否关闭连接
-
 - 表格高亮行 z index 不正确，普通 cell 文字会显示在冻结 cell 背景上
-- 弹窗顶部边距有问题
 
 ### 整体功能
 
@@ -26,8 +22,6 @@ A simple SQL client built with React and Electron.
 
 ### sidebar
 
-- 实现全局长连接，tabs 里执行语句前先打开长连接，不再使用临时连接
-  - 连接变为隐式操作，用户不需要直接连接，而是通过执行需要连接的操作来触发连接
 - 增删改表格
 - 导出表格数据
 

@@ -157,6 +157,66 @@ for (const driver of ["postgres", "mysql"] as const) {
         }
       })
 
+      test("targeted structure refresh handles changed and dropped tables without refreshing neighbors", async () => {
+        const sessions = create()
+        const client = await connectDriver(profile())
+        const name = `refresh_${randomUUID().replaceAll("-", "")}`
+        const source = { schema, table: `${name}' quoted` }
+        const quote = (name: string) =>
+          driver === "postgres"
+            ? `"${name.replaceAll('"', '""')}"`
+            : `\`${name.replaceAll("`", "``")}\``
+        const table = quote(source.table)
+        const other = quote(name)
+        try {
+          await client.query(`CREATE TABLE ${table} (id INT PRIMARY KEY)`)
+          await client.query(`CREATE TABLE ${other} (id INT PRIMARY KEY)`)
+          await sessions.inspect("test", 1)
+          await client.query(`ALTER TABLE ${table} ADD COLUMN fresh TEXT`)
+          await client.query(`ALTER TABLE ${other} ADD COLUMN untouched TEXT`)
+          const scoped = await client.inspect(source)
+          expect(
+            scoped
+              .flatMap((schema) => schema.tables)
+              .map((table) => table.name),
+          ).toEqual([source.table])
+          expect(
+            scoped.flatMap((schema) => [...schema.views, ...schema.functions]),
+          ).toHaveLength(0)
+          await sessions.inspect("test", 1, source)
+          const tables = sessions
+            .snapshot(1)
+            .connections[0].schema?.find((item) => item.name === schema)?.tables
+          if (!tables) throw new Error("Missing refreshed tables")
+          expect(
+            tables
+              .find((item) => item.name === source.table)
+              ?.columns.map((column) => column.name),
+          ).toEqual(["id", "fresh"])
+          expect(
+            tables
+              .find((item) => item.name === name)
+              ?.columns.map((column) => column.name),
+          ).toEqual(["id"])
+          await client.query(`DROP TABLE ${table}`)
+          await sessions.inspect("test", 1, source)
+          const after = sessions
+            .snapshot(1)
+            .connections[0].schema?.find((item) => item.name === schema)?.tables
+          if (!after) throw new Error("Missing tables after refresh")
+          expect(after.some((item) => item.name === source.table)).toBe(false)
+          expect(after.some((item) => item.name === name)).toBe(true)
+        } finally {
+          try {
+            await client.query(`DROP TABLE IF EXISTS ${table}`)
+            await client.query(`DROP TABLE IF EXISTS ${other}`)
+          } finally {
+            await client.close()
+            await sessions.closeOwner(1, true)
+          }
+        }
+      })
+
       test("cancel slow query without hitting the next query; a different session stays usable", async () => {
         const sessions = create(),
           a = sessions.open("test", 1, "a"),

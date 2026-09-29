@@ -4,7 +4,15 @@ import * as db from "@/contracts/database"
 import * as system from "@/contracts/system"
 import type { Database } from "@/main/database"
 import { saveTextFile, writeClipboardText } from "@/main/system"
-import { config, file, id, profile, query, text } from "./validation"
+import {
+  config,
+  file,
+  id,
+  profile,
+  query,
+  tableSource,
+  text,
+} from "./validation"
 
 function owner(event: IpcMainInvokeEvent): number {
   if (
@@ -38,7 +46,11 @@ export function registerIpc(database: Database): void {
   handle(db.REMOVE, z.tuple([id]), (owner, id) => api(owner).remove(id))
   handle(db.CONNECT, z.tuple([id]), (owner, id) => api(owner).connect(id))
   handle(db.DISCONNECT, z.tuple([id]), (owner, id) => api(owner).disconnect(id))
-  handle(db.INSPECT, z.tuple([id]), (owner, id) => api(owner).inspect(id))
+  handle(
+    db.INSPECT,
+    z.tuple([id, tableSource.optional()]),
+    (owner, id, source) => api(owner).inspect(id, source),
+  )
   handle(db.OPEN_SESSION, z.tuple([id, id]), (owner, id, tabId) =>
     api(owner).openSession(id, tabId),
   )

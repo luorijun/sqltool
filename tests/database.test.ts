@@ -11,6 +11,7 @@ import {
   file,
   profile,
   query,
+  tableSource,
 } from "../src/main/ipc/validation"
 
 const input: ConfigProfile = {
@@ -111,6 +112,15 @@ describe("database service", () => {
 })
 
 describe("IPC validation", () => {
+  test("table refresh accepts exact object names and rejects incomplete targets", () => {
+    const source = { schema: "a.b", table: "quotes' and spaces" }
+    expect(tableSource.parse(source)).toEqual(source)
+    expect(tableSource.safeParse({ schema: "public" }).success).toBe(false)
+    expect(tableSource.safeParse({ schema: "", table: "items" }).success).toBe(
+      false,
+    )
+    expect(tableSource.safeParse({ ...source, owner: 2 }).success).toBe(false)
+  })
   test("accepts profiles and partial updates but rejects malformed driver and SSH data", () => {
     expect(profile.parse(input)).toEqual(input)
     expect(configSchema.partial().parse({ name: "renamed" })).toEqual({
