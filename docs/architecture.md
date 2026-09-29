@@ -129,6 +129,6 @@ renderer/components/业务组件 → components/ui、contracts（所需类型）
 
 ## 约束检查
 
-- main、preload、renderer 使用各自的 TypeScript 检查环境。
+- `tsconfig.json` 集中公共选项、路径映射和检查入口；`tsconfig.node.json` 检查 main / preload，`tsconfig.renderer.json` 检查 renderer，`tsconfig.dev.json` 检查 Bun 测试与构建配置。
 - 目录、路径别名和 TypeScript 的 `include` 不能单独保证依赖边界。
 - 结构调整保持业务行为和状态同步语义稳定，使用现有会话、客户端及数据库集成测试验证相关改动。

@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.dev.tsbuildinfo",
+    "lib": ["ESNext", "DOM"],
+    "types": ["bun", "node"],
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "resolveJsonModule": true
+  },
+  "include": [
+    "electron.vite.config.ts",
+    "tests/**/*.ts",
+    "src/renderer/env.d.ts"
+  ]
+}

@@ -8,7 +8,7 @@ import type {
 } from "electron-vite"
 import { defineConfig } from "electron-vite"
 import type { UserConfig } from "vite"
-import { compilerOptions } from "./tsconfig.paths.json"
+import { compilerOptions } from "./tsconfig.json"
 
 const alias = Object.fromEntries(
   Object.entries(compilerOptions.paths).map(([name, [target]]) => [
