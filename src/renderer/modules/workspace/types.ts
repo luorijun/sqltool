@@ -90,7 +90,8 @@ export interface TabLoggerState {
 }
 
 export interface ViewTabTableState {
-  sort: SelectOrderBy | null
+  sort: SelectOrderBy[]
+  sortOrder: string[]
   status: "idle" | "running" | "success" | "error"
   error: string | null
   dataAt: number | null
@@ -104,8 +105,8 @@ export interface ViewTabTableState {
   sizing: Record<string, number>
   pinning: { start: string[]; end: string[] }
   selection: TableSelection | null
-  pageIndex: number
-  pageSize: number
+  offset: number
+  limit: number
   totalCount: number | null
   countStatus: "idle" | "running" | "success" | "error"
   countError: string | null

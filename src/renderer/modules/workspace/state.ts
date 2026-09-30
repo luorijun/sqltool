@@ -5,6 +5,7 @@ import connApi, {
   RequestError,
   sessionEntriesAtom,
 } from "@/renderer/modules/database"
+import { getPagination, pageOffset } from "./pagination"
 import type {
   CodeView,
   EditorView,
@@ -263,7 +264,7 @@ export const resetActiveViewTabTableStateAtom = atom(null, (get, set) => {
 })
 
 type ViewPage = { tabId: string } & Partial<
-  Pick<ViewTabTableState, "pageIndex" | "pageSize" | "sort">
+  Pick<ViewTabTableState, "offset" | "limit" | "sort" | "sortOrder">
 >
 
 const loadViewTabPageByIdAtom = atom(
@@ -280,20 +281,9 @@ const loadViewTabPageByIdAtom = atom(
       return
     }
 
-    const { pageIndex, pageSize, sort } = {
+    const { offset, limit, sort, sortOrder } = {
       ...tab.table,
       ...input,
-    }
-    const orderBy = sort ? [sort] : []
-    const sourceColumns =
-      get(connectionEntriesAtom)
-        ?.find((entry) => entry.config.id === tab.configId)
-        ?.schema?.find((schema) => schema.name === tab.source.schema)
-        ?.tables.find((table) => table.name === tab.source.table)?.columns ?? []
-    for (const column of sourceColumns) {
-      if (column.pk && !orderBy.some((order) => order.column === column.name)) {
-        orderBy.push({ column: column.name, direction: "asc" })
-      }
     }
 
     const requestId = crypto.randomUUID()
@@ -332,9 +322,9 @@ const loadViewTabPageByIdAtom = atom(
         requestId,
         {
           from: tab.source,
-          ...(orderBy.length ? { orderBy } : {}),
-          limit: pageSize,
-          offset: pageIndex * pageSize,
+          ...(sort.length ? { orderBy: sort } : {}),
+          limit,
+          offset,
         },
       )
       if (!isCurrent()) return
@@ -349,9 +339,10 @@ const loadViewTabPageByIdAtom = atom(
           dataAt: finishedAt,
           generation,
           sql: executedSql,
-          pageIndex,
-          pageSize,
+          offset,
+          limit,
           sort,
+          sortOrder,
           columns: result.columns,
           data: toTableRows(result),
           selection: null,
@@ -526,49 +517,50 @@ export const refreshActiveViewTabAtom = atom(null, async (get, set) => {
   ])
 })
 
+export const setActiveViewTabRangeAtom = atom(
+  null,
+  async (get, set, range: { offset: number; limit: number }) => {
+    const tab = get(activeViewTabAtom)
+    if (
+      !tab ||
+      tab.table.status === "running" ||
+      !Number.isSafeInteger(range.offset) ||
+      range.offset < 0 ||
+      !Number.isSafeInteger(range.limit) ||
+      range.limit <= 0 ||
+      !Number.isSafeInteger(range.offset + range.limit) ||
+      (range.offset === tab.table.offset && range.limit === tab.table.limit)
+    )
+      return
+    await set(loadViewTabPageByIdAtom, { tabId: tab.id, ...range })
+  },
+)
+
 export const setActiveViewTabPageAtom = atom(
   null,
-  async (get, set, pageIndex: number) => {
+  async (get, set, page: number) => {
     const tab = get(activeViewTabAtom)
-    if (!tab || tab.table.status === "running") {
-      return
-    }
-
-    const maxPageIndex =
-      tab.table.totalCount === null
-        ? pageIndex
-        : Math.max(0, Math.ceil(tab.table.totalCount / tab.table.pageSize) - 1)
-    const nextPageIndex = Math.min(Math.max(0, pageIndex), maxPageIndex)
-    if (nextPageIndex === tab.table.pageIndex) {
-      return
-    }
-
-    await set(loadViewTabPageByIdAtom, {
-      tabId: tab.id,
-      pageIndex: nextPageIndex,
+    if (!tab || !Number.isSafeInteger(page) || page < 1) return
+    const { offset, limit, totalCount } = tab.table
+    const { totalPages } = getPagination(
+      offset,
+      limit,
+      tab.table.countStatus === "success" ? totalCount : null,
+    )
+    const next = totalPages === null ? page : Math.min(page, totalPages)
+    await set(setActiveViewTabRangeAtom, {
+      offset: pageOffset(next, offset, limit),
+      limit,
     })
   },
 )
 
 export const setActiveViewTabPageSizeAtom = atom(
   null,
-  async (get, set, pageSize: number) => {
+  async (get, set, limit: number) => {
     const tab = get(activeViewTabAtom)
-    if (
-      !tab ||
-      tab.table.status === "running" ||
-      !Number.isInteger(pageSize) ||
-      pageSize <= 0 ||
-      pageSize === tab.table.pageSize
-    ) {
-      return
-    }
-
-    await set(loadViewTabPageByIdAtom, {
-      tabId: tab.id,
-      pageIndex: 0,
-      pageSize,
-    })
+    if (!tab || limit === tab.table.limit) return
+    await set(setActiveViewTabRangeAtom, { offset: 0, limit })
   },
 )
 
@@ -577,19 +569,50 @@ export const setViewTabSortAtom = atom(
   async (
     get,
     set,
-    { tabId, sort }: { tabId: string; sort: ViewTabTableState["sort"] },
+    {
+      tabId,
+      sort,
+      order,
+    }: { tabId: string; sort: ViewTabTableState["sort"]; order: string[] },
   ) => {
     const tab = get(tabStatesAtom)[tabId]
     if (tab?.kind !== "view" || tab.closing || tab.table.status === "running")
       return
+    const names = new Set(
+      tab.table.columns.map((column) => column.sourceColumn ?? column.name),
+    )
     if (
-      sort &&
-      !tab.table.columns.some(
-        (column) => (column.sourceColumn ?? column.name) === sort.column,
-      )
+      order.length !== tab.table.columns.length ||
+      new Set(order).size !== order.length ||
+      order.some(
+        (id) => !tab.table.columns.some((column) => column.id === id),
+      ) ||
+      new Set(sort.map((order) => order.column)).size !== sort.length ||
+      sort.some((order) => !names.has(order.column))
     )
       return
-    await set(loadViewTabPageByIdAtom, { tabId, sort, pageIndex: 0 })
+    if (
+      sort.length === tab.table.sort.length &&
+      sort.every(
+        (order, i) =>
+          order.column === tab.table.sort[i].column &&
+          order.direction === tab.table.sort[i].direction,
+      )
+    ) {
+      set(tabStatesAtom, (states) =>
+        updateViewTabTableState(states, tabId, (current) => ({
+          ...current,
+          sortOrder: order,
+        })),
+      )
+      return
+    }
+    await set(loadViewTabPageByIdAtom, {
+      tabId,
+      sort,
+      sortOrder: order,
+      offset: 0,
+    })
   },
 )
 // 内部 action atom，复用同一套 SQL 执行流程。
@@ -1137,7 +1160,8 @@ function toTotalCount(value: unknown): number {
 
 function createDefaultViewTableState(): ViewTabTableState {
   return {
-    sort: null,
+    sort: [],
+    sortOrder: [],
     status: "idle",
     error: null,
     dataAt: null,
@@ -1151,8 +1175,8 @@ function createDefaultViewTableState(): ViewTabTableState {
       end: [],
     },
     selection: null,
-    pageIndex: 0,
-    pageSize: DEFAULT_VIEW_PAGE_SIZE,
+    offset: 0,
+    limit: DEFAULT_VIEW_PAGE_SIZE,
     totalCount: null,
     countStatus: "idle",
     countError: null,

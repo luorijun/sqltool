@@ -1,3 +1,4 @@
+export { getPagination } from "./pagination"
 export {
   activeQueryTabAtom,
   activeQueryTabConfigAtom,
@@ -29,6 +30,7 @@ export {
   selectTabAtom,
   setActiveViewTabPageAtom,
   setActiveViewTabPageSizeAtom,
+  setActiveViewTabRangeAtom,
   setTableSelectionAtom,
   setViewTabSortAtom,
   tabsAtom,

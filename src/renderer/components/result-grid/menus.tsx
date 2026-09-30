@@ -1,13 +1,11 @@
 import {
   ArrowDownAZ,
-  ArrowUpAZ,
   Check,
   Columns3,
   Copy,
   Download,
   EyeOff,
   Pin,
-  RotateCcw,
 } from "lucide-react"
 import { useRef } from "react"
 import type { QueryResultColumn } from "@/contracts/database"
@@ -22,9 +20,6 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/renderer/components/ui/dropdown-menu"
 import {
@@ -206,59 +201,6 @@ export function CopyFormatMenu({
   )
 }
 
-export function SortMenu({
-  table,
-  busy,
-}: {
-  table: ResultTableInstance
-  busy: boolean
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="xs"
-            disabled={busy || table.getAllLeafColumns().length <= 1}
-            className="gap-1.5 text-muted-foreground"
-          />
-        }
-      >
-        <ArrowDownAZ className="size-3" />
-        排序
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        {table
-          .getAllLeafColumns()
-          .filter((column) => column.getCanSort())
-          .map((column) => (
-            <DropdownMenuSub key={column.id}>
-              <DropdownMenuSubTrigger>
-                {String(column.columnDef.header ?? column.id)}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => column.toggleSorting(false)}>
-                  升序
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => column.toggleSorting(true)}>
-                  降序
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={!table.state.sorting.length}
-          onClick={() => table.setSorting([])}
-        >
-          清除排序
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
 export function ExportMenu({
   onExport,
   table,
@@ -294,7 +236,7 @@ export function ExportMenu({
         disabled
       >
         <Download className="size-3" />
-        导出
+        导出本页
       </Button>
     )
   }
@@ -311,7 +253,7 @@ export function ExportMenu({
         }
       >
         <Download className="size-3" />
-        导出
+        导出本页
       </DropdownMenuTrigger>
 
       <DropdownMenuContent side="bottom" align="end">
@@ -331,12 +273,15 @@ export function HeaderMenu({
   columnMeta,
   disableHide,
   busy = false,
+  onSort,
 }: {
   column: ResultColumn
   columnMeta?: QueryResultColumn
   disableHide: boolean
   busy?: boolean
+  onSort: () => void
 }) {
+  const openingSort = useRef(false)
   if (column.id === ROW_NUMBER_COLUMN_ID) {
     return null
   }
@@ -348,7 +293,11 @@ export function HeaderMenu({
   const hasMetaDetails = Boolean(typeLabel || sourceLabel || flags.length)
 
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (open) openingSort.current = false
+      }}
+    >
       <DropdownMenuTrigger
         render={
           <Button
@@ -362,7 +311,11 @@ export function HeaderMenu({
         <span className="text-[11px] leading-none">···</span>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent side="bottom" align="end">
+      <DropdownMenuContent
+        side="bottom"
+        align="end"
+        finalFocus={() => !openingSort.current}
+      >
         <DropdownMenuGroup>
           <DropdownMenuLabel className="max-w-72">
             <span className="block truncate text-foreground">{title}</span>
@@ -382,24 +335,13 @@ export function HeaderMenu({
             <>
               <DropdownMenuItem
                 disabled={busy}
-                onClick={() => column.toggleSorting(false)}
-              >
-                <ArrowUpAZ className="size-3.5" />
-                升序
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={busy}
-                onClick={() => column.toggleSorting(true)}
+                onClick={() => {
+                  openingSort.current = true
+                  onSort()
+                }}
               >
                 <ArrowDownAZ className="size-3.5" />
-                降序
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={busy || !column.getIsSorted()}
-                onClick={() => column.clearSorting()}
-              >
-                <RotateCcw className="size-3.5" />
-                清除排序
+                设置排序
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />

@@ -9,7 +9,13 @@ import {
   useTable,
 } from "@tanstack/react-table"
 import { ArrowDownAZ, ArrowUpAZ, RotateCcw } from "lucide-react"
-import { type CSSProperties, type ReactNode, useId, useMemo } from "react"
+import {
+  type CSSProperties,
+  type ReactNode,
+  useId,
+  useMemo,
+  useState,
+} from "react"
 import { cn } from "tailwind-variants"
 import type { QueryResultColumn } from "@/contracts/database"
 import { Button } from "@/renderer/components/ui/button"
@@ -28,10 +34,16 @@ import {
   CopyFormatMenu,
   ExportMenu,
   HeaderMenu,
-  SortMenu,
 } from "./menus"
 import type { GridSelection } from "./selection"
 import { type CopyOptions, selectionPayload, serializeTable } from "./serialize"
+import { SortMenu } from "./sort-menu"
+import {
+  activeSorting,
+  createSortDraft,
+  type SortItem,
+  sameSorting,
+} from "./sorting"
 import {
   type ResultActions,
   type ResultColumn,
@@ -55,15 +67,22 @@ interface ResultTableBase extends ResultActions {
   copyOptions: CopyOptions
   onCopyOptionsChange: (options: CopyOptions) => void
   onSelectionChange: (selection: GridSelection | null) => void
+  statusBarStart?: ReactNode
   statusBarEnd?: ReactNode
 }
 type ResultTableProps = ResultTableBase &
   (
-    | { readOnly: true; sorting?: never; onSortingChange?: never }
+    | {
+        readOnly: true
+        sorting?: never
+        sortOrder?: never
+        onSortingChange?: never
+      }
     | {
         readOnly: false
         sorting: SortingState
-        onSortingChange: (sorting: SortingState) => void
+        sortOrder: string[]
+        onSortingChange: (sorting: SortingState, order: string[]) => void
       }
   )
 
@@ -75,6 +94,7 @@ export function ResultTable({
   onReset,
   readOnly,
   sorting,
+  sortOrder,
   busy = false,
   onSortingChange,
   emptyMessage = "语句执行成功，但没有可展示的结果集",
@@ -84,8 +104,11 @@ export function ResultTable({
   copyOptions,
   onCopyOptionsChange,
   onSelectionChange,
+  statusBarStart,
   statusBarEnd,
 }: ResultTableProps) {
+  const [sortDraft, setSortDraft] = useState<SortItem[] | null>(null)
+  const [sortFocus, setSortFocus] = useState<string | null>(null)
   const enableSorting = !readOnly
   const columns = useMemo<ResultColumnDef[]>(
     () => [
@@ -145,18 +168,12 @@ export function ResultTable({
     enableSorting,
     sortDescFirst: false,
     manualSorting: true,
-    enableMultiSort: false,
+    enableMultiSort: true,
     enableSortingRemoval: true,
     columnResizeMode: "onEnd",
     defaultColumn: {
       size: 160,
       minSize: MIN_DATA_COLUMN_WIDTH,
-    },
-    onSortingChange: (updater: Updater<SortingState>) => {
-      if (!enableSorting || busy) {
-        return
-      }
-      if (!readOnly) onSortingChange(functionalUpdate(updater, sorting))
     },
     onColumnVisibilityChange: (updater: Updater<ColumnVisibilityState>) => {
       onLayoutChange((current) => ({
@@ -215,17 +232,37 @@ export function ResultTable({
   return (
     <div className="size-full flex flex-col overflow-hidden">
       <AreaToolbar className="overflow-x-auto whitespace-nowrap">
-        <ExportMenu
-          onExport={onExport}
-          table={table}
-          defaultName={exportName}
-          disabled={!hasDataColumns}
-        />
         {toolbarActions}
         {!readOnly && (
           <>
-            <span className="mx-1 h-4 w-px shrink-0 bg-border" />
-            <SortMenu table={table} busy={busy} />
+            <SortMenu
+              table={table}
+              busy={busy}
+              draft={sortDraft}
+              order={sortOrder}
+              focusColumn={sortFocus}
+              onEdit={setSortDraft}
+              onClose={(commit) => {
+                const next = sortDraft
+                setSortDraft(null)
+                setSortFocus(null)
+                if (!commit || !next || busy) return
+                const applied = createSortDraft(
+                  tableState.columns.map((column) => column.id),
+                  sorting,
+                  sortOrder,
+                )
+                const active = activeSorting(next)
+                if (
+                  !sameSorting(active, sorting) ||
+                  next.some((item, index) => item.id !== applied[index]?.id)
+                )
+                  onSortingChange(
+                    active,
+                    next.map((item) => item.id),
+                  )
+              }}
+            />
             {toolbarQuery}
           </>
         )}
@@ -253,27 +290,25 @@ export function ResultTable({
             null
           }
         />
+        <ExportMenu
+          onExport={onExport}
+          table={table}
+          defaultName={exportName}
+          disabled={!hasDataColumns}
+        />
       </AreaToolbar>
 
       <AreaStatusBar className="px-3 text-[11px]">
-        <span>
-          <span className="text-foreground font-medium">
-            {tableState.data.length}
-          </span>{" "}
-          行
-        </span>
-        <span>
-          <span className="text-foreground font-medium">
-            {tableState.columns.length}
-          </span>{" "}
-          列
-        </span>
-        {selectedRows.size > 0 && selectedColumns.size > 0 && (
-          <span>
-            已选 {selectedRows.size} 行 × {selectedColumns.size} 列
-          </span>
+        {statusBarStart ?? (
+          <span>共 {tableState.data.length.toLocaleString()} 行</span>
         )}
-        {sortingSummary && <span>当前排序: {sortingSummary}</span>}
+        {sortingSummary && <span>排序：{sortingSummary}</span>}
+        <span className="h-3 w-px shrink-0 bg-border" />
+        <span>
+          {selectedRows.size > 0 && selectedColumns.size > 0
+            ? `已选 ${selectedRows.size} 行 × ${selectedColumns.size} 列`
+            : "未选择"}
+        </span>
         {statusText && <span>{statusText}</span>}
         {statusBarEnd}
       </AreaStatusBar>
@@ -401,6 +436,18 @@ export function ResultTable({
 
                             {!serial && (
                               <HeaderMenu
+                                onSort={() => {
+                                  setSortFocus(column.id)
+                                  setSortDraft(
+                                    createSortDraft(
+                                      tableState.columns.map(
+                                        (column) => column.id,
+                                      ),
+                                      sorting ?? [],
+                                      sortOrder ?? [],
+                                    ),
+                                  )
+                                }}
                                 column={column}
                                 columnMeta={resultColumn}
                                 busy={busy}
@@ -628,19 +675,6 @@ function CellValue({
 const MIN_DATA_COLUMN_WIDTH = 96
 const ROW_NUMBER_COLUMN_WIDTH = 52
 
-function getSortLabel(column: ResultColumn): string {
-  const sorted = column.getIsSorted()
-  if (sorted === "asc") {
-    return "升序"
-  }
-
-  if (sorted === "desc") {
-    return "降序"
-  }
-
-  return "未排序"
-}
-
 function getPinnedStyles(column: ResultColumn): CSSProperties {
   const pinned = column.getIsPinned()
   if (pinned === "start") {
@@ -665,19 +699,15 @@ export function normalizePinning(
   return { start, end }
 }
 
-function getSortingSummary(table: ResultTableInstance): string | null {
-  const sorting = table.state.sorting[0]
-  if (!sorting) {
-    return null
-  }
-
-  const column = table
-    .getAllLeafColumns()
-    .find((item) => item.id === sorting.id && item.id !== ROW_NUMBER_COLUMN_ID)
-
-  if (!column) {
-    return null
-  }
-
-  return `${String(column.columnDef.header ?? column.id)} ${getSortLabel(column)}`
+function getSortingSummary(table: ResultTableInstance): string {
+  return (
+    table.state.sorting
+      .map((order) => {
+        const column = table
+          .getAllLeafColumns()
+          .find((column) => column.id === order.id)
+        return `${String(column?.columnDef.header ?? order.id)}${order.desc ? "↓" : "↑"}`
+      })
+      .join(" ") || "未排序"
+  )
 }

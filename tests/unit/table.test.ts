@@ -41,6 +41,7 @@ describe("result table migration", () => {
       createElement(ResultTable, {
         tableState: initialState(),
         readOnly: false,
+        sortOrder: [],
         sorting: [{ id: "amount", desc: false }],
         onSortingChange: () => {},
         onLayoutChange: () => {},
@@ -53,7 +54,7 @@ describe("result table migration", () => {
       }),
     )
     const body = html.slice(html.indexOf("<tbody>"))
-    expect(html).toContain("当前排序: Amount 升序")
+    expect(html).toContain("排序：Amount ↑")
     expect(body.indexOf('title="two"')).toBeGreaterThan(
       body.indexOf('title="ten"'),
     )
@@ -201,7 +202,7 @@ test("the grid renders cross-product selection, partial headers and a single dat
   expect(html).toContain('role="grid"')
   expect(html).toContain("aria-activedescendant=")
   expect(html.slice(html.indexOf("<tbody>"))).not.toContain("<button")
-  expect(html.indexOf("导出")).toBeLessThan(html.indexOf("重置布局"))
+  expect(html.indexOf("导出本页")).toBeGreaterThan(html.indexOf("复制格式"))
   expect(html.indexOf("重置布局")).toBeLessThan(html.indexOf("复制格式"))
   expect(html).not.toContain("复制当前")
 })

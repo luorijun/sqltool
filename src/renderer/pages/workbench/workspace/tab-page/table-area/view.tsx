@@ -1,11 +1,6 @@
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import {
-  ChevronLeft,
-  ChevronRight,
-  CircleX,
-  Loader2,
-  RefreshCw,
-} from "lucide-react"
+import { CircleX, Loader2, RefreshCw } from "lucide-react"
+import { useState } from "react"
 import { toast } from "sonner"
 import {
   type ResultLayout,
@@ -13,29 +8,24 @@ import {
 } from "@/renderer/components/result-grid"
 import { Button } from "@/renderer/components/ui/button"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/renderer/components/ui/dropdown-menu"
-import {
   activeResultStaleAtom,
   activeTabIdAtom,
   activeViewTabAtom,
   activeViewTabTableStateAtom,
   cancelActiveViewAtom,
   copyOptionsAtom,
+  getPagination,
   refreshActiveViewTabAtom,
   resetActiveViewTabTableStateAtom,
   setActiveViewTabPageAtom,
   setActiveViewTabPageSizeAtom,
+  setActiveViewTabRangeAtom,
   setTableSelectionAtom,
   setViewTabSortAtom,
   updateViewLayoutAtom,
 } from "@/renderer/modules/workspace"
 import { saveText, showError } from "../../feedback"
-
-const PAGE_SIZES = [50, 100, 200]
+import { Paging } from "./paging"
 
 export default function ViewTableArea() {
   const tableState = useAtomValue(activeViewTabTableStateAtom)
@@ -50,16 +40,24 @@ export default function ViewTableArea() {
   const viewTab = useAtomValue(activeViewTabAtom)
   const stale = useAtomValue(activeResultStaleAtom)
   const cancel = useSetAtom(cancelActiveViewAtom)
-  const stop = () => {
-    void cancel().catch((error) =>
-      toast.error(error instanceof Error ? error.message : "取消失败"),
-    )
+  const [cancelling, setCancelling] = useState(false)
+  const stop = async () => {
+    if (cancelling) return
+    setCancelling(true)
+    try {
+      await cancel()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "取消失败")
+    } finally {
+      setCancelling(false)
+    }
   }
   const resetTableState = useSetAtom(resetActiveViewTabTableStateAtom)
   const refresh = useSetAtom(refreshActiveViewTabAtom)
   const setPage = useSetAtom(setActiveViewTabPageAtom)
   const setPageSize = useSetAtom(setActiveViewTabPageSizeAtom)
   const setSort = useSetAtom(setViewTabSortAtom)
+  const setRange = useSetAtom(setActiveViewTabRangeAtom)
 
   const initialLoading =
     tableState.status === "running" && tableState.dataAt === null
@@ -68,7 +66,12 @@ export default function ViewTableArea() {
       <div className="flex size-full flex-col items-center justify-center gap-3">
         <Loader2 className="size-8 animate-spin text-primary/40" />
         <p className="text-xs text-muted-foreground">正在加载数据表...</p>
-        <Button variant="outline" size="xs" onClick={stop}>
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={stop}
+          disabled={cancelling}
+        >
           停止加载
         </Button>
       </div>
@@ -90,28 +93,25 @@ export default function ViewTableArea() {
     )
   }
 
-  const totalPages =
-    tableState.totalCount === null
-      ? null
-      : Math.max(1, Math.ceil(tableState.totalCount / tableState.pageSize))
-  const hasPrevious = tableState.pageIndex > 0
-  const hasNext =
-    totalPages === null
-      ? tableState.data.length === tableState.pageSize
-      : tableState.pageIndex + 1 < totalPages
   const busy = tableState.status === "running"
-  const sortColumn =
-    tableState.sort &&
-    tableState.columns.find(
-      (column) =>
-        (column.sourceColumn ?? column.name) === tableState.sort?.column,
+  const running = busy || tableState.countStatus === "running"
+  const total =
+    busy || tableState.countStatus !== "success" ? null : tableState.totalCount
+  const { page, totalPages } = getPagination(
+    tableState.offset,
+    tableState.limit,
+    total,
+  )
+  const hasNext =
+    total === null
+      ? tableState.data.length === tableState.limit
+      : tableState.offset + tableState.limit < total
+  const sorting = tableState.sort.flatMap((order) => {
+    const column = tableState.columns.find(
+      (column) => (column.sourceColumn ?? column.name) === order.column,
     )
-  const countText =
-    tableState.countStatus === "running"
-      ? "正在统计总行数..."
-      : tableState.totalCount === null
-        ? "总行数未知"
-        : `共 ${tableState.totalCount.toLocaleString()} 行`
+    return column ? [{ id: column.id, desc: order.direction === "desc" }] : []
+  })
 
   return (
     <ResultTable
@@ -127,104 +127,73 @@ export default function ViewTableArea() {
       onLayoutChange={setTableState}
       onReset={resetTableState}
       readOnly={false}
-      sorting={
-        sortColumn
-          ? [{ id: sortColumn.id, desc: tableState.sort?.direction === "desc" }]
-          : []
-      }
+      sorting={sorting}
+      sortOrder={tableState.sortOrder}
       busy={busy}
-      onSortingChange={(sorting) => {
+      onSortingChange={(sorting, order) => {
         if (tabId === null) return
-        const sort = sorting[0]
-        const column =
-          sort && tableState.columns.find((column) => column.id === sort.id)
-        if (sort && !column) return
-        void setSort({
-          tabId,
-          sort: column
-            ? {
-                column: column.sourceColumn ?? column.name,
-                direction: sort.desc ? "desc" : "asc",
-              }
-            : null,
+        const sort = sorting.flatMap((order) => {
+          const column = tableState.columns.find(
+            (column) => column.id === order.id,
+          )
+          return column
+            ? [
+                {
+                  column: column.sourceColumn ?? column.name,
+                  direction: order.desc ? ("desc" as const) : ("asc" as const),
+                },
+              ]
+            : []
         })
+        if (sort.length === sorting.length) void setSort({ tabId, sort, order })
       }}
       emptyMessage="数据表暂无数据"
       exportNamePrefix={viewTab ? `${viewTab.source.table}-data` : "table-data"}
       toolbarActions={
-        <div className="flex items-center gap-1">
-          {(busy || tableState.countStatus === "running") && (
-            <Button variant="outline" size="xs" onClick={stop}>
-              停止
-            </Button>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="gap-1.5 text-muted-foreground"
+          disabled={cancelling}
+          onClick={() => (running ? stop() : refresh())}
+          title={running ? "停止查询" : "刷新数据和总行数"}
+        >
+          {running ? (
+            <CircleX className="size-3" />
+          ) : (
+            <RefreshCw className="size-3" />
           )}
-          <Button
-            variant="ghost"
-            size="xs"
-            className="gap-1.5 text-muted-foreground"
-            disabled={busy || tableState.countStatus === "running"}
-            onClick={() => refresh()}
-            title="刷新数据和总行数"
-          >
-            <RefreshCw className={busy ? "size-3 animate-spin" : "size-3"} />
-            刷新
-          </Button>
-        </div>
+          {cancelling ? "正在停止" : running ? "停止" : "刷新"}
+        </Button>
       }
       toolbarQuery={
-        <div className="flex items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="text-muted-foreground"
-                  disabled={busy}
-                />
-              }
-            >
-              每页 {tableState.pageSize} 行
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {PAGE_SIZES.map((pageSize) => (
-                <DropdownMenuItem
-                  key={pageSize}
-                  onClick={() => setPageSize(pageSize)}
-                >
-                  每页 {pageSize} 行
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <span className="px-1 text-[11px] text-muted-foreground">
-            第 {tableState.pageIndex + 1}
-            {totalPages === null ? "" : ` / ${totalPages}`} 页
+        <Paging
+          key={tableState.dataAt}
+          offset={tableState.offset}
+          limit={tableState.limit}
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          hasNext={hasNext}
+          busy={busy}
+          onPage={setPage}
+          onSize={setPageSize}
+          onRange={setRange}
+        />
+      }
+      statusBarStart={
+        <>
+          <span title={tableState.countError ?? undefined}>
+            共 {total?.toLocaleString() ?? "-"} 行
           </span>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            disabled={busy || !hasPrevious}
-            onClick={() => setPage(tableState.pageIndex - 1)}
-            title="上一页"
-          >
-            <ChevronLeft className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            disabled={busy || !hasNext}
-            onClick={() => setPage(tableState.pageIndex + 1)}
-            title="下一页"
-          >
-            <ChevronRight className="size-3.5" />
-          </Button>
-        </div>
+          <span>
+            第 {page} / {totalPages ?? "-"} 页
+          </span>
+        </>
       }
       statusBarEnd={
         <>
           {stale && <span>此前执行的结果</span>}
-          <span title={tableState.countError ?? undefined}>{countText}</span>
           {tableState.error && (
             <span className="text-destructive">{tableState.error}</span>
           )}
