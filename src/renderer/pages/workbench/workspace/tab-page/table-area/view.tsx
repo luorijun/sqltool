@@ -1,4 +1,4 @@
-import { useAtomValue, useSetAtom } from "jotai"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import {
   ChevronLeft,
   ChevronRight,
@@ -24,20 +24,24 @@ import {
   activeViewTabAtom,
   activeViewTabTableStateAtom,
   cancelActiveViewAtom,
+  copyOptionsAtom,
   refreshActiveViewTabAtom,
   resetActiveViewTabTableStateAtom,
   setActiveViewTabPageAtom,
   setActiveViewTabPageSizeAtom,
+  setTableSelectionAtom,
   setViewTabSortAtom,
   updateViewLayoutAtom,
 } from "@/renderer/modules/workspace"
-import { copyText, saveText, showError } from "../../feedback"
+import { saveText, showError } from "../../feedback"
 
 const PAGE_SIZES = [50, 100, 200]
 
 export default function ViewTableArea() {
   const tableState = useAtomValue(activeViewTabTableStateAtom)
   const tabId = useAtomValue(activeTabIdAtom)
+  const [copyOptions, setCopyOptions] = useAtom(copyOptionsAtom)
+  const setSelection = useSetAtom(setTableSelectionAtom)
   const update = useSetAtom(updateViewLayoutAtom)
   const setTableState = (change: (current: ResultLayout) => ResultLayout) => {
     if (tabId === null) return
@@ -111,7 +115,12 @@ export default function ViewTableArea() {
 
   return (
     <ResultTable
-      onCopy={copyText}
+      key={`${tabId}:${tableState.dataAt}`}
+      copyOptions={copyOptions}
+      onCopyOptionsChange={setCopyOptions}
+      onSelectionChange={(selection) => {
+        if (tabId !== null) setSelection({ tabId, selection })
+      }}
       onExport={saveText}
       onError={showError}
       tableState={tableState}
@@ -142,7 +151,7 @@ export default function ViewTableArea() {
       }}
       emptyMessage="数据表暂无数据"
       exportNamePrefix={viewTab ? `${viewTab.source.table}-data` : "table-data"}
-      toolbarEnd={
+      toolbarActions={
         <div className="flex items-center gap-1">
           {(busy || tableState.countStatus === "running") && (
             <Button variant="outline" size="xs" onClick={stop}>
@@ -160,6 +169,10 @@ export default function ViewTableArea() {
             <RefreshCw className={busy ? "size-3 animate-spin" : "size-3"} />
             刷新
           </Button>
+        </div>
+      }
+      toolbarQuery={
+        <div className="flex items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger
               render={

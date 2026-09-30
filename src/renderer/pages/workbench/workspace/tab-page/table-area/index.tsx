@@ -1,4 +1,4 @@
-import { useAtomValue, useSetAtom } from "jotai"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { CircleX, Loader2 } from "lucide-react"
 import {
   EmptyState,
@@ -9,14 +9,18 @@ import {
   activeQueryTabTableStateAtom,
   activeResultStaleAtom,
   activeTabIdAtom,
+  copyOptionsAtom,
   resetActiveQueryTabTableStateAtom,
+  setTableSelectionAtom,
   updateQueryLayoutAtom,
 } from "@/renderer/modules/workspace"
-import { copyText, saveText, showError } from "../../feedback"
+import { saveText, showError } from "../../feedback"
 
 export default function QueryTableArea() {
   const tableState = useAtomValue(activeQueryTabTableStateAtom)
   const tabId = useAtomValue(activeTabIdAtom)
+  const [copyOptions, setCopyOptions] = useAtom(copyOptionsAtom)
+  const setSelection = useSetAtom(setTableSelectionAtom)
   const update = useSetAtom(updateQueryLayoutAtom)
   const setTableState = (change: (current: ResultLayout) => ResultLayout) => {
     if (tabId === null) return
@@ -51,7 +55,12 @@ export default function QueryTableArea() {
   return (
     <ResultTable
       readOnly
-      onCopy={copyText}
+      key={`${tabId}:${tableState.dataAt}`}
+      copyOptions={copyOptions}
+      onCopyOptionsChange={setCopyOptions}
+      onSelectionChange={(selection) => {
+        if (tabId !== null) setSelection({ tabId, selection })
+      }}
       onExport={saveText}
       onError={showError}
       tableState={tableState}

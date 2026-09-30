@@ -16,6 +16,7 @@ import type {
   TabLoggerState,
   TabLogStatus,
   TableLayout,
+  TableSelection,
   TabMeta,
   TabState,
   ViewTabState,
@@ -241,7 +242,6 @@ export const resetActiveQueryTabTableStateAtom = atom(null, (get, set) => {
         start: [],
         end: [],
       },
-      selected: null,
     }),
   })
 })
@@ -258,7 +258,6 @@ export const resetActiveViewTabTableStateAtom = atom(null, (get, set) => {
         start: [],
         end: [],
       },
-      selected: null,
     }),
   })
 })
@@ -355,7 +354,7 @@ const loadViewTabPageByIdAtom = atom(
           sort,
           columns: result.columns,
           data: toTableRows(result),
-          selected: null,
+          selection: null,
         })),
       )
       set(tabStatesAtom, (states) =>
@@ -1151,7 +1150,7 @@ function createDefaultViewTableState(): ViewTabTableState {
       start: [],
       end: [],
     },
-    selected: null,
+    selection: null,
     pageIndex: 0,
     pageSize: DEFAULT_VIEW_PAGE_SIZE,
     totalCount: null,
@@ -1182,7 +1181,7 @@ function createDefaultQueryTableState(): QueryTabTableState {
       start: [],
       end: [],
     },
-    selected: null,
+    selection: null,
   }
 }
 
@@ -1291,7 +1290,7 @@ export const updateQueryLayoutAtom = atom(
       if (tab?.kind !== "query") return states
       const next = update(tab.table)
       if (next === tab.table) return states
-      const { visibility, sizing, pinning, selected } = next
+      const { visibility, sizing, pinning } = next
       return {
         ...states,
         [tabId]: {
@@ -1301,7 +1300,11 @@ export const updateQueryLayoutAtom = atom(
             visibility,
             sizing,
             pinning,
-            selected,
+            selection:
+              visibility !== tab.table.visibility ||
+              pinning !== tab.table.pinning
+                ? null
+                : tab.table.selection,
           },
         },
       }
@@ -1330,12 +1333,22 @@ export const updateViewLayoutAtom = atom(
       if (tab?.kind !== "view") return states
       const next = update(tab.table)
       if (next === tab.table) return states
-      const { visibility, sizing, pinning, selected } = next
+      const { visibility, sizing, pinning } = next
       return {
         ...states,
         [tabId]: {
           ...tab,
-          table: { ...tab.table, visibility, sizing, pinning, selected },
+          table: {
+            ...tab.table,
+            visibility,
+            sizing,
+            pinning,
+            selection:
+              visibility !== tab.table.visibility ||
+              pinning !== tab.table.pinning
+                ? null
+                : tab.table.selection,
+          },
         },
       }
     })
@@ -1432,3 +1445,27 @@ export const clearLogsAtom = atom(null, (_get, set, tabId: string) => {
     })),
   )
 })
+
+export const copyOptionsAtom = atom<{
+  format: "tsv" | "csv" | "json"
+  headers: boolean
+}>({ format: "tsv", headers: false })
+
+export const setTableSelectionAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    { tabId, selection }: { tabId: string; selection: TableSelection | null },
+  ) => {
+    set(tabStatesAtom, (states) => {
+      const tab = states[tabId]
+      if (!tab || tab.table.selection === selection) return states
+      const next: TabState =
+        tab.kind === "query"
+          ? { ...tab, table: { ...tab.table, selection } }
+          : { ...tab, table: { ...tab.table, selection } }
+      return { ...states, [tabId]: next }
+    })
+  },
+)

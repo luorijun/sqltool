@@ -14,6 +14,7 @@ import {
   activeViewTabAtom,
   bindQueryConfigAtom,
   closeTabAtom,
+  copyOptionsAtom,
   openQueryTabAtom,
   openViewTabAtom,
   rebuildActiveSessionAtom,
@@ -22,8 +23,11 @@ import {
   selectTabAtom,
   setActiveViewTabPageAtom,
   setActiveViewTabPageSizeAtom,
+  setTableSelectionAtom,
   setViewTabSortAtom,
   tabsAtom,
+  updateQueryLayoutAtom,
+  updateViewLayoutAtom,
 } from "../../src/renderer/modules/workspace"
 import { config, renderer } from "../support/renderer"
 
@@ -388,4 +392,67 @@ describe("table workspace", () => {
       }
     },
   )
+})
+
+test("table selection is tab-owned, survives sizing, and is cleared by result or column changes", async () => {
+  env.bridge.query = async () => env.ok(result)
+  env.bridge.select = async () => env.ok({ result, executedSql: "SELECT n" })
+  const selection = {
+    rows: [0],
+    columns: ["n"],
+    anchor: { row: 0, col: "n" },
+    active: { row: 0, col: "n" },
+    toggle: {
+      rows: [],
+      columns: [],
+      mode: "cells" as const,
+      operation: "add" as const,
+    },
+  }
+  const query = store.set(openQueryTabAtom, {
+    configId: "db",
+    initialSql: "SELECT 1",
+  })
+  await store.set(runActiveQueryTabSqlAtom)
+  store.set(setTableSelectionAtom, { tabId: query, selection })
+  store.set(updateQueryLayoutAtom, {
+    tabId: query,
+    update: (current) => ({ ...current, sizing: { n: 200 } }),
+  })
+  expect(store.get(activeQueryTabAtom)?.table.selection).toEqual(selection)
+  const view = await store.set(openViewTabAtom, {
+    configId: "db",
+    source: { schema: "public", table: "items" },
+  })
+  expect(store.get(activeViewTabAtom)?.table.selection).toBeNull()
+  store.set(setTableSelectionAtom, { tabId: view, selection })
+  store.set(updateViewLayoutAtom, {
+    tabId: view,
+    update: (current) => ({ ...current, pinning: { start: ["n"], end: [] } }),
+  })
+  expect(store.get(activeViewTabAtom)?.table.selection).toBeNull()
+  store.set(setTableSelectionAtom, { tabId: view, selection })
+  await store.set(setActiveViewTabPageSizeAtom, 50)
+  expect(store.get(activeViewTabAtom)?.table.selection).toBeNull()
+  store.set(selectTabAtom, query)
+  expect(store.get(activeQueryTabAtom)?.table.selection).toEqual(selection)
+  store.set(updateQueryLayoutAtom, {
+    tabId: query,
+    update: (current) => ({ ...current, visibility: { n: false } }),
+  })
+  expect(store.get(activeQueryTabAtom)?.table.selection).toBeNull()
+  store.set(setTableSelectionAtom, { tabId: query, selection })
+  await store.set(runActiveQueryTabSqlAtom)
+  expect(store.get(activeQueryTabAtom)?.table.selection).toBeNull()
+})
+
+test("copy preferences are shared across tabs independently of selection and layout", () => {
+  const first = store.set(openQueryTabAtom)
+  store.set(copyOptionsAtom, { format: "json", headers: true })
+  const second = store.set(openQueryTabAtom)
+  expect(store.get(copyOptionsAtom)).toEqual({ format: "json", headers: true })
+  store.set(selectTabAtom, first)
+  expect(store.get(copyOptionsAtom).format).toBe("json")
+  store.set(selectTabAtom, second)
+  store.set(copyOptionsAtom, { format: "tsv", headers: false })
 })

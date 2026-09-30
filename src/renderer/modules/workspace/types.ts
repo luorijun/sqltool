@@ -50,7 +50,7 @@ export interface QueryTabTableState {
   visibility: Record<string, boolean>
   sizing: Record<string, number>
   pinning: { start: string[]; end: string[] }
-  selected: { rowId: string; colId: string } | null
+  selection: TableSelection | null
 }
 
 export interface QueryTabEditorState extends CodeView {
@@ -103,7 +103,7 @@ export interface ViewTabTableState {
   visibility: Record<string, boolean>
   sizing: Record<string, number>
   pinning: { start: string[]; end: string[] }
-  selected: { rowId: string; colId: string } | null
+  selection: TableSelection | null
   pageIndex: number
   pageSize: number
   totalCount: number | null
@@ -131,8 +131,21 @@ export interface TabLogEntry {
 
 export type TableLayout = Pick<
   QueryTabTableState,
-  "visibility" | "sizing" | "pinning" | "selected"
+  "visibility" | "sizing" | "pinning"
 >
 
 export type EditorView = Omit<QueryTabEditorState, "status">
 export type LogView = Omit<TabLoggerState, "logs">
+
+export interface TableSelection {
+  rows: number[]
+  columns: string[]
+  anchor: { row: number; col: string }
+  active: { row: number; col: string }
+  toggle: {
+    rows: number[]
+    columns: string[]
+    mode: "cells" | "rows" | "columns" | "all"
+    operation: "add" | "remove"
+  } | null
+}

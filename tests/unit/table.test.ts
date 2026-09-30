@@ -31,7 +31,7 @@ function initialState(): ResultTableState {
     visibility: { hidden: false },
     sizing: { amount: 180 },
     pinning: { start: ["name"], end: [] },
-    selected: null,
+    selection: null,
   }
 }
 
@@ -45,7 +45,9 @@ describe("result table migration", () => {
         onSortingChange: () => {},
         onLayoutChange: () => {},
         onReset: () => {},
-        onCopy: async () => {},
+        copyOptions: { format: "tsv", headers: false },
+        onCopyOptionsChange: () => {},
+        onSelectionChange: () => {},
         onExport: async () => {},
         onError: () => {},
       }),
@@ -67,7 +69,9 @@ describe("result table migration", () => {
         readOnly: true,
         onLayoutChange: () => {},
         onReset: () => {},
-        onCopy: async () => {},
+        copyOptions: { format: "tsv", headers: false },
+        onCopyOptionsChange: () => {},
+        onSelectionChange: () => {},
         onExport: async () => {},
         onError: () => {},
       }),
@@ -136,6 +140,7 @@ describe("result table migration", () => {
       return null
     }
     renderToStaticMarkup(createElement(Probe))
+    expect(buildExportPayload(table).headers).toEqual(["Name", "Amount"])
     const name = table.getColumn("name")
     const amount = table.getColumn("amount")
     assert(name && amount)
@@ -159,4 +164,72 @@ describe("result table migration", () => {
     })
     expect(table.getRowModel().rows[0].id).toBe("0")
   })
+})
+
+test("the grid renders cross-product selection, partial headers and a single data focus target", () => {
+  const state = initialState()
+  state.visibility = {}
+  state.data.push({ amount: "3", name: "three", hidden: "third" })
+  state.selection = {
+    rows: [0, 2],
+    columns: ["amount", "hidden"],
+    anchor: { row: 0, col: "amount" },
+    active: { row: 2, col: "hidden" },
+    toggle: null,
+  }
+  const html = renderToStaticMarkup(
+    createElement(ResultTable, {
+      tableState: state,
+      readOnly: true,
+      onLayoutChange: () => {},
+      onReset: () => {},
+      onSelectionChange: () => {},
+      copyOptions: { format: "tsv", headers: false },
+      onCopyOptionsChange: () => {},
+      onExport: async () => {},
+      onError: () => {},
+    }),
+  )
+  const cells = html.match(/<td[^>]*role="gridcell"[^>]*>/g) ?? []
+  expect(
+    cells.filter((cell) => cell.includes('aria-selected="true"')),
+  ).toHaveLength(4)
+  const headers = html.match(/<th[^>]*>/g) ?? []
+  expect(
+    headers.every((header) => !header.includes('aria-selected="true"')),
+  ).toBe(true)
+  expect(html).toContain('role="grid"')
+  expect(html).toContain("aria-activedescendant=")
+  expect(html.slice(html.indexOf("<tbody>"))).not.toContain("<button")
+  expect(html.indexOf("导出")).toBeLessThan(html.indexOf("重置布局"))
+  expect(html.indexOf("重置布局")).toBeLessThan(html.indexOf("复制格式"))
+  expect(html).not.toContain("复制当前")
+})
+
+test("an empty selection retains a focus target without showing selected cells or a selection count", () => {
+  const state = initialState()
+  state.selection = {
+    rows: [],
+    columns: [],
+    anchor: { row: 1, col: "amount" },
+    active: { row: 1, col: "amount" },
+    toggle: null,
+  }
+  const html = renderToStaticMarkup(
+    createElement(ResultTable, {
+      tableState: state,
+      readOnly: true,
+      onLayoutChange: () => {},
+      onReset: () => {},
+      onSelectionChange: () => {},
+      copyOptions: { format: "tsv", headers: false },
+      onCopyOptionsChange: () => {},
+      onExport: async () => {},
+      onError: () => {},
+    }),
+  )
+  expect(html).toContain("aria-activedescendant=")
+  expect(html).not.toContain('aria-selected="true"')
+  expect(html).not.toContain("已选")
+  expect(html).toContain('data-grid-pin="start"')
 })

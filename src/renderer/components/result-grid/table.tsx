@@ -9,7 +9,7 @@ import {
   useTable,
 } from "@tanstack/react-table"
 import { ArrowDownAZ, ArrowUpAZ, RotateCcw } from "lucide-react"
-import { type CSSProperties, type ReactNode, useMemo } from "react"
+import { type CSSProperties, type ReactNode, useId, useMemo } from "react"
 import { cn } from "tailwind-variants"
 import type { QueryResultColumn } from "@/contracts/database"
 import { Button } from "@/renderer/components/ui/button"
@@ -23,7 +23,15 @@ import {
   isQueryColumnRightAligned,
   serializeQueryValue,
 } from "./format"
-import { ColumnVisibilityMenu, CopyMenu, ExportMenu, HeaderMenu } from "./menus"
+import {
+  ColumnVisibilityMenu,
+  CopyFormatMenu,
+  ExportMenu,
+  HeaderMenu,
+  SortMenu,
+} from "./menus"
+import type { GridSelection } from "./selection"
+import { type CopyOptions, selectionPayload, serializeTable } from "./serialize"
 import {
   type ResultActions,
   type ResultColumn,
@@ -33,6 +41,7 @@ import {
   type ResultTableState,
   ROW_NUMBER_COLUMN_ID,
 } from "./types"
+import { useSelection } from "./use-selection"
 
 interface ResultTableBase extends ResultActions {
   tableState: ResultTableState
@@ -41,7 +50,11 @@ interface ResultTableBase extends ResultActions {
   busy?: boolean
   emptyMessage?: string
   exportNamePrefix?: string
-  toolbarEnd?: ReactNode
+  toolbarActions?: ReactNode
+  toolbarQuery?: ReactNode
+  copyOptions: CopyOptions
+  onCopyOptionsChange: (options: CopyOptions) => void
+  onSelectionChange: (selection: GridSelection | null) => void
   statusBarEnd?: ReactNode
 }
 type ResultTableProps = ResultTableBase &
@@ -55,7 +68,6 @@ type ResultTableProps = ResultTableBase &
   )
 
 export function ResultTable({
-  onCopy,
   onExport,
   onError,
   tableState,
@@ -67,7 +79,11 @@ export function ResultTable({
   onSortingChange,
   emptyMessage = "语句执行成功，但没有可展示的结果集",
   exportNamePrefix = "query-result",
-  toolbarEnd,
+  toolbarActions,
+  toolbarQuery,
+  copyOptions,
+  onCopyOptionsChange,
+  onSelectionChange,
   statusBarEnd,
 }: ResultTableProps) {
   const enableSorting = !readOnly
@@ -162,22 +178,26 @@ export function ResultTable({
     },
   })
 
-  const handleResetLayout = () => {
-    onReset()
-  }
-
-  const handleCellClick = (rowId: string, columnId: string) => {
-    onLayoutChange((current) => {
-      if (
-        current.selected?.rowId === rowId &&
-        current.selected.colId === columnId
-      ) {
-        return current
-      }
-
-      return { ...current, selected: { rowId, colId: columnId } }
-    })
-  }
+  const gridId = useId()
+  const visibleColumns =
+    table
+      .getHeaderGroups()
+      .at(-1)
+      ?.headers.map((header) => header.column)
+      .filter((column) => column.id !== ROW_NUMBER_COLUMN_ID) ?? []
+  const columnIds = visibleColumns.map((column) => column.id)
+  const selection = useSelection({
+    selection: tableState.selection,
+    onChange: onSelectionChange,
+    data: tableState.data,
+    columns: columnIds,
+  })
+  const selectedRows = new Set(selection.value?.rows)
+  const selectedColumns = new Set(selection.value?.columns)
+  const active = selection.value?.active
+  const columnIndex = new Map(columnIds.map((id, index) => [id, index]))
+  const cellId = (row: number, col: string) =>
+    `${gridId}-${row}-${columnIndex.get(col)}`
 
   const exportName = `${exportNamePrefix}-${tableState.dataAt ? new Date(tableState.dataAt).toISOString().slice(11, 19).replaceAll(":", "-") : "latest"}`
   const hasDataColumns = tableState.columns.length > 0
@@ -194,37 +214,45 @@ export function ResultTable({
 
   return (
     <div className="size-full flex flex-col overflow-hidden">
-      <AreaToolbar>
-        <ColumnVisibilityMenu
-          table={table}
-          dataColumnCount={tableState.columns.length}
-          disabled={!hasDataColumns}
-        />
-        <CopyMenu
-          onCopy={onCopy}
-          onError={onError}
-          table={table}
-          activeCell={tableState.selected}
-          disabled={!hasDataColumns}
-        />
+      <AreaToolbar className="overflow-x-auto whitespace-nowrap">
         <ExportMenu
           onExport={onExport}
           table={table}
           defaultName={exportName}
           disabled={!hasDataColumns}
         />
+        {toolbarActions}
+        {!readOnly && (
+          <>
+            <span className="mx-1 h-4 w-px shrink-0 bg-border" />
+            <SortMenu table={table} busy={busy} />
+            {toolbarQuery}
+          </>
+        )}
         <div className="ml-auto" />
-        {toolbarEnd}
+        <ColumnVisibilityMenu
+          table={table}
+          dataColumnCount={tableState.columns.length}
+          disabled={!hasDataColumns}
+        />
         <Button
           variant="ghost"
           size="xs"
           className="gap-1.5 text-muted-foreground"
-          onClick={handleResetLayout}
+          onClick={onReset}
           title="重置表格布局"
         >
           <RotateCcw className="size-3" />
           重置布局
         </Button>
+        <CopyFormatMenu
+          options={copyOptions}
+          onChange={onCopyOptionsChange}
+          copyTarget={() =>
+            selection.ref.current?.querySelector<HTMLElement>("[role=grid]") ??
+            null
+          }
+        />
       </AreaToolbar>
 
       <AreaStatusBar className="px-3 text-[11px]">
@@ -240,17 +268,60 @@ export function ResultTable({
           </span>{" "}
           列
         </span>
+        {selectedRows.size > 0 && selectedColumns.size > 0 && (
+          <span>
+            已选 {selectedRows.size} 行 × {selectedColumns.size} 列
+          </span>
+        )}
         {sortingSummary && <span>当前排序: {sortingSummary}</span>}
         {statusText && <span>{statusText}</span>}
         {statusBarEnd}
       </AreaStatusBar>
 
-      <div className="flex-1 min-h-0 overflow-auto bg-background">
+      <div
+        ref={selection.ref}
+        className="flex-1 min-h-0 overflow-auto bg-background select-none touch-none"
+        {...selection.handlers}
+        onCopy={(event) => {
+          if (
+            event.target !== event.currentTarget.querySelector("[role=grid]") ||
+            !selection.value?.rows.length ||
+            !selection.value.columns.length
+          )
+            return
+          event.preventDefault()
+          try {
+            const columns = visibleColumns.flatMap((column) => {
+              const meta = columnMetaById.get(column.id)
+              return meta ? [meta] : []
+            })
+            event.clipboardData.setData(
+              "text/plain",
+              serializeTable(
+                selectionPayload(tableState.data, columns, selection.value),
+                copyOptions,
+              ),
+            )
+          } catch (error) {
+            onError(error instanceof Error ? error.message : "复制失败")
+          }
+        }}
+      >
         {!hasDataColumns ? (
           <EmptyState message={emptyMessage} />
         ) : (
           <table
-            className="table-fixed border-separate border-spacing-0 text-sm"
+            // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: This native table implements grid keyboard navigation and managed focus.
+            role="grid"
+            aria-label="查询结果"
+            aria-multiselectable="true"
+            aria-rowcount={tableState.data.length + 1}
+            aria-colcount={visibleDataColumnCount + 1}
+            aria-activedescendant={
+              active ? cellId(active.row, active.col) : undefined
+            }
+            tabIndex={0}
+            className="table-fixed border-separate border-spacing-0 text-sm outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/40"
             style={{ width: `${table.getTotalSize()}px`, minWidth: "100%" }}
           >
             <thead>
@@ -261,7 +332,6 @@ export function ResultTable({
                     const serial = column.id === ROW_NUMBER_COLUMN_ID
                     const sorted = column.getIsSorted()
                     const pinned = column.getIsPinned()
-                    const Trigger = column.getCanSort() ? "button" : "div"
                     const resultColumn = serial
                       ? undefined
                       : columnMetaById.get(column.id)
@@ -269,6 +339,18 @@ export function ResultTable({
                     return (
                       <th
                         key={header.id}
+                        role="columnheader"
+                        data-grid-row={-1}
+                        data-grid-col={serial ? "" : column.id}
+                        data-grid-pin={pinned || undefined}
+                        aria-selected={
+                          serial
+                            ? selectedRows.size === tableState.data.length &&
+                              selectedColumns.size === columnIds.length &&
+                              hasRows
+                            : selectedColumns.has(column.id) &&
+                              selectedRows.size === tableState.data.length
+                        }
                         aria-sort={
                           sorted === "asc"
                             ? "ascending"
@@ -285,6 +367,11 @@ export function ResultTable({
                           "group sticky top-0 z-10 h-8 px-2 text-xs font-mono border-b border-r last:border-r-0 bg-sidebar",
                           pinned && "z-20",
                           serial && "text-muted-foreground",
+                          selectedColumns.has(column.id) &&
+                            "bg-accent text-primary",
+                          selectedColumns.has(column.id) &&
+                            selectedRows.size === tableState.data.length &&
+                            "bg-[color-mix(in_oklab,var(--primary)_15%,var(--background))]",
                         )}
                         style={{
                           ...getPinnedStyles(column),
@@ -293,30 +380,7 @@ export function ResultTable({
                       >
                         {header.isPlaceholder ? null : (
                           <div className="flex items-center gap-1 min-w-0">
-                            <Trigger
-                              type={column.getCanSort() ? "button" : undefined}
-                              disabled={column.getCanSort() ? busy : undefined}
-                              className={cn(
-                                "flex min-w-0 flex-1 items-center gap-1 text-left rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-primary/30",
-                                column.getCanSort() &&
-                                  !busy &&
-                                  "cursor-pointer",
-                              )}
-                              onClick={() =>
-                                column.getCanSort() &&
-                                !busy &&
-                                column.toggleSorting()
-                              }
-                              title={
-                                resultColumn
-                                  ? column.getCanSort()
-                                    ? `${getQueryColumnHeaderTitle(resultColumn)}\n点击排序`
-                                    : getQueryColumnHeaderTitle(resultColumn)
-                                  : column.getCanSort()
-                                    ? "点击排序"
-                                    : undefined
-                              }
-                            >
+                            <div className="flex min-w-0 flex-1 items-center gap-1 text-left cursor-default">
                               {resultColumn ? (
                                 <ColumnHeader column={resultColumn} />
                               ) : (
@@ -333,7 +397,7 @@ export function ResultTable({
                               {!serial && sorted === "desc" && (
                                 <ArrowDownAZ className="size-3 shrink-0 text-primary" />
                               )}
-                            </Trigger>
+                            </div>
 
                             {!serial && (
                               <HeaderMenu
@@ -369,22 +433,20 @@ export function ResultTable({
             <tbody>
               {hasRows ? (
                 table.getRowModel().rows.map((row) => {
-                  const isActiveRow = tableState.selected?.rowId === row.id
+                  const isActiveRow = selectedRows.has(row.index)
 
                   return (
-                    <tr
-                      key={row.id}
-                      className={cn(
-                        "group cursor-default transition-colors hover:bg-accent/40",
-                        isActiveRow && "bg-accent/20",
-                      )}
-                    >
+                    <tr key={row.id} className="group cursor-default">
                       {row.getVisibleCells().map((cell) => {
                         const column = cell.column
                         const serial = column.id === ROW_NUMBER_COLUMN_ID
                         const isActiveCell =
-                          tableState.selected?.rowId === row.id &&
-                          tableState.selected.colId === column.id
+                          active?.row === row.index && active.col === column.id
+                        const selected =
+                          !serial &&
+                          isActiveRow &&
+                          selectedColumns.has(column.id)
+                        const colIndex = columnIndex.get(column.id) ?? -1
                         const resultColumn = serial
                           ? undefined
                           : columnMetaById.get(column.id)
@@ -397,38 +459,73 @@ export function ResultTable({
                           ? isQueryColumnRightAligned(resultColumn)
                           : display.kind === "number"
                         const pinned = column.getIsPinned()
+                        const Cell = serial ? "th" : "td"
                         return (
-                          <td
+                          <Cell
                             key={cell.id}
+                            id={
+                              serial ? undefined : cellId(row.index, column.id)
+                            }
+                            role={serial ? "rowheader" : "gridcell"}
+                            data-grid-row={row.index}
+                            data-grid-col={serial ? "" : column.id}
+                            aria-selected={
+                              serial
+                                ? isActiveRow &&
+                                  selectedColumns.size === columnIds.length
+                                : selected
+                            }
                             className={cn(
-                              "h-8 px-2 font-mono border-b border-r last:border-r-0 bg-background group-hover:bg-accent/40",
-                              pinned && "sticky z-10",
-                              serial && "text-right text-muted-foreground",
-                              isActiveRow && "bg-accent/20",
+                              "h-8 px-2 font-mono border-b border-r last:border-r-0 bg-background",
+                              pinned ? "sticky z-10" : "relative",
+                              serial &&
+                                "text-right font-normal text-muted-foreground",
+                              !selected &&
+                                "group-hover:bg-[color-mix(in_oklab,var(--accent)_40%,var(--background))]",
+                              serial && isActiveRow && "bg-accent text-primary",
+                              serial &&
+                                isActiveRow &&
+                                selectedColumns.size === columnIds.length &&
+                                "bg-[color-mix(in_oklab,var(--primary)_15%,var(--background))]",
+                              selected && "bg-accent",
                               alignRight && "text-right",
                               isActiveCell &&
-                                "bg-primary/10 ring-1 ring-inset ring-primary/25",
+                                "ring-2 ring-inset ring-primary/70",
                             )}
                             style={{
                               ...getPinnedStyles(column),
                               width: column.getSize(),
                             }}
                           >
+                            {selected && (
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  "pointer-events-none absolute inset-0 border-primary/40",
+                                  !selectedRows.has(row.index - 1) &&
+                                    "border-t",
+                                  !selectedRows.has(row.index + 1) &&
+                                    "border-b",
+                                  !selectedColumns.has(
+                                    columnIds[colIndex - 1],
+                                  ) && "border-l",
+                                  !selectedColumns.has(
+                                    columnIds[colIndex + 1],
+                                  ) && "border-r",
+                                )}
+                              />
+                            )}
                             {serial ? (
                               flexRender(
                                 cell.column.columnDef.cell,
                                 cell.getContext(),
                               )
                             ) : (
-                              <button
-                                type="button"
+                              <div
                                 className={cn(
-                                  "block w-full min-w-0 rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-primary/30",
+                                  "block w-full min-w-0",
                                   alignRight ? "text-right" : "text-left",
                                 )}
-                                onClick={() =>
-                                  handleCellClick(row.id, column.id)
-                                }
                                 title={serializeQueryValue(
                                   rawValue,
                                   resultColumn,
@@ -438,9 +535,9 @@ export function ResultTable({
                                   cell.column.columnDef.cell,
                                   cell.getContext(),
                                 )}
-                              </button>
+                              </div>
                             )}
-                          </td>
+                          </Cell>
                         )
                       })}
                     </tr>

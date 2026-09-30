@@ -9,6 +9,7 @@ import {
   Pin,
   RotateCcw,
 } from "lucide-react"
+import { useRef } from "react"
 import type { QueryResultColumn } from "@/contracts/database"
 import { Button } from "@/renderer/components/ui/button"
 import {
@@ -18,34 +19,36 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/renderer/components/ui/dropdown-menu"
 import {
   getQueryColumnFlagLabels,
   getQueryColumnSourceLabel,
   getQueryColumnTypeLabel,
-  serializeMatrixAsDelimitedText,
-  serializeQueryValue,
-  serializeValuesAsDelimitedText,
 } from "./format"
-import type { ResultActions, ResultTableState } from "./types"
+import {
+  type CopyOptions,
+  serializeTable,
+  type TablePayload,
+} from "./serialize"
+import type { ResultActions } from "./types"
 import {
   type ResultColumn,
   type ResultTableInstance,
   ROW_NUMBER_COLUMN_ID,
 } from "./types"
 
-interface ExportPayload {
-  headers: string[]
-  rows: unknown[][]
-}
-
 type ExportFormat = "csv" | "tsv"
 
-export function buildExportPayload(table: ResultTableInstance): ExportPayload {
-  const exportColumns = table
-    .getVisibleLeafColumns()
+export function buildExportPayload(table: ResultTableInstance): TablePayload {
+  const exportColumns = (table.getHeaderGroups().at(-1)?.headers ?? [])
+    .map((header) => header.column)
     .filter((column) => column.id !== ROW_NUMBER_COLUMN_ID)
 
   return {
@@ -58,14 +61,6 @@ export function buildExportPayload(table: ResultTableInstance): ExportPayload {
         exportColumns.map((column) => row.getValue(column.id)),
       ),
   }
-}
-
-function toDelimitedText(payload: ExportPayload, format: ExportFormat): string {
-  return serializeMatrixAsDelimitedText(
-    payload.headers,
-    payload.rows,
-    format === "csv" ? "," : "\t",
-  )
 }
 
 export function ColumnVisibilityMenu({
@@ -148,67 +143,20 @@ export function ColumnVisibilityMenu({
   )
 }
 
-export function CopyMenu({
-  onCopy,
-  onError,
-  table,
-  activeCell,
-  disabled,
+export function CopyFormatMenu({
+  options,
+  onChange,
+  copyTarget,
 }: {
-  table: ResultTableInstance
-  activeCell: ResultTableState["selected"]
-  disabled?: boolean
-} & Pick<ResultActions, "onCopy" | "onError">) {
-  const activeRow = activeCell
-    ? table.getRowModel().rowsById[activeCell.rowId]
-    : undefined
-  const activeColumn = activeCell
-    ? table.getAllLeafColumns().find((column) => column.id === activeCell.colId)
-    : undefined
-
-  const handleCopy = async (mode: "cell" | "row" | "result") => {
-    let text = ""
-
-    if (mode === "cell") {
-      if (!activeRow || !activeColumn) {
-        onError("请先选中一个单元格")
-        return
-      }
-
-      text = serializeQueryValue(activeRow.getValue(activeColumn.id))
-    } else if (mode === "row") {
-      if (!activeRow) {
-        onError("请先选中一行")
-        return
-      }
-
-      text = serializeValuesAsDelimitedText(
-        activeRow
-          .getVisibleCells()
-          .filter((cell) => cell.column.id !== ROW_NUMBER_COLUMN_ID)
-          .map((cell) => cell.getValue()),
-      )
-    } else {
-      text = toDelimitedText(buildExportPayload(table), "tsv")
-    }
-
-    await onCopy(text, mode === "result" ? "结果集已复制" : "已复制到剪贴板")
+  copyTarget: () => HTMLElement | null
+  options: CopyOptions
+  onChange: (options: CopyOptions) => void
+}) {
+  const changed = useRef(false)
+  const change = (next: CopyOptions) => {
+    changed.current = true
+    onChange(next)
   }
-
-  if (disabled) {
-    return (
-      <Button
-        variant="ghost"
-        size="xs"
-        className="gap-1.5 text-muted-foreground"
-        disabled
-      >
-        <Copy className="size-3" />
-        复制
-      </Button>
-    )
-  }
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -221,19 +169,90 @@ export function CopyMenu({
         }
       >
         <Copy className="size-3" />
-        复制
+        复制格式：{options.format.toUpperCase()}
       </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        finalFocus={() => {
+          if (!changed.current) return true
+          changed.current = false
+          return copyTarget() ?? true
+        }}
+      >
+        <DropdownMenuRadioGroup
+          value={options.format}
+          onValueChange={(format) => {
+            if (format === "tsv" || format === "csv" || format === "json")
+              change({ ...options, format })
+          }}
+        >
+          <DropdownMenuRadioItem value="tsv">TSV</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="csv">CSV</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="json">JSON</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        {options.format !== "json" && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={options.headers}
+              onCheckedChange={(headers) => change({ ...options, headers })}
+            >
+              包含列名
+            </DropdownMenuCheckboxItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
-      <DropdownMenuContent side="bottom" align="end">
-        <DropdownMenuItem onClick={() => handleCopy("cell")}>
-          复制当前单元格
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleCopy("row")}>
-          复制当前行
-        </DropdownMenuItem>
+export function SortMenu({
+  table,
+  busy,
+}: {
+  table: ResultTableInstance
+  busy: boolean
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="xs"
+            disabled={busy || table.getAllLeafColumns().length <= 1}
+            className="gap-1.5 text-muted-foreground"
+          />
+        }
+      >
+        <ArrowDownAZ className="size-3" />
+        排序
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {table
+          .getAllLeafColumns()
+          .filter((column) => column.getCanSort())
+          .map((column) => (
+            <DropdownMenuSub key={column.id}>
+              <DropdownMenuSubTrigger>
+                {String(column.columnDef.header ?? column.id)}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem onClick={() => column.toggleSorting(false)}>
+                  升序
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => column.toggleSorting(true)}>
+                  降序
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => handleCopy("result")}>
-          复制当前结果集
+        <DropdownMenuItem
+          disabled={!table.state.sorting.length}
+          onClick={() => table.setSorting([])}
+        >
+          清除排序
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -252,7 +271,7 @@ export function ExportMenu({
 } & Pick<ResultActions, "onExport">) {
   const handleExport = async (format: ExportFormat) => {
     const payload = buildExportPayload(table)
-    const content = toDelimitedText(payload, format)
+    const content = serializeTable(payload, { format, headers: true })
 
     await onExport({
       defaultPath: `${defaultName}.${format}`,

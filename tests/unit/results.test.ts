@@ -1,9 +1,7 @@
 import { expect, test } from "bun:test"
-import {
-  getQueryColumnTypeLabel,
-  serializeMatrixAsDelimitedText,
-  serializeValuesAsDelimitedText,
-} from "../../src/renderer/components/result-grid/format"
+import { getQueryColumnTypeLabel } from "../../src/renderer/components/result-grid/format"
+
+import { serializeTable } from "../../src/renderer/components/result-grid/serialize"
 
 test("type labels preserve database names and make missing metadata explicit", () => {
   expect(getQueryColumnTypeLabel({ dbType: 'public."Mixed Case"[]' })).toBe(
@@ -19,19 +17,24 @@ test("type labels preserve database names and make missing metadata explicit", (
 
 test("CSV escapes headers, delimiters, quotes and line breaks without losing values", () => {
   expect(
-    serializeMatrixAsDelimitedText(
-      ["a,b", "value"],
-      [
-        ['a"b', "line\r\nbreak"],
-        [null, 9007199254740993n],
-      ],
-      ",",
+    serializeTable(
+      {
+        headers: ["a,b", "value"],
+        rows: [
+          ['a"b', "line\r\nbreak"],
+          [null, 9007199254740993n],
+        ],
+      },
+      { format: "csv", headers: true },
     ),
   ).toBe('"a,b",value\n"a""b","line\r\nbreak"\nNULL,9007199254740993')
 })
 
 test("TSV preserves tabs and distinguishes empty text from NULL", () => {
-  expect(serializeValuesAsDelimitedText(["a\tb", "", null, false])).toBe(
-    '"a\tb"\t\tNULL\tfalse',
-  )
+  expect(
+    serializeTable(
+      { headers: [], rows: [["a\tb", "", null, false]] },
+      { format: "tsv", headers: false },
+    ),
+  ).toBe('"a\tb"\t\tNULL\tfalse')
 })
