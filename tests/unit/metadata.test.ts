@@ -4,6 +4,7 @@ import type {
   ColumnType,
   ConnectionSession,
   DriverResult,
+  MySqlTypeRef,
 } from "../../src/main/database/ports"
 
 function result(oid = 869, modifier = -1): DriverResult {
@@ -14,10 +15,33 @@ function result(oid = 869, modifier = -1): DriverResult {
         name: "ip",
         typeCode: oid,
         typeFamily: "unknown",
-        typeRef: { oid, modifier },
+        typeRef: { driver: "postgres", oid, modifier },
       },
     ],
     rows: [["192.0.2.1"]],
+  }
+}
+
+function mysqlResult(input: Partial<MySqlTypeRef> = {}): DriverResult {
+  return {
+    columns: [
+      {
+        id: "value",
+        name: "value",
+        driver: "mysql",
+        typeFamily: "unknown",
+        typeRef: {
+          driver: "mysql",
+          code: 253,
+          flags: 0,
+          charset: 224,
+          length: 80,
+          decimals: 0,
+          ...input,
+        },
+      },
+    ],
+    rows: [["value"]],
   }
 }
 
@@ -56,6 +80,93 @@ function setup() {
 }
 
 describe("metadata", () => {
+  test("MySQL numeric and binary types are resolved without opening a metadata connection", async () => {
+    const read = mock(async () => {
+      throw new Error("Unexpected metadata read")
+    })
+    const metadata = new Metadata(read)
+    const decimal = await metadata.complete(
+      "a",
+      mysqlResult({ code: 246, length: 10, decimals: 2 }),
+    )
+    expect(decimal.columns[0].dbType).toBe("decimal(8,2)")
+    const binary = await metadata.complete(
+      "a",
+      mysqlResult({ charset: 63, length: 20 }),
+    )
+    expect(binary.columns[0].dbType).toBe("varbinary(20)")
+    expect(read).not.toHaveBeenCalled()
+    expect(binary.columns[0]).not.toHaveProperty("typeRef")
+  })
+
+  test("MySQL charset dictionaries are shared, isolated by configuration, and invalidated", async () => {
+    const { metadata, client, advance } = setup()
+    const charsets = mock(async () => new Map([[224, 4]]))
+    client.charsets = charsets
+    const [a, b] = await Promise.all([
+      metadata.complete("a", mysqlResult()),
+      metadata.complete("a", mysqlResult()),
+    ])
+    expect(a.columns[0].dbType).toBe("varchar(20)")
+    expect(b.columns[0].dbType).toBe("varchar(20)")
+    expect(charsets).toHaveBeenCalledTimes(1)
+    await metadata.complete("b", mysqlResult())
+    expect(charsets).toHaveBeenCalledTimes(2)
+    advance(5 * 60_000)
+    await metadata.complete("a", mysqlResult())
+    expect(charsets).toHaveBeenCalledTimes(3)
+    await metadata.inspect("a")
+    await metadata.complete("a", mysqlResult())
+    expect(charsets).toHaveBeenCalledTimes(4)
+    metadata.disconnected("a")
+    await metadata.complete("a", mysqlResult())
+    expect(charsets).toHaveBeenCalledTimes(5)
+  })
+
+  test("a cancelled MySQL consumer keeps known type information without cancelling shared reads", async () => {
+    const { metadata, client } = setup()
+    const pending = Promise.withResolvers<Map<number, number>>()
+    client.charsets = mock(() => pending.promise)
+    const abort = new AbortController()
+    const first = metadata.complete("a", mysqlResult(), abort.signal)
+    const second = metadata.complete("a", mysqlResult())
+    abort.abort()
+    const cancelled = await first
+    expect(cancelled.columns[0]).toMatchObject({
+      dbType: "varchar",
+      typeFamily: "string",
+    })
+    expect(cancelled.rows).toEqual([["value"]])
+    pending.resolve(new Map([[224, 4]]))
+    expect((await second).columns[0].dbType).toBe("varchar(20)")
+    expect(client.charsets).toHaveBeenCalledTimes(1)
+  })
+
+  test("failed MySQL charset reads retain base types and retry; stale reads cannot restore old widths", async () => {
+    const { metadata, client } = setup()
+    client.charsets = async () => {
+      throw new Error("charset unavailable")
+    }
+    expect(
+      (await metadata.complete("a", mysqlResult())).columns[0].dbType,
+    ).toBe("varchar")
+    expect(metadata.snapshot("a").error).toBe("charset unavailable")
+    const pending = Promise.withResolvers<Map<number, number>>()
+    client.charsets = () => pending.promise
+    const stale = metadata.complete("a", mysqlResult())
+    metadata.invalidate("a")
+    client.charsets = async () => new Map([[224, 4]])
+    expect(
+      (await metadata.complete("a", mysqlResult())).columns[0].dbType,
+    ).toBe("varchar(20)")
+    expect(metadata.snapshot("a").error).toBeNull()
+    pending.resolve(new Map([[224, 1]]))
+    expect((await stale).columns[0].dbType).toBe("varchar")
+    expect(
+      (await metadata.complete("a", mysqlResult())).columns[0].dbType,
+    ).toBe("varchar(20)")
+  })
+
   test("batches distinct type modifiers and shares cache only within one configuration", async () => {
     const { metadata, types } = setup()
     const input = result(1043, 24)
@@ -65,8 +176,8 @@ describe("metadata", () => {
     )
     const value = await metadata.complete("a", input)
     expect(types).toHaveBeenCalledWith([
-      { oid: 1043, modifier: 24 },
-      { oid: 1043, modifier: 204 },
+      { driver: "postgres", oid: 1043, modifier: 24 },
+      { driver: "postgres", oid: 1043, modifier: 204 },
     ])
     expect(value.columns.map((column) => column.dbType)).toEqual([
       "type_1043_24",

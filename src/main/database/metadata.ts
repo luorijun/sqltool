@@ -1,9 +1,10 @@
 import type { DbSchema, QueryResult, TableSource } from "@/contracts/database"
+import { needsMySqlCharset, resolveMySqlType } from "./drivers/mysql-types"
 import type {
   ColumnType,
   ConnectionSession,
   DriverResult,
-  TypeRef,
+  PostgresTypeRef,
 } from "./ports"
 
 type Read = <T>(
@@ -14,9 +15,13 @@ interface TypeCache {
   values: Map<string, { value: ColumnType; expires: number }>
   pending: Map<string, Promise<ColumnType | null>>
 }
+interface CharsetCache {
+  expires: number
+  value: Promise<Map<number, number>>
+}
 const TYPE_TTL = 5 * 60_000
 const TYPE_LIMIT = 2048
-const typeKey = (ref: TypeRef) => `${ref.oid}:${ref.modifier}`
+const typeKey = (ref: PostgresTypeRef) => `${ref.oid}:${ref.modifier}`
 
 export class Metadata {
   private schemas = new Map<string, DbSchema[]>()
@@ -24,6 +29,7 @@ export class Metadata {
   private generations = new Map<string, number>()
   private epochs = new Map<string, object>()
   private types = new Map<string, TypeCache>()
+  private charsets = new Map<string, CharsetCache>()
   private inspections = new Map<string, Map<string, Promise<void>>>()
 
   constructor(
@@ -43,6 +49,7 @@ export class Metadata {
   invalidate(id: string): void {
     this.epochs.set(id, {})
     this.types.delete(id)
+    this.charsets.delete(id)
     this.inspections.delete(id)
   }
 
@@ -57,6 +64,7 @@ export class Metadata {
     if (existing) return existing
     const epoch = this.epoch(id)
     this.types.delete(id)
+    this.charsets.delete(id)
     const request = this.read(id, (client) => client.inspect(source))
       .then((schemas) => {
         if (this.epoch(id) !== epoch) return
@@ -84,32 +92,87 @@ export class Metadata {
     result: DriverResult,
     signal?: AbortSignal,
   ): Promise<QueryResult> {
-    const refs = result.columns.flatMap((column) =>
-      column.typeRef ? [column.typeRef] : [],
+    const refs = result.columns.flatMap(({ typeRef }) =>
+      typeRef ? [typeRef] : [],
     )
-    let types = new Map<string, ColumnType | null>()
-    if (refs.length && !signal?.aborted) {
-      const cancelled = Promise.withResolvers<Map<string, ColumnType | null>>()
-      const abort = () => cancelled.resolve(new Map())
+    const postgres = refs.filter((ref) => ref.driver === "postgres")
+    const needsCharsets = refs.some(
+      (ref) => ref.driver === "mysql" && needsMySqlCharset(ref),
+    )
+    const defaults = result.columns.map(({ typeRef }) =>
+      typeRef?.driver === "mysql" ? resolveMySqlType(typeRef) : undefined,
+    )
+    let types = defaults
+    if ((postgres.length || needsCharsets) && !signal?.aborted) {
+      const cancelled = Promise.withResolvers<typeof defaults>()
+      const abort = () => cancelled.resolve(defaults)
       signal?.addEventListener("abort", abort, { once: true })
       try {
-        types = await Promise.race([this.resolve(id, refs), cancelled.promise])
+        const resolved = Promise.all([
+          postgres.length
+            ? this.resolve(id, postgres)
+            : new Map<string, ColumnType | null>(),
+          needsCharsets ? this.readCharsets(id) : new Map<number, number>(),
+        ]).then(([catalog, charsets]) =>
+          result.columns.map(({ typeRef }) => {
+            if (!typeRef) return undefined
+            if (typeRef.driver === "postgres")
+              return catalog.get(typeKey(typeRef)) ?? undefined
+            return resolveMySqlType(
+              typeRef,
+              typeRef.charset === undefined
+                ? undefined
+                : charsets.get(typeRef.charset),
+            )
+          }),
+        )
+        types = await Promise.race([resolved, cancelled.promise])
       } finally {
         signal?.removeEventListener("abort", abort)
       }
     }
     return {
       ...result,
-      columns: result.columns.map(({ typeRef, ...column }) => ({
+      columns: result.columns.map(({ typeRef: _ref, ...column }, index) => ({
         ...column,
-        ...(typeRef ? types.get(typeKey(typeRef)) : undefined),
+        ...types[index],
       })),
     }
   }
 
+  private readCharsets(id: string): Promise<Map<number, number>> {
+    const cached = this.charsets.get(id)
+    if (cached && cached.expires > this.now()) return cached.value
+    const entry: CharsetCache = {
+      expires: Infinity,
+      value: this.read(id, (client) => {
+        if (!client.charsets) throw new Error("驱动不支持字符集元数据查询")
+        return client.charsets()
+      })
+        .then((value) => {
+          if (this.charsets.get(id) !== entry) return new Map<number, number>()
+          entry.expires = this.now() + TYPE_TTL
+          this.clearError(id)
+          return value
+        })
+        .catch((error) => {
+          if (this.charsets.get(id) === entry) {
+            this.charsets.delete(id)
+            this.setError(
+              id,
+              error instanceof Error ? error.message : String(error),
+            )
+          }
+          return new Map<number, number>()
+        }),
+    }
+    this.charsets.set(id, entry)
+    return entry.value
+  }
+
   private async resolve(
     id: string,
-    refs: TypeRef[],
+    refs: PostgresTypeRef[],
   ): Promise<Map<string, ColumnType | null>> {
     let cache = this.types.get(id)
     if (!cache) {

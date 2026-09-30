@@ -1,11 +1,20 @@
-import type { QueryResultColumn } from "@/contracts/database"
+import type { DbDriver, QueryResultColumn } from "@/contracts/database"
+
+export function getColumnTypeLabel(type: string, driver?: DbDriver): string {
+  const label = type.trim()
+  if (driver !== "postgres") return label
+  return label.replace(
+    /^timestamp(\(\d+\))? with time zone((?:\[\])*)$/,
+    "timestamptz$1$2",
+  )
+}
 
 export function getQueryColumnTypeLabel(
   column?: Pick<QueryResultColumn, "dbType" | "driver" | "typeCode">,
 ): string | undefined {
   const dbType = column?.dbType?.trim()
   if (dbType) {
-    return dbType
+    return getColumnTypeLabel(dbType, column?.driver)
   }
 
   if (column?.typeCode !== undefined) {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Connection } from "../../src/contracts/database"
+import { getQueryColumnTypeLabel } from "../../src/renderer/components/result-grid/format"
 import {
   buildTree,
   canRefresh,
@@ -37,6 +38,44 @@ const connection: Connection = {
 }
 
 describe("sidebar tree state", () => {
+  test("sidebar and result headers share type labels without changing custom names", () => {
+    const types = [
+      "timestamp with time zone",
+      "timestamp(3) with time zone[]",
+      'public."timestamp with time zone"',
+      "numeric(8,2)",
+      "character varying(100)",
+    ]
+    const updated = structuredClone(connection)
+    if (!updated.schema) throw new Error("Missing fixture schema")
+    updated.schema[0].tables[0].columns = types.map((type, index) => ({
+      name: `c${index}`,
+      type,
+    }))
+    const labels = buildTree([updated])
+      .filter((node) => node.kind === "column")
+      .map((node) => node.meta)
+    expect(labels).toEqual([
+      "timestamptz",
+      "timestamptz(3)[]",
+      'public."timestamp with time zone"',
+      "numeric(8,2)",
+      "character varying(100)",
+    ])
+    expect(labels).toEqual(
+      types.map((dbType) =>
+        getQueryColumnTypeLabel({ dbType, driver: "postgres" }),
+      ),
+    )
+    updated.config.driver = "mysql"
+    expect(
+      buildTree([updated]).find((node) => node.kind === "column")?.meta,
+    ).toBe(types[0])
+    expect(getQueryColumnTypeLabel({ dbType: types[0], driver: "mysql" })).toBe(
+      types[0],
+    )
+  })
+
   test("updated tree data keeps object identity and a missing object falls back to its parent", () => {
     const key = nodeKey("db", "public", "tables", "items")
     const expanded = new Set([

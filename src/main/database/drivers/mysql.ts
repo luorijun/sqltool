@@ -8,11 +8,10 @@ import type {
   ConfigProfile,
   DbSchema,
   DbTable,
-  QueryResult,
   SelectQuery,
   TableSource,
 } from "@/contracts/database"
-import type { ConnectionSession } from "../ports"
+import type { ConnectionSession, DriverResult } from "../ports"
 import { compileSelectQuery } from "../query"
 import { withTimeout } from "../tasks"
 import type { QueryColumnInput } from "./shared"
@@ -279,174 +278,31 @@ async function inspectMySqlClient(
   return [schema]
 }
 
-const MYSQL_FIELD_FLAGS = {
-  NOT_NULL: 1,
-  PRI_KEY: 2,
-  BLOB: 16,
-  UNSIGNED: 32,
-  BINARY: 128,
-  AUTO_INCREMENT: 512,
-} as const
-
-const MYSQL_TYPE_NAMES: Record<number, string> = {
-  0: "decimal",
-  1: "tinyint",
-  2: "smallint",
-  3: "int",
-  4: "float",
-  5: "double",
-  6: "null",
-  7: "timestamp",
-  8: "bigint",
-  9: "mediumint",
-  10: "date",
-  11: "time",
-  12: "datetime",
-  13: "year",
-  15: "varchar",
-  16: "bit",
-  242: "vector",
-  245: "json",
-  246: "decimal",
-  247: "enum",
-  248: "set",
-  249: "tinyblob",
-  250: "mediumblob",
-  251: "longblob",
-  252: "blob",
-  253: "varchar",
-  254: "char",
-  255: "geometry",
-}
-
-function getMySqlFieldTypeCode(field: FieldPacket): number | undefined {
-  return field.columnType ?? field.type
-}
-
-function hasMySqlFlag(
-  flags: FieldPacket["flags"],
-  bit: number,
-  name: string,
-): boolean {
-  if (Array.isArray(flags)) {
-    return flags.includes(name)
-  }
-
-  return typeof flags === "number" && (flags & bit) !== 0
-}
-
-function getMySqlFieldDbType(field: FieldPacket): string | undefined {
-  const code = getMySqlFieldTypeCode(field)
-  if (code === undefined) {
-    return field.typeName?.toLowerCase()
-  }
-
-  const binary = hasMySqlFlag(field.flags, MYSQL_FIELD_FLAGS.BINARY, "BINARY")
-  const unsigned = hasMySqlFlag(
-    field.flags,
-    MYSQL_FIELD_FLAGS.UNSIGNED,
-    "UNSIGNED",
-  )
-  const typeName = MYSQL_TYPE_NAMES[code]
-  if (!typeName) {
-    return field.typeName?.toLowerCase()
-  }
-
-  if (code === 0xfd) {
-    return binary ? "varbinary" : "varchar"
-  }
-
-  if (code === 0xfe) {
-    return binary ? "binary" : "char"
-  }
-
-  if (code >= 0xf9 && code <= 0xfc) {
-    return binary ? typeName : typeName.replace("blob", "text")
-  }
-
-  if (
-    unsigned &&
-    [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x08, 0x09, 0xf6].includes(code)
-  ) {
-    return `${typeName} unsigned`
-  }
-
-  return typeName
-}
-
-function getMySqlFieldTypeFamily(
-  field: FieldPacket,
-): QueryColumnInput["typeFamily"] {
-  const code = getMySqlFieldTypeCode(field)
-  const binary = hasMySqlFlag(field.flags, MYSQL_FIELD_FLAGS.BINARY, "BINARY")
-
-  switch (code) {
-    case 0x00:
-    case 0xf6:
-      return "decimal"
-    case 0x01:
-    case 0x02:
-    case 0x03:
-    case 0x04:
-    case 0x05:
-    case 0x08:
-    case 0x09:
-    case 0x0d:
-    case 0x10:
-      return "number"
-    case 0x07:
-    case 0x0c:
-      return "datetime"
-    case 0x0a:
-      return "date"
-    case 0x0b:
-      return "time"
-    case 0xf5:
-      return "json"
-    case 0xf9:
-    case 0xfa:
-    case 0xfb:
-      return binary ? "binary" : "string"
-    case 0xfc:
-      return binary ? "binary" : "string"
-    case 0xfd:
-    case 0xfe:
-      return binary ? "binary" : "string"
-    default:
-      return "unknown"
-  }
-}
-
 function createMySqlQueryColumn(field: FieldPacket): QueryColumnInput {
-  const typeCode = getMySqlFieldTypeCode(field)
-  const sourceColumn = field.orgName || undefined
-
+  if (typeof field.flags !== "number") throw new Error("无效的 MySQL 列标志")
+  const flags = field.flags
   return {
     name: field.name,
     driver: "mysql",
-    dbType: getMySqlFieldDbType(field),
-    typeCode,
-    typeFamily: getMySqlFieldTypeFamily(field),
-    schema: field.schema || field.db || undefined,
-    table: field.orgTable || field.table || undefined,
-    sourceColumn,
-    nullable: !hasMySqlFlag(
-      field.flags,
-      MYSQL_FIELD_FLAGS.NOT_NULL,
-      "NOT_NULL",
-    ),
-    unsigned:
-      hasMySqlFlag(field.flags, MYSQL_FIELD_FLAGS.UNSIGNED, "UNSIGNED") ||
-      undefined,
-    primaryKey:
-      hasMySqlFlag(field.flags, MYSQL_FIELD_FLAGS.PRI_KEY, "PRI_KEY") ||
-      undefined,
-    autoIncrement:
-      hasMySqlFlag(
-        field.flags,
-        MYSQL_FIELD_FLAGS.AUTO_INCREMENT,
-        "AUTO_INCREMENT",
-      ) || undefined,
+    typeCode: field.columnType,
+    typeFamily: "unknown",
+    typeRef: {
+      driver: "mysql",
+      code: field.columnType,
+      flags,
+      charset: field.characterSet,
+      length: field.columnLength,
+      decimals: field.decimals,
+      extendedType: field.extendedTypeName,
+      extendedFormat: field.extendedFormat,
+    },
+    schema: field.schema || undefined,
+    table: field.orgTable || undefined,
+    sourceColumn: field.orgName || undefined,
+    nullable: (flags & 1) === 0,
+    unsigned: (flags & 32) !== 0 || undefined,
+    primaryKey: (flags & 2) !== 0 || undefined,
+    autoIncrement: (flags & 512) !== 0 || undefined,
   }
 }
 
@@ -454,7 +310,7 @@ async function queryMySqlClient(
   client: MySqlConnection,
   sql: string,
   values: unknown[] = [],
-): Promise<QueryResult> {
+): Promise<DriverResult> {
   const [rows, fields] = await client.query({
     sql,
     values,
@@ -484,6 +340,18 @@ export async function connectMySql(
   const { client, closeTransport } = await createMySqlClient(profile)
 
   return createConnectionSession({
+    async charsets() {
+      const rows = await queryRows<
+        RowDataPacket & { id: number; width: number }
+      >(
+        client,
+        `SELECT c.ID AS id, s.MAXLEN AS width
+         FROM information_schema.COLLATIONS c
+         JOIN information_schema.CHARACTER_SETS s
+           ON s.CHARACTER_SET_NAME = c.CHARACTER_SET_NAME`,
+      )
+      return new Map(rows.map((row) => [Number(row.id), Number(row.width)]))
+    },
     watch(fail) {
       client.on("error", fail)
       client.on("end", () => fail(new Error("数据库连接已断开")))

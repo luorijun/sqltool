@@ -2,7 +2,6 @@ import type {
   Config,
   ConfigProfile,
   DbSchema,
-  QueryColumnTypeFamily,
   QueryResult,
   QueryResultColumn,
   SelectQuery,
@@ -10,14 +9,23 @@ import type {
   TableSource,
 } from "@/contracts/database"
 
-export interface TypeRef {
+export interface PostgresTypeRef {
+  driver: "postgres"
   oid: number
   modifier: number
 }
-export interface ColumnType {
-  dbType: string
-  typeFamily: QueryColumnTypeFamily
+export interface MySqlTypeRef {
+  driver: "mysql"
+  code?: number
+  flags: number
+  charset?: number
+  length?: number
+  decimals: number
+  extendedType?: string
+  extendedFormat?: string
 }
+export type TypeRef = PostgresTypeRef | MySqlTypeRef
+export type ColumnType = Pick<QueryResultColumn, "dbType" | "typeFamily">
 export type DriverColumn = QueryResultColumn & { typeRef?: TypeRef }
 export type DriverResult = Omit<QueryResult, "columns"> & {
   columns: DriverColumn[]
@@ -26,7 +34,8 @@ export type DriverResult = Omit<QueryResult, "columns"> & {
 export interface ConnectionSession {
   prepareMetadata?: () => Promise<void>
   inspect(source?: TableSource): Promise<DbSchema[]>
-  types?: (refs: TypeRef[]) => Promise<Array<ColumnType | null>>
+  types?: (refs: PostgresTypeRef[]) => Promise<Array<ColumnType | null>>
+  charsets?: () => Promise<Map<number, number>>
   query(sql: string): Promise<DriverResult>
   select(
     query: SelectQuery,

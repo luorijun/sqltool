@@ -1,4 +1,5 @@
 import type { Connection, DbColumn, TableSource } from "@/contracts/database"
+import { getColumnTypeLabel } from "@/renderer/components/result-grid"
 
 export interface TreeNode {
   key: string
@@ -104,10 +105,7 @@ export function buildTree(connections: Connection[]): TreeNode[] {
               expandable: false,
               source,
               column,
-              meta:
-                column.type === "timestamp with time zone"
-                  ? "timestamptz"
-                  : column.type,
+              meta: getColumnTypeLabel(column.type, connection.config.driver),
             })
           }
         }

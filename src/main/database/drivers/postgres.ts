@@ -16,7 +16,7 @@ import type {
   ColumnType,
   ConnectionSession,
   DriverResult,
-  TypeRef,
+  PostgresTypeRef,
 } from "../ports"
 import { compileSelectQuery } from "../query"
 import { withTimeout } from "../tasks"
@@ -358,7 +358,7 @@ function typeFamily(type: TypeRow): QueryColumnTypeFamily {
 
 async function readPostgresTypes(
   client: PgClient,
-  refs: TypeRef[],
+  refs: PostgresTypeRef[],
 ): Promise<Array<ColumnType | null>> {
   if (!refs.length) return []
   const rows = await queryRows<TypeRow>(
@@ -388,7 +388,11 @@ function createPostgresQueryColumn(field: PgField): QueryColumnInput {
   return {
     name: field.name,
     driver: "postgres",
-    typeRef: { oid: field.dataTypeID, modifier: field.dataTypeModifier },
+    typeRef: {
+      driver: "postgres",
+      oid: field.dataTypeID,
+      modifier: field.dataTypeModifier,
+    },
     typeCode: field.dataTypeID,
     typeFamily: "unknown",
     sourceTableId: getPositivePostgresNumber(field.tableID),
