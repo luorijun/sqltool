@@ -5,7 +5,7 @@
   "productName": "SqlTool",
   "description": "A simple GUI database client tool",
   "author": "luorijun",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "homepage": "https://github.com/luorijun/sqltool",
   "repository": {
     "type": "git",
