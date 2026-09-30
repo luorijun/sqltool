@@ -17,16 +17,19 @@ import {
   openQueryTabAtom,
   openViewTabAtom,
   rebuildActiveSessionAtom,
+  resetActiveViewTabTableStateAtom,
   runActiveQueryTabSqlAtom,
   selectTabAtom,
   setActiveViewTabPageAtom,
+  setActiveViewTabPageSizeAtom,
+  setViewTabSortAtom,
   tabsAtom,
 } from "../../src/renderer/modules/workspace"
 import { config, renderer } from "../support/renderer"
 
 const store = getDefaultStore()
 const result: QueryResult = {
-  columns: [{ id: "n", name: "n" }],
+  columns: [{ id: "n", name: "n", typeFamily: "number" }],
   rows: [[1]],
   rowCount: 1,
 }
@@ -199,6 +202,136 @@ describe("query workspace", () => {
 })
 
 describe("table workspace", () => {
+  test("sorting uses source columns in SQL, resets paging only on success and survives layout reset", async () => {
+    const source = { schema: "public", table: "items" }
+    const data: QueryResult = {
+      columns: [
+        {
+          id: "col_0",
+          name: "Value",
+          sourceColumn: "sort value",
+          typeFamily: "number",
+        },
+      ],
+      rows: [[2], [1]],
+    }
+    env.snapshot.connections[0].schema = [
+      {
+        name: "public",
+        views: [],
+        functions: [],
+        tables: [
+          { name: "items", columns: [{ name: "id", type: "int", pk: true }] },
+        ],
+      },
+    ]
+    await client.sync()
+    const select = mock<typeof env.bridge.select>(
+      async (_config, _tab, _request, query) =>
+        env.ok({
+          result: query.select ? { ...result, rows: [[250]] } : data,
+          executedSql: "initial SQL",
+        }),
+    )
+    env.bridge.select = select
+    const tabId = await store.set(openViewTabAtom, { configId: "db", source })
+    expect(select.mock.calls[0][3].orderBy).toEqual([
+      { column: "id", direction: "asc" },
+    ])
+    await store.set(setActiveViewTabPageAtom, 1)
+    const pending = Promise.withResolvers<ConnResponse<SelectResult>>()
+    env.bridge.select = mock(() => pending.promise)
+    const sort = { column: "sort value", direction: "desc" as const }
+    const running = store.set(setViewTabSortAtom, { tabId, sort })
+    try {
+      expect(env.bridge.select).toHaveBeenCalledWith(
+        "db",
+        tabId,
+        expect.any(String),
+        {
+          from: source,
+          limit: 100,
+          offset: 0,
+          orderBy: [
+            { column: "sort value", direction: "desc" },
+            { column: "id", direction: "asc" },
+          ],
+        },
+      )
+      expect(store.get(activeViewTabAtom)?.table).toMatchObject({
+        pageIndex: 1,
+        sort: null,
+        sql: "initial SQL",
+      })
+      await store.set(setViewTabSortAtom, { tabId, sort: null })
+      expect(env.bridge.select).toHaveBeenCalledTimes(1)
+      pending.resolve(env.ok({ result: data, executedSql: "sorted SQL" }))
+      await running
+      expect(store.get(activeViewTabAtom)?.table).toMatchObject({
+        pageIndex: 0,
+        sort,
+        sql: "sorted SQL",
+      })
+      store.set(resetActiveViewTabTableStateAtom)
+      expect(store.get(activeViewTabAtom)?.table.sort).toEqual(sort)
+      env.bridge.select = select
+      await store.set(setActiveViewTabPageAtom, 1)
+      expect(select.mock.calls.at(-1)?.[3]).toMatchObject({
+        offset: 100,
+        orderBy: [
+          { column: "sort value", direction: "desc" },
+          { column: "id", direction: "asc" },
+        ],
+      })
+      await store.set(setViewTabSortAtom, { tabId, sort: null })
+      expect(select.mock.calls.at(-1)?.[3]).toMatchObject({
+        offset: 0,
+        orderBy: [{ column: "id", direction: "asc" }],
+      })
+      expect(store.get(activeViewTabAtom)?.table.sort).toBeNull()
+    } finally {
+      pending.resolve(env.ok({ result: data, executedSql: "sorted SQL" }))
+      await running
+    }
+  })
+
+  test.each(["error", "cancelled"] as const)(
+    "failed browse changes retain the applied query (%s)",
+    async (kind) => {
+      env.bridge.select = async (_config, _tab, _request, query) =>
+        env.ok({
+          result: query.select ? { ...result, rows: [[250]] } : result,
+          executedSql: "previous SQL",
+        })
+      const tabId = await store.set(openViewTabAtom, {
+        configId: "db",
+        source: { schema: "public", table: "items" },
+      })
+      await store.set(setActiveViewTabPageAtom, 1)
+      const before = store.get(activeViewTabAtom)?.table
+      env.bridge.select = async () => ({
+        ok: false,
+        kind,
+        error: "failed",
+        snapshot: env.capture(),
+      })
+      await store.set(setViewTabSortAtom, {
+        tabId,
+        sort: { column: "n", direction: "asc" },
+      })
+      await store.set(setActiveViewTabPageAtom, 2)
+      await store.set(setActiveViewTabPageSizeAtom, 50)
+      expect(store.get(activeViewTabAtom)?.table).toMatchObject({
+        status: "error",
+        pageIndex: 1,
+        pageSize: 100,
+        sort: null,
+        sql: "previous SQL",
+        data: before?.data,
+      })
+    },
+  )
+
   test.each([false, true])(
     "count and data responses keep separate results (count first: %s)",
     async (countFirst) => {

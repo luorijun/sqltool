@@ -1,4 +1,4 @@
-import type { QueryResultColumn } from "@/contracts/database"
+import type { QueryResultColumn, SelectOrderBy } from "@/contracts/database"
 
 export type TabKind = "query" | "view"
 
@@ -49,7 +49,6 @@ export interface QueryTabTableState {
 
   visibility: Record<string, boolean>
   sizing: Record<string, number>
-  sorting: Array<{ id: string; desc: boolean }>
   pinning: { start: string[]; end: string[] }
   selected: { rowId: string; colId: string } | null
 }
@@ -91,6 +90,7 @@ export interface TabLoggerState {
 }
 
 export interface ViewTabTableState {
+  sort: SelectOrderBy | null
   status: "idle" | "running" | "success" | "error"
   error: string | null
   dataAt: number | null
@@ -132,7 +132,7 @@ export interface TabLogEntry {
 export type TableLayout = Pick<
   QueryTabTableState,
   "visibility" | "sizing" | "pinning" | "selected"
-> & { sorting?: QueryTabTableState["sorting"] }
+>
 
 export type EditorView = Omit<QueryTabEditorState, "status">
 export type LogView = Omit<TabLoggerState, "logs">

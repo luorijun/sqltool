@@ -311,10 +311,12 @@ export function HeaderMenu({
   column,
   columnMeta,
   disableHide,
+  busy = false,
 }: {
   column: ResultColumn
   columnMeta?: QueryResultColumn
   disableHide: boolean
+  busy?: boolean
 }) {
   if (column.id === ROW_NUMBER_COLUMN_ID) {
     return null
@@ -357,20 +359,33 @@ export function HeaderMenu({
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem onClick={() => column.toggleSorting(false)}>
-            <ArrowUpAZ className="size-3.5" />
-            升序
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => column.toggleSorting(true)}>
-            <ArrowDownAZ className="size-3.5" />
-            降序
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => column.clearSorting()}>
-            <RotateCcw className="size-3.5" />
-            清除排序
-          </DropdownMenuItem>
+          {column.getCanSort() && (
+            <>
+              <DropdownMenuItem
+                disabled={busy}
+                onClick={() => column.toggleSorting(false)}
+              >
+                <ArrowUpAZ className="size-3.5" />
+                升序
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={busy}
+                onClick={() => column.toggleSorting(true)}
+              >
+                <ArrowDownAZ className="size-3.5" />
+                降序
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={busy || !column.getIsSorted()}
+                onClick={() => column.clearSorting()}
+              >
+                <RotateCcw className="size-3.5" />
+                清除排序
+              </DropdownMenuItem>
 
-          <DropdownMenuSeparator />
+              <DropdownMenuSeparator />
+            </>
+          )}
 
           <DropdownMenuItem
             onClick={() =>

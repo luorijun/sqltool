@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, mock, test } from "bun:test"
 import type {
   Config,
   ConnResponse,
@@ -6,8 +6,10 @@ import type {
 } from "../../src/contracts/database"
 import { createDatabase } from "../../src/main/database"
 import type {
+  ColumnType,
   ConnectionSession,
   DatabaseOptions,
+  DriverResult,
 } from "../../src/main/database/ports"
 
 const config: Config = {
@@ -86,6 +88,135 @@ afterEach(async () => {
 })
 
 describe("database service", () => {
+  test("concurrent window closure releases the last shared metadata connection", async () => {
+    const { api, database, clients } = setup()
+    value(await api.connect("db"))
+    value(await database.forOwner(2).connect("db"))
+    expect(clients).toHaveLength(1)
+    const destroy = mock(clients[0].client.destroy)
+    clients[0].client.destroy = destroy
+    await Promise.all([
+      database.closeOwner(1, true),
+      database.closeOwner(2, true),
+    ])
+    expect(destroy).toHaveBeenCalledTimes(1)
+    expect((await api.sync()).connections[0].sessionCount).toBe(0)
+  })
+
+  test("concurrent metadata reads wait for the dedicated connection's initialization", async () => {
+    const ready = Promise.withResolvers<void>()
+    const preparing = Promise.withResolvers<void>()
+    const queried = Promise.withResolvers<void>()
+    const reads = mock(async () => [
+      { dbType: "inet", typeFamily: "string" as const },
+    ])
+    const { api } = setup({
+      connect: async () => {
+        const entry = connection()
+        entry.client.prepareMetadata = async () => {
+          preparing.resolve()
+          await ready.promise
+        }
+        entry.client.types = reads
+        entry.client.query = async () => {
+          queried.resolve()
+          return {
+            columns: [
+              {
+                id: "ip",
+                name: "ip",
+                typeFamily: "unknown",
+                typeRef: { oid: 869, modifier: -1 },
+              },
+            ],
+            rows: [],
+          }
+        }
+        return entry.client
+      },
+    })
+    const connecting = api.connect("db")
+    let query: ReturnType<typeof api.query> | undefined
+    try {
+      await preparing.promise
+      const session = value(await api.openSession("db", "a"))
+      query = api.query(session, "query", "SELECT ip")
+      await queried.promise
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(reads).not.toHaveBeenCalled()
+      ready.resolve()
+      value(await connecting)
+      expect(value(await query).columns[0].dbType).toBe("inet")
+    } finally {
+      ready.resolve()
+      await Promise.all([connecting, query])
+    }
+  })
+
+  test("metadata is shared across windows and a cancelled consumer does not cancel other lookups", async () => {
+    const pending = Promise.withResolvers<Array<ColumnType | null>>()
+    const started = Promise.withResolvers<void>()
+    const reads = mock(() => {
+      started.resolve()
+      return pending.promise
+    })
+    const opened: Array<
+      ReturnType<typeof connection> & { destroy: ReturnType<typeof mock> }
+    > = []
+    const typed: DriverResult = {
+      columns: [
+        {
+          id: "ip",
+          name: "ip",
+          typeFamily: "unknown",
+          typeCode: 869,
+          typeRef: { oid: 869, modifier: -1 },
+        },
+      ],
+      rows: [["192.0.2.1"]],
+    }
+    const { api, database } = setup({
+      connect: async () => {
+        const entry = connection()
+        const destroy = mock(entry.client.destroy)
+        entry.client.destroy = destroy
+        entry.client.query = async () => typed
+        entry.client.types = reads
+        opened.push({ ...entry, destroy })
+        return entry.client
+      },
+    })
+    const other = database.forOwner(2)
+    const a = value(await api.openSession("db", "a"))
+    const b = value(await other.openSession("db", "b"))
+    const first = api.query(a, "first", "SELECT ip")
+    let second: ReturnType<typeof other.query> | undefined
+    try {
+      await started.promise
+      second = other.query(b, "second", "SELECT ip")
+      value(await api.cancel("first"))
+      const cancelled = value(await first)
+      expect(cancelled.rows).toEqual(typed.rows)
+      expect(cancelled.columns[0].dbType).toBeUndefined()
+      await database.closeOwner(1, true)
+      expect(opened[1].destroy).not.toHaveBeenCalled()
+      pending.resolve([{ dbType: "inet", typeFamily: "string" }])
+      expect(value(await second).columns[0].dbType).toBe("inet")
+      expect(reads).toHaveBeenCalledTimes(1)
+      expect(
+        (await other.sync()).sessions.filter(
+          (session) => session.kind === "schema",
+        ),
+      ).toHaveLength(1)
+      await database.closeOwner(2, true)
+      expect(opened[1].destroy).toHaveBeenCalledTimes(1)
+    } finally {
+      pending.resolve([])
+      await Promise.all([first, second])
+      await database.closeOwner(2, true)
+    }
+  })
+
   test("configuration changes require disconnecting and invalidate the catalog", async () => {
     const { api, entries } = setup()
     value(await api.connect("db"))

@@ -1,87 +1,17 @@
-import type {
-  QueryColumnTypeFamily,
-  QueryResultColumn,
-} from "@/contracts/database"
-
-const NUMBER_TYPE_PATTERN =
-  /^(?:smallint|int|integer|bigint|tinyint|mediumint|serial|bigserial|float|double|real|year|bit)(?:\b|\()/i
-const DECIMAL_TYPE_PATTERN = /^(?:numeric|decimal|dec|money)(?:\b|\()/i
-const STRING_TYPE_PATTERN =
-  /^(?:char|bpchar|varchar|character|text|citext|name|enum|set|xml)(?:\b|\()/i
-const BINARY_TYPE_PATTERN =
-  /^(?:bytea|blob|tinyblob|mediumblob|longblob|binary|varbinary)(?:\b|\()/i
-
-export function inferQueryColumnTypeFamily(
-  column?: Pick<QueryResultColumn, "dbType" | "typeFamily">,
-): QueryColumnTypeFamily {
-  if (column?.typeFamily) {
-    return column.typeFamily
-  }
-
-  const dbType = column?.dbType?.trim().toLowerCase()
-  if (!dbType) {
-    return "unknown"
-  }
-
-  if (dbType.endsWith("[]")) {
-    return "array"
-  }
-
-  if (dbType === "bool" || dbType === "boolean") {
-    return "boolean"
-  }
-
-  if (dbType === "uuid") {
-    return "uuid"
-  }
-
-  if (dbType === "json" || dbType === "jsonb") {
-    return "json"
-  }
-
-  if (BINARY_TYPE_PATTERN.test(dbType)) {
-    return "binary"
-  }
-
-  if (DECIMAL_TYPE_PATTERN.test(dbType)) {
-    return "decimal"
-  }
-
-  if (NUMBER_TYPE_PATTERN.test(dbType)) {
-    return "number"
-  }
-
-  if (dbType.startsWith("timestamp") || dbType === "datetime") {
-    return "datetime"
-  }
-
-  if (dbType === "date") {
-    return "date"
-  }
-
-  if (dbType.startsWith("time") || dbType === "interval") {
-    return "time"
-  }
-
-  if (STRING_TYPE_PATTERN.test(dbType)) {
-    return "string"
-  }
-
-  return "unknown"
-}
+import type { QueryResultColumn } from "@/contracts/database"
 
 export function getQueryColumnTypeLabel(
   column?: Pick<QueryResultColumn, "dbType" | "driver" | "typeCode">,
 ): string | undefined {
   const dbType = column?.dbType?.trim()
   if (dbType) {
-    return formatDbTypeLabel(dbType)
+    return dbType
   }
 
   if (column?.typeCode !== undefined) {
     return column.driver
-      ? `${column.driver}:${column.typeCode}`
-      : String(column.typeCode)
+      ? `未知类型 (${column.driver}:${column.typeCode})`
+      : `未知类型 (${column.typeCode})`
   }
 
   return undefined
@@ -154,24 +84,8 @@ export function getQueryColumnFlagLabels(
 }
 
 export function isQueryColumnRightAligned(column?: QueryResultColumn): boolean {
-  const family = inferQueryColumnTypeFamily(column)
+  const family = column?.typeFamily
   return family === "number" || family === "decimal"
-}
-
-export function formatDbTypeLabel(type: string): string {
-  const normalized = type.trim().replace(/\s+/g, " ").toLowerCase()
-  const withoutPostgresNoise = normalized
-    .replace(/^timestamp with time zone$/, "timestamptz")
-    .replace(/^timestamp without time zone$/, "timestamp")
-    .replace(/^time with time zone$/, "timetz")
-    .replace(/^time without time zone$/, "time")
-    .replace(/^character varying/, "varchar")
-    .replace(/^character\b/, "char")
-    .replace(/^double precision$/, "double")
-    .replace(/^boolean$/, "bool")
-    .replace(/^integer$/, "int")
-
-  return withoutPostgresNoise
 }
 
 export interface QueryValueDisplay {
@@ -185,53 +99,6 @@ export interface QueryValueDisplay {
     | "string"
     | "empty"
   text: string
-}
-
-function getTypeRank(value: unknown, column?: QueryResultColumn): number {
-  if (value === undefined || value === null) {
-    return 7
-  }
-
-  const family = inferQueryColumnTypeFamily(column)
-  switch (family) {
-    case "boolean":
-      return 0
-    case "number":
-    case "decimal":
-      return 1
-    case "date":
-    case "time":
-    case "datetime":
-      return 2
-    case "uuid":
-    case "string":
-      return 3
-    case "json":
-    case "array":
-      return 4
-    case "binary":
-      return 5
-    case "unknown":
-      break
-  }
-
-  if (typeof value === "boolean") {
-    return 0
-  }
-
-  if (typeof value === "number" || typeof value === "bigint") {
-    return 1
-  }
-
-  if (value instanceof Date) {
-    return 2
-  }
-
-  if (typeof value === "string") {
-    return 3
-  }
-
-  return 4
 }
 
 function stringifyJsonValue(value: unknown): string {
@@ -287,7 +154,7 @@ function formatTemporalValue(
   value: unknown,
   column?: QueryResultColumn,
 ): string {
-  const family = inferQueryColumnTypeFamily(column)
+  const family = column?.typeFamily
 
   if (value instanceof Date) {
     const iso = value.toISOString()
@@ -303,98 +170,6 @@ function formatTemporalValue(
   return serializeQueryValue(value)
 }
 
-function toComparableNumber(value: unknown): number | undefined {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : undefined
-  }
-
-  if (typeof value === "bigint") {
-    return Number(value)
-  }
-
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : undefined
-  }
-
-  return undefined
-}
-
-function toComparableTime(value: unknown): number | undefined {
-  if (value instanceof Date) {
-    return value.getTime()
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : undefined
-  }
-
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Date.parse(value)
-    return Number.isFinite(parsed) ? parsed : undefined
-  }
-
-  return undefined
-}
-
-function compareNullableValues(
-  left: unknown,
-  right: unknown,
-): number | undefined {
-  const leftNullish = left === undefined || left === null
-  const rightNullish = right === undefined || right === null
-
-  if (!leftNullish && !rightNullish) {
-    return undefined
-  }
-
-  if (leftNullish && rightNullish) {
-    return 0
-  }
-
-  return leftNullish ? 1 : -1
-}
-
-function compareNumbers(left: unknown, right: unknown): number | undefined {
-  const leftNumber = toComparableNumber(left)
-  const rightNumber = toComparableNumber(right)
-
-  if (leftNumber === undefined || rightNumber === undefined) {
-    return undefined
-  }
-
-  if (leftNumber === rightNumber) {
-    return 0
-  }
-
-  return leftNumber < rightNumber ? -1 : 1
-}
-
-function compareBooleans(left: unknown, right: unknown): number | undefined {
-  const leftBoolean = normalizeBooleanText(left)
-  const rightBoolean = normalizeBooleanText(right)
-
-  if (leftBoolean === undefined || rightBoolean === undefined) {
-    return undefined
-  }
-
-  return Number(leftBoolean === "true") - Number(rightBoolean === "true")
-}
-
-function compareTemporalValues(
-  left: unknown,
-  right: unknown,
-): number | undefined {
-  const leftTime = toComparableTime(left)
-  const rightTime = toComparableTime(right)
-
-  if (leftTime === undefined || rightTime === undefined) {
-    return undefined
-  }
-
-  return leftTime - rightTime
-}
-
 export function serializeQueryValue(
   value: unknown,
   column?: QueryResultColumn,
@@ -407,7 +182,7 @@ export function serializeQueryValue(
     return ""
   }
 
-  const family = inferQueryColumnTypeFamily(column)
+  const family = column?.typeFamily
   if (family === "binary" && isBinaryValue(value)) {
     return serializeBinaryValue(value)
   }
@@ -444,7 +219,7 @@ export function getQueryValueDisplay(
     return { kind: "empty", text: "" }
   }
 
-  const family = inferQueryColumnTypeFamily(column)
+  const family = column?.typeFamily
 
   if (family === "binary" && isBinaryValue(value)) {
     return { kind: "binary", text: serializeBinaryValue(value) }
@@ -496,66 +271,6 @@ export function getQueryValueDisplay(
     kind: "json",
     text: stringifyJsonValue(value),
   }
-}
-
-export function compareQueryValues(
-  left: unknown,
-  right: unknown,
-  column?: QueryResultColumn,
-): number {
-  if (left === right) {
-    return 0
-  }
-
-  const nullableCompare = compareNullableValues(left, right)
-  if (nullableCompare !== undefined) {
-    return nullableCompare
-  }
-
-  const family = inferQueryColumnTypeFamily(column)
-  const familyCompare =
-    family === "boolean"
-      ? compareBooleans(left, right)
-      : family === "number" || family === "decimal"
-        ? compareNumbers(left, right)
-        : family === "date" || family === "time" || family === "datetime"
-          ? compareTemporalValues(left, right)
-          : undefined
-
-  if (familyCompare !== undefined) {
-    return familyCompare
-  }
-
-  const leftRank = getTypeRank(left, column)
-  const rightRank = getTypeRank(right, column)
-  if (leftRank !== rightRank) {
-    return leftRank - rightRank
-  }
-
-  if (typeof left === "boolean" && typeof right === "boolean") {
-    return Number(left) - Number(right)
-  }
-
-  if (typeof left === "number" && typeof right === "number") {
-    return left - right
-  }
-
-  if (typeof left === "bigint" && typeof right === "bigint") {
-    return left < right ? -1 : 1
-  }
-
-  if (left instanceof Date && right instanceof Date) {
-    return left.getTime() - right.getTime()
-  }
-
-  return serializeQueryValue(left, column).localeCompare(
-    serializeQueryValue(right, column),
-    undefined,
-    {
-      numeric: true,
-      sensitivity: "base",
-    },
-  )
 }
 
 function escapeDelimitedCell(text: string, delimiter: string): string {

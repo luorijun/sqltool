@@ -335,10 +335,6 @@ function hasMySqlFlag(
   return typeof flags === "number" && (flags & bit) !== 0
 }
 
-function getOptionalNumber(value: number | undefined): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined
-}
-
 function getMySqlFieldDbType(field: FieldPacket): string | undefined {
   const code = getMySqlFieldTypeCode(field)
   if (code === undefined) {
@@ -434,8 +430,6 @@ function createMySqlQueryColumn(field: FieldPacket): QueryColumnInput {
     schema: field.schema || field.db || undefined,
     table: field.orgTable || field.table || undefined,
     sourceColumn,
-    length: getOptionalNumber(field.columnLength ?? field.length),
-    scale: getOptionalNumber(field.decimals),
     nullable: !hasMySqlFlag(
       field.flags,
       MYSQL_FIELD_FLAGS.NOT_NULL,

@@ -28,6 +28,7 @@ export {
   selectTabAtom,
   setActiveViewTabPageAtom,
   setActiveViewTabPageSizeAtom,
+  setViewTabSortAtom,
   tabsAtom,
   updateLogViewAtom,
   updateQueryEditorAtom,

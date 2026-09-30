@@ -7,8 +7,8 @@ import type {
   SessionSnapshot,
   TableSource,
 } from "@/contracts/database"
-import { Catalog } from "./catalog"
-import type { Confirm, Connect, ConnectionSession } from "./ports"
+import { Metadata } from "./metadata"
+import type { Confirm, Connect, ConnectionSession, DriverResult } from "./ports"
 import { ConnError, Tasks, withTimeout } from "./tasks"
 
 interface Session extends SessionSnapshot {
@@ -33,7 +33,15 @@ export class Sessions {
   private owners = new Set<number>()
   private tabs = new Set<string>()
   private closing = new Set<string>()
-  private catalog = new Catalog()
+  private consumers = new Map<string, Set<number>>()
+  private enrichment = new Map<
+    string,
+    { owner: number; configId: string; tabId?: string; abort: AbortController }
+  >()
+  private metadata = new Metadata(async (id, run) => {
+    const session = this.create(id, 0, "schema")
+    return this.run(session, 0, randomUUID(), undefined, run)
+  })
   private version = 0
   private options: Options
 
@@ -54,11 +62,15 @@ export class Sessions {
             (s) => s.status !== "closed" && s.status !== "failed",
           ).length,
           failedCount: sessions.filter((s) => s.status === "failed").length,
-          ...this.catalog.snapshot(config.id),
+          ...this.metadata.snapshot(config.id),
         }
       }),
       sessions: entries
-        .filter((s) => s.owner === owner)
+        .filter(
+          (s) =>
+            s.owner === owner ||
+            (s.kind === "schema" && this.consumers.get(s.configId)?.has(owner)),
+        )
         .map(({ id, configId, tabId, kind, status, used, error }) => ({
           id,
           configId,
@@ -101,7 +113,7 @@ export class Sessions {
   }
 
   forget(configId: string): void {
-    this.catalog.forget(configId)
+    this.metadata.forget(configId)
     for (const [id, session] of this.entries)
       if (session.configId === configId) this.entries.delete(id)
   }
@@ -115,6 +127,14 @@ export class Sessions {
       throw new Error("正在关闭，请稍后再试")
     const config = this.options.configs().find((c) => c.id === configId)
     if (!config) throw new Error("连接不存在或已删除")
+    if (owner !== 0) {
+      let consumers = this.consumers.get(configId)
+      if (!consumers) {
+        consumers = new Set()
+        this.consumers.set(configId, consumers)
+      }
+      consumers.add(owner)
+    }
     return config
   }
 
@@ -192,32 +212,40 @@ export class Sessions {
       return Promise.reject(
         new Error(session.error ?? "会话已关闭，请建立新会话"),
       )
-    if (session.client) return Promise.resolve(session.client)
     if (session.opening) return session.opening
+    if (session.client) return Promise.resolve(session.client)
     session.status = "connecting"
     session.opening = this.options
       .connect(session.profile)
-      .then((client) => {
+      .then(async (client) => {
         if (session.status !== "connecting") {
           client.destroy()
           throw new Error("会话在建立连接时已关闭")
         }
         session.client = client
-        session.status = "ready"
         session.unwatch = client.onFailure((error) => {
           if (session.status === "closed") return
           session.status = "failed"
           session.error = error.message
-          if (session.kind === "schema")
-            this.catalog.setError(session.configId, error.message)
+          if (session.kind === "schema") {
+            this.metadata.invalidate(session.configId)
+            this.metadata.setError(session.configId, error.message)
+          }
           this.tasks.fail(session.id, error.message)
           client.destroy()
           session.client = undefined
         })
+        if (session.kind === "schema") await client.prepareMetadata?.()
+        if (session.status !== "connecting")
+          throw new Error(session.error ?? "会话已关闭")
         if (!session.client) throw new Error(session.error ?? "连接已失效")
+        session.status = "ready"
         return client
       })
       .catch((error) => {
+        session.unwatch?.()
+        session.client?.destroy()
+        session.client = undefined
         if (session.status !== "closed" && session.status !== "closing") {
           session.status = "failed"
           session.error = error instanceof Error ? error.message : String(error)
@@ -231,20 +259,21 @@ export class Sessions {
   }
 
   async connect(configId: string, owner: number): Promise<void> {
-    const session = this.create(configId, owner, "schema")
+    this.check(configId, owner)
+    const session = this.create(configId, 0, "schema")
     try {
       await this.ensure(session)
       if (
         this.entries.get(session.id) === session &&
         session.status === "ready"
       )
-        this.catalog.clearError(configId)
+        this.metadata.clearError(configId)
     } catch (error) {
       if (
         this.entries.get(session.id) === session &&
         session.status !== "closed"
       )
-        this.catalog.setError(
+        this.metadata.setError(
           configId,
           error instanceof Error ? error.message : String(error),
         )
@@ -259,6 +288,7 @@ export class Sessions {
     tabId: string | undefined,
     run: (client: ConnectionSession) => Promise<T>,
   ): Promise<T> {
+    if (this.enrichment.has(requestId)) throw new Error("重复的请求编号")
     this.check(session.configId, owner, tabId)
     if (this.closing.has(session.id)) throw new Error("会话正在关闭")
     return this.tasks.run(
@@ -272,14 +302,45 @@ export class Sessions {
     )
   }
 
-  query(id: string, owner: number, requestId: string, sql: string) {
-    const session = this.get(id, owner)
-    return this.run(session, owner, requestId, session.tabId, (client) =>
-      client.query(sql),
-    )
+  private async complete(
+    session: Session,
+    owner: number,
+    requestId: string,
+    tabId: string | undefined,
+    result: DriverResult,
+  ) {
+    const abort = new AbortController()
+    this.enrichment.set(requestId, {
+      owner,
+      configId: session.configId,
+      tabId,
+      abort,
+    })
+    if (session.status !== "ready") abort.abort()
+    try {
+      return await this.metadata.complete(
+        session.configId,
+        result,
+        abort.signal,
+      )
+    } finally {
+      this.enrichment.delete(requestId)
+    }
   }
 
-  select(
+  async query(id: string, owner: number, requestId: string, sql: string) {
+    const session = this.get(id, owner)
+    const result = await this.run(
+      session,
+      owner,
+      requestId,
+      session.tabId,
+      (client) => client.query(sql),
+    )
+    return this.complete(session, owner, requestId, session.tabId, result)
+  }
+
+  async select(
     configId: string,
     owner: number,
     tabId: string,
@@ -287,9 +348,19 @@ export class Sessions {
     query: SelectQuery,
   ) {
     const session = this.create(configId, owner, "browse")
-    return this.run(session, owner, requestId, tabId, (client) =>
+    const value = await this.run(session, owner, requestId, tabId, (client) =>
       client.select(query),
     )
+    return {
+      ...value,
+      result: await this.complete(
+        session,
+        owner,
+        requestId,
+        tabId,
+        value.result,
+      ),
+    }
   }
 
   async inspect(
@@ -297,41 +368,21 @@ export class Sessions {
     owner: number,
     source?: TableSource,
   ): Promise<void> {
-    const session = this.create(configId, owner, "schema")
-    try {
-      const schema = await this.run(
-        session,
-        owner,
-        randomUUID(),
-        undefined,
-        (client) => client.inspect(source),
-      )
-      if (
-        this.entries.get(session.id) === session &&
-        session.status === "ready"
-      ) {
-        if (source) this.catalog.setTable(configId, source, schema)
-        else this.catalog.setSchema(configId, schema)
-      }
-    } catch (error) {
-      if (
-        this.entries.get(session.id) === session &&
-        session.status !== "closed" &&
-        !source
-      )
-        this.catalog.setError(
-          configId,
-          error instanceof Error ? error.message : String(error),
-        )
-      throw error
-    }
+    this.check(configId, owner)
+    await this.metadata.inspect(configId, source)
   }
-
   cancel(id: string, owner: number) {
+    const pending = this.enrichment.get(id)
+    if (pending) {
+      if (pending.owner !== owner) throw new Error("无权操作其他窗口的任务")
+      pending.abort.abort()
+      return Promise.resolve()
+    }
     return this.tasks.cancel(id, owner)
   }
 
   private destroy(session: Session): void {
+    if (session.kind === "schema") this.metadata.invalidate(session.configId)
     session.status = "closed"
     session.unwatch?.()
     this.tasks.fail(session.id, "会话已断开")
@@ -407,6 +458,10 @@ export class Sessions {
   }
 
   async closeTab(owner: number, tabId: string): Promise<boolean> {
+    for (const pending of this.enrichment.values()) {
+      if (pending.owner === owner && pending.tabId === tabId)
+        pending.abort.abort()
+    }
     const key = `${owner}:${tabId}`
     if (this.tabs.has(key)) throw new Error("标签页正在关闭")
     this.tabs.add(key)
@@ -426,6 +481,9 @@ export class Sessions {
 
   async disconnect(configId: string, owner: number): Promise<boolean> {
     this.check(configId, owner)
+    for (const pending of this.enrichment.values()) {
+      if (pending.configId === configId) pending.abort.abort()
+    }
     this.blocked.add(configId)
     try {
       const closed = await this.close(
@@ -433,7 +491,7 @@ export class Sessions {
         owner,
       )
       if (closed) {
-        this.catalog.disconnected(configId)
+        this.metadata.disconnected(configId)
       }
       return closed
     } finally {
@@ -444,12 +502,30 @@ export class Sessions {
   async closeOwner(owner: number, force = false): Promise<boolean> {
     if (this.owners.has(owner) && !force) return false
     this.owners.add(owner)
+    for (const pending of this.enrichment.values()) {
+      if (pending.owner === owner) pending.abort.abort()
+    }
     try {
       const entries = [...this.entries.values()].filter(
         (s) => s.owner === owner,
       )
       const closed = await this.close(entries, owner, force)
-      if (closed) for (const s of entries) this.entries.delete(s.id)
+      if (closed) {
+        for (const s of entries) this.entries.delete(s.id)
+        for (const [id, consumers] of this.consumers) {
+          consumers.delete(owner)
+          if (consumers.size) continue
+          this.consumers.delete(id)
+          // Release shared metadata only after removing the consumer, so two
+          // windows closing concurrently cannot leave an orphan connection.
+          for (const session of this.entries.values()) {
+            if (session.configId === id && session.kind === "schema") {
+              this.destroy(session)
+              this.entries.delete(session.id)
+            }
+          }
+        }
+      }
       return closed
     } finally {
       this.owners.delete(owner)

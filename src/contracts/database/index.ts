@@ -90,15 +90,12 @@ export interface QueryResultColumn {
   driver?: DbDriver
   dbType?: string
   typeCode?: number | string
-  typeFamily?: QueryColumnTypeFamily
+  typeFamily: QueryColumnTypeFamily
   schema?: string
   table?: string
   sourceColumn?: string
   sourceTableId?: number
   sourceColumnId?: number
-  length?: number
-  precision?: number
-  scale?: number
   nullable?: boolean
   unsigned?: boolean
   primaryKey?: boolean

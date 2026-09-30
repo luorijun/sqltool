@@ -7,12 +7,17 @@ import type {
   ConfigProfile,
   DbSchema,
   DbTable,
-  QueryResult,
+  QueryColumnTypeFamily,
   QueryResultRow,
   SelectQuery,
   TableSource,
 } from "@/contracts/database"
-import type { ConnectionSession } from "../ports"
+import type {
+  ColumnType,
+  ConnectionSession,
+  DriverResult,
+  TypeRef,
+} from "../ports"
 import { compileSelectQuery } from "../query"
 import { withTimeout } from "../tasks"
 import type { QueryColumnInput } from "./shared"
@@ -314,138 +319,63 @@ async function inspectPostgresClient(
   return Array.from(schemaMap.values())
 }
 
-const POSTGRES_TYPE_INFO: Record<
-  number,
-  { name: string; family: QueryColumnInput["typeFamily"] }
-> = {
-  16: { name: "bool", family: "boolean" },
-  17: { name: "bytea", family: "binary" },
-  18: { name: "char", family: "string" },
-  19: { name: "name", family: "string" },
-  20: { name: "bigint", family: "number" },
-  21: { name: "smallint", family: "number" },
-  23: { name: "int", family: "number" },
-  25: { name: "text", family: "string" },
-  26: { name: "oid", family: "number" },
-  114: { name: "json", family: "json" },
-  142: { name: "xml", family: "string" },
-  700: { name: "real", family: "number" },
-  701: { name: "double", family: "number" },
-  790: { name: "money", family: "decimal" },
-  1000: { name: "bool[]", family: "array" },
-  1005: { name: "smallint[]", family: "array" },
-  1007: { name: "int[]", family: "array" },
-  1009: { name: "text[]", family: "array" },
-  1015: { name: "varchar[]", family: "array" },
-  1016: { name: "bigint[]", family: "array" },
-  1021: { name: "real[]", family: "array" },
-  1022: { name: "double[]", family: "array" },
-  1042: { name: "char", family: "string" },
-  1043: { name: "varchar", family: "string" },
-  1082: { name: "date", family: "date" },
-  1083: { name: "time", family: "time" },
-  1114: { name: "timestamp", family: "datetime" },
-  1115: { name: "timestamp[]", family: "array" },
-  1182: { name: "date[]", family: "array" },
-  1184: { name: "timestamptz", family: "datetime" },
-  1185: { name: "timestamptz[]", family: "array" },
-  1186: { name: "interval", family: "time" },
-  1266: { name: "timetz", family: "time" },
-  1560: { name: "bit", family: "string" },
-  1562: { name: "varbit", family: "string" },
-  1700: { name: "numeric", family: "decimal" },
-  199: { name: "json[]", family: "array" },
-  1231: { name: "numeric[]", family: "array" },
-  2950: { name: "uuid", family: "uuid" },
-  2951: { name: "uuid[]", family: "array" },
-  3802: { name: "jsonb", family: "json" },
-  3807: { name: "jsonb[]", family: "array" },
+interface TypeRow {
+  name: string | null
+  category: string | null
+  namespace: string | null
+  label: string | null
 }
 
-function getPostgresModifier(field: PgField): number | undefined {
-  return typeof field.dataTypeModifier === "number" &&
-    field.dataTypeModifier >= 0
-    ? field.dataTypeModifier
-    : undefined
+function typeFamily(type: TypeRow): QueryColumnTypeFamily {
+  if (type.category === "A") return "array"
+  if (type.category === "B") return "boolean"
+  if (type.namespace === "pg_catalog") {
+    switch (type.name) {
+      case "numeric":
+      case "money":
+        return "decimal"
+      case "json":
+      case "jsonb":
+        return "json"
+      case "bytea":
+        return "binary"
+      case "uuid":
+        return "uuid"
+      case "date":
+        return "date"
+      case "time":
+      case "timetz":
+      case "interval":
+        return "time"
+    }
+  }
+  if (type.category === "N") return "number"
+  if (type.category === "D") return "datetime"
+  if (type.category && ["S", "E", "I", "G", "R", "V"].includes(type.category))
+    return "string"
+  return "unknown"
 }
 
-function getPostgresLength(field: PgField): number | undefined {
-  const modifier = getPostgresModifier(field)
-  if (modifier === undefined) {
-    return undefined
-  }
-
-  if (field.dataTypeID === 1042 || field.dataTypeID === 1043) {
-    return Math.max(0, modifier - 4)
-  }
-
-  return undefined
-}
-
-function getPostgresNumericPrecision(field: PgField): number | undefined {
-  if (field.dataTypeID !== 1700) {
-    return undefined
-  }
-
-  const modifier = getPostgresModifier(field)
-  if (modifier === undefined) {
-    return undefined
-  }
-
-  return ((modifier - 4) >> 16) & 0xffff
-}
-
-function getPostgresNumericScale(field: PgField): number | undefined {
-  if (field.dataTypeID !== 1700) {
-    return undefined
-  }
-
-  const modifier = getPostgresModifier(field)
-  if (modifier === undefined) {
-    return undefined
-  }
-
-  return (modifier - 4) & 0xffff
-}
-
-function getPostgresTemporalPrecision(field: PgField): number | undefined {
-  if (![1083, 1114, 1184, 1266].includes(field.dataTypeID ?? 0)) {
-    return undefined
-  }
-
-  return getPostgresModifier(field)
-}
-
-function getPostgresDbType(field: PgField): string | undefined {
-  const typeCode = field.dataTypeID
-  if (typeCode === undefined) {
-    return undefined
-  }
-
-  const info = POSTGRES_TYPE_INFO[typeCode]
-  if (!info) {
-    return undefined
-  }
-
-  const length = getPostgresLength(field)
-  if (length !== undefined) {
-    return `${info.name}(${length})`
-  }
-
-  const precision = getPostgresNumericPrecision(field)
-  if (precision !== undefined) {
-    const scale = getPostgresNumericScale(field)
-    return scale !== undefined
-      ? `${info.name}(${precision},${scale})`
-      : `${info.name}(${precision})`
-  }
-
-  const temporalPrecision = getPostgresTemporalPrecision(field)
-  if (temporalPrecision !== undefined) {
-    return `${info.name}(${temporalPrecision})`
-  }
-
-  return info.name
+async function readPostgresTypes(
+  client: PgClient,
+  refs: TypeRef[],
+): Promise<Array<ColumnType | null>> {
+  if (!refs.length) return []
+  const rows = await queryRows<TypeRow>(
+    client,
+    `
+    SELECT t.typname AS name, t.typcategory AS category, n.nspname AS namespace,
+           CASE WHEN t.oid IS NOT NULL THEN pg_catalog.format_type(t.oid, r.modifier) END AS label
+    FROM unnest($1::oid[], $2::int[]) WITH ORDINALITY AS r(oid, modifier, position)
+    LEFT JOIN pg_catalog.pg_type t ON t.oid = r.oid
+    LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+    ORDER BY r.position
+  `,
+    [refs.map((ref) => ref.oid), refs.map((ref) => ref.modifier)],
+  )
+  return rows.map((row) =>
+    row.label ? { dbType: row.label, typeFamily: typeFamily(row) } : null,
+  )
 }
 
 function getPositivePostgresNumber(
@@ -455,23 +385,14 @@ function getPositivePostgresNumber(
 }
 
 function createPostgresQueryColumn(field: PgField): QueryColumnInput {
-  const typeCode = field.dataTypeID
-  const typeInfo =
-    typeCode === undefined ? undefined : POSTGRES_TYPE_INFO[typeCode]
-  const precision =
-    getPostgresNumericPrecision(field) ?? getPostgresTemporalPrecision(field)
-
   return {
     name: field.name,
     driver: "postgres",
-    dbType: getPostgresDbType(field),
-    typeCode,
-    typeFamily: typeInfo?.family ?? "unknown",
+    typeRef: { oid: field.dataTypeID, modifier: field.dataTypeModifier },
+    typeCode: field.dataTypeID,
+    typeFamily: "unknown",
     sourceTableId: getPositivePostgresNumber(field.tableID),
     sourceColumnId: getPositivePostgresNumber(field.columnID),
-    length: getPostgresLength(field),
-    precision,
-    scale: getPostgresNumericScale(field),
     format: field.format,
   }
 }
@@ -480,7 +401,7 @@ async function queryPostgresClient(
   client: PgClient,
   sql: string,
   params: unknown[] = [],
-): Promise<QueryResult> {
+): Promise<DriverResult> {
   const result = await client.query<QueryResultRow>({
     text: sql,
     values: params,
@@ -513,6 +434,12 @@ export async function connectPostgres(
   }
 
   return createConnectionSession({
+    async prepareMetadata() {
+      await client.query("SET search_path TO pg_catalog")
+    },
+    types(refs) {
+      return readPostgresTypes(client, refs)
+    },
     watch(fail) {
       client.on("error", fail)
       client.on("end", () => fail(new Error("数据库连接已断开")))

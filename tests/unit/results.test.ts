@@ -1,8 +1,21 @@
 import { expect, test } from "bun:test"
 import {
+  getQueryColumnTypeLabel,
   serializeMatrixAsDelimitedText,
   serializeValuesAsDelimitedText,
 } from "../../src/renderer/components/result-grid/format"
+
+test("type labels preserve database names and make missing metadata explicit", () => {
+  expect(getQueryColumnTypeLabel({ dbType: 'public."Mixed Case"[]' })).toBe(
+    'public."Mixed Case"[]',
+  )
+  expect(getQueryColumnTypeLabel({ dbType: "numeric(3,-1)" })).toBe(
+    "numeric(3,-1)",
+  )
+  expect(getQueryColumnTypeLabel({ driver: "postgres", typeCode: 12345 })).toBe(
+    "未知类型 (postgres:12345)",
+  )
+})
 
 test("CSV escapes headers, delimiters, quotes and line breaks without losing values", () => {
   expect(

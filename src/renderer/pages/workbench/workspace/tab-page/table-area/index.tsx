@@ -50,6 +50,7 @@ export default function QueryTableArea() {
 
   return (
     <ResultTable
+      readOnly
       onCopy={copyText}
       onExport={saveText}
       onError={showError}

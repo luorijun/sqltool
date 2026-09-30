@@ -4,7 +4,6 @@ import { functionalUpdate, useTable } from "@tanstack/react-table"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { features } from "../../src/renderer/components/result-grid/features"
-import { compareQueryValues } from "../../src/renderer/components/result-grid/format"
 import { buildExportPayload } from "../../src/renderer/components/result-grid/menus"
 import {
   normalizePinning,
@@ -26,22 +25,24 @@ function initialState(): ResultTableState {
     ],
     columns: [
       { id: "amount", name: "Amount", typeFamily: "decimal" },
-      { id: "name", name: "Name" },
-      { id: "hidden", name: "Hidden" },
+      { id: "name", name: "Name", typeFamily: "string" },
+      { id: "hidden", name: "Hidden", typeFamily: "string" },
     ],
     visibility: { hidden: false },
     sizing: { amount: 180 },
     pinning: { start: ["name"], end: [] },
     selected: null,
-    sorting: [{ id: "amount", desc: false }],
   }
 }
 
 describe("result table migration", () => {
-  test("renders numeric sorting, hidden columns and pinned offsets", () => {
+  test("keeps server row order while rendering sorting, hidden columns and pinned offsets", () => {
     const html = renderToStaticMarkup(
       createElement(ResultTable, {
         tableState: initialState(),
+        readOnly: false,
+        sorting: [{ id: "amount", desc: false }],
+        onSortingChange: () => {},
         onLayoutChange: () => {},
         onReset: () => {},
         onCopy: async () => {},
@@ -51,7 +52,7 @@ describe("result table migration", () => {
     )
     const body = html.slice(html.indexOf("<tbody>"))
     expect(html).toContain("当前排序: Amount 升序")
-    expect(body.indexOf('title="two"')).toBeLessThan(
+    expect(body.indexOf('title="two"')).toBeGreaterThan(
       body.indexOf('title="ten"'),
     )
     expect(body).not.toContain("secret")
@@ -59,7 +60,28 @@ describe("result table migration", () => {
     expect(body).toContain("width:180px")
   })
 
-  test("controlled pinning keeps the row number first and exports sorted visible data", () => {
+  test("read-only results preserve row order and hide sorting controls", () => {
+    const html = renderToStaticMarkup(
+      createElement(ResultTable, {
+        tableState: initialState(),
+        readOnly: true,
+        onLayoutChange: () => {},
+        onReset: () => {},
+        onCopy: async () => {},
+        onExport: async () => {},
+        onError: () => {},
+      }),
+    )
+    const body = html.slice(html.indexOf("<tbody>"))
+    expect(body.indexOf('title="ten"')).toBeLessThan(
+      body.indexOf('title="two"'),
+    )
+    expect(html).not.toContain("点击排序")
+    expect(html).not.toContain("当前排序")
+    expect(html).not.toContain("按当前视图复制或导出")
+  })
+
+  test("controlled pinning keeps the row number first and exports visible data in server order", () => {
     let layout = initialState()
     let table!: ResultTableInstance
     function Probe() {
@@ -78,12 +100,9 @@ describe("result table migration", () => {
             id: column.id,
             accessorKey: column.id,
             header: column.name,
-            sortFn: (a, b, id) =>
-              compareQueryValues(a.getValue(id), b.getValue(id), column),
           })),
         ],
         state: {
-          sorting: layout.sorting,
           columnVisibility: layout.visibility,
           columnSizing: layout.sizing,
           columnPinning: normalizePinning(layout.pinning),
@@ -134,10 +153,10 @@ describe("result table migration", () => {
     expect(buildExportPayload(table)).toEqual({
       headers: ["Amount", "Name"],
       rows: [
-        ["2", "two"],
         ["10", "ten"],
+        ["2", "two"],
       ],
     })
-    expect(table.getRowModel().rows[0].id).toBe("1")
+    expect(table.getRowModel().rows[0].id).toBe("0")
   })
 })

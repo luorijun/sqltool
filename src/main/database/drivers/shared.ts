@@ -1,21 +1,14 @@
-import type {
-  QueryResult,
-  QueryResultColumn,
-  SelectQuery,
-  SelectResult,
-} from "@/contracts/database"
-import type { ConnectionSession } from "../ports"
+import type { ConnectionSession, DriverColumn } from "../ports"
 import { ConnError, withTimeout } from "../tasks"
 
-export interface QueryColumnInput
-  extends Omit<Partial<QueryResultColumn>, "id"> {
-  name: string
-}
+export type QueryColumnInput = Omit<DriverColumn, "id">
 
 interface CreateConnectionSessionOptions {
+  prepareMetadata?: ConnectionSession["prepareMetadata"]
   inspect: ConnectionSession["inspect"]
-  query: (sql: string) => Promise<QueryResult>
-  select: (query: SelectQuery) => Promise<SelectResult>
+  types?: ConnectionSession["types"]
+  query: ConnectionSession["query"]
+  select: ConnectionSession["select"]
   close: () => Promise<void>
   destroy: () => void
   cancel: (active: () => boolean) => Promise<void>
@@ -84,8 +77,11 @@ export function createConnectionSession(
     await closePromise
   }
 
+  const types = options.types
   return {
+    prepareMetadata: options.prepareMetadata,
     inspect: (source) => execute(() => options.inspect(source)),
+    types: types ? (refs) => execute(() => types(refs)) : undefined,
     query: (sql) => execute(() => options.query(sql)),
     select: (query) => execute(() => options.select(query)),
     cancel: () => options.cancel(() => active && !closed && !failure),
@@ -136,12 +132,8 @@ export function toRowCount(value: number | string | null): number | undefined {
   return Math.max(0, Math.trunc(count))
 }
 
-export function createQueryColumns(
-  fields: Array<string | QueryColumnInput>,
-): QueryResultColumn[] {
-  return fields.map((field, index) => {
-    const column = typeof field === "string" ? { name: field } : field
-
+export function createQueryColumns(fields: QueryColumnInput[]): DriverColumn[] {
+  return fields.map((column, index) => {
     return {
       ...column,
       id: `${column.name || "column"}_${index}`,

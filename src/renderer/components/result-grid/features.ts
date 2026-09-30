@@ -3,7 +3,6 @@ import {
   columnResizingFeature,
   columnSizingFeature,
   columnVisibilityFeature,
-  createSortedRowModel,
   rowSortingFeature,
   tableFeatures,
 } from "@tanstack/react-table"
@@ -14,5 +13,4 @@ export const features = tableFeatures({
   columnResizingFeature,
   columnVisibilityFeature,
   rowSortingFeature,
-  sortedRowModel: createSortedRowModel(),
 })

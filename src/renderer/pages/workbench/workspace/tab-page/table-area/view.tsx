@@ -28,6 +28,7 @@ import {
   resetActiveViewTabTableStateAtom,
   setActiveViewTabPageAtom,
   setActiveViewTabPageSizeAtom,
+  setViewTabSortAtom,
   updateViewLayoutAtom,
 } from "@/renderer/modules/workspace"
 import { copyText, saveText, showError } from "../../feedback"
@@ -54,6 +55,7 @@ export default function ViewTableArea() {
   const refresh = useSetAtom(refreshActiveViewTabAtom)
   const setPage = useSetAtom(setActiveViewTabPageAtom)
   const setPageSize = useSetAtom(setActiveViewTabPageSizeAtom)
+  const setSort = useSetAtom(setViewTabSortAtom)
 
   const initialLoading =
     tableState.status === "running" && tableState.dataAt === null
@@ -94,6 +96,12 @@ export default function ViewTableArea() {
       ? tableState.data.length === tableState.pageSize
       : tableState.pageIndex + 1 < totalPages
   const busy = tableState.status === "running"
+  const sortColumn =
+    tableState.sort &&
+    tableState.columns.find(
+      (column) =>
+        (column.sourceColumn ?? column.name) === tableState.sort?.column,
+    )
   const countText =
     tableState.countStatus === "running"
       ? "正在统计总行数..."
@@ -109,7 +117,29 @@ export default function ViewTableArea() {
       tableState={tableState}
       onLayoutChange={setTableState}
       onReset={resetTableState}
-      enableSorting={false}
+      readOnly={false}
+      sorting={
+        sortColumn
+          ? [{ id: sortColumn.id, desc: tableState.sort?.direction === "desc" }]
+          : []
+      }
+      busy={busy}
+      onSortingChange={(sorting) => {
+        if (tabId === null) return
+        const sort = sorting[0]
+        const column =
+          sort && tableState.columns.find((column) => column.id === sort.id)
+        if (sort && !column) return
+        void setSort({
+          tabId,
+          sort: column
+            ? {
+                column: column.sourceColumn ?? column.name,
+                direction: sort.desc ? "desc" : "asc",
+              }
+            : null,
+        })
+      }}
       emptyMessage="数据表暂无数据"
       exportNamePrefix={viewTab ? `${viewTab.source.table}-data` : "table-data"}
       toolbarEnd={
@@ -180,7 +210,6 @@ export default function ViewTableArea() {
       }
       statusBarEnd={
         <>
-          <span>独立浏览连接 · 仅查看已提交数据</span>
           {stale && <span>此前执行的结果</span>}
           <span title={tableState.countError ?? undefined}>{countText}</span>
           {tableState.error && (

@@ -2,15 +2,35 @@ import type {
   Config,
   ConfigProfile,
   DbSchema,
+  QueryColumnTypeFamily,
   QueryResult,
+  QueryResultColumn,
   SelectQuery,
   SelectResult,
   TableSource,
 } from "@/contracts/database"
+
+export interface TypeRef {
+  oid: number
+  modifier: number
+}
+export interface ColumnType {
+  dbType: string
+  typeFamily: QueryColumnTypeFamily
+}
+export type DriverColumn = QueryResultColumn & { typeRef?: TypeRef }
+export type DriverResult = Omit<QueryResult, "columns"> & {
+  columns: DriverColumn[]
+}
+
 export interface ConnectionSession {
+  prepareMetadata?: () => Promise<void>
   inspect(source?: TableSource): Promise<DbSchema[]>
-  query(sql: string): Promise<QueryResult>
-  select(query: SelectQuery): Promise<SelectResult>
+  types?: (refs: TypeRef[]) => Promise<Array<ColumnType | null>>
+  query(sql: string): Promise<DriverResult>
+  select(
+    query: SelectQuery,
+  ): Promise<Omit<SelectResult, "result"> & { result: DriverResult }>
   close(): Promise<void>
   destroy(): void
   cancel(): Promise<void>

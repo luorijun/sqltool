@@ -100,6 +100,14 @@ describe.each(["postgres", "mysql"] as const)("%s SSH", (driver) => {
         ).toBe(42)
         value(await api.closeTab("a"))
         await waitClosed(admin, driver, id)
+        if (driver === "postgres") {
+          expect(
+            (await api.sync()).sessions.some(
+              (entry) => entry.kind === "schema" && entry.status === "ready",
+            ),
+          ).toBe(true)
+        }
+        value(await api.disconnect("db"))
         await waitFor(
           () => transports.size === 0,
           "SSH transports were not released",

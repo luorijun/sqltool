@@ -17,7 +17,6 @@ import { AreaStatusBar, AreaToolbar } from "@/renderer/components/ui/panel-bar"
 import { EmptyState } from "./empty"
 import { features } from "./features"
 import {
-  compareQueryValues,
   getQueryColumnHeaderTitle,
   getQueryColumnTypeLabel,
   getQueryValueDisplay,
@@ -35,16 +34,25 @@ import {
   ROW_NUMBER_COLUMN_ID,
 } from "./types"
 
-interface ResultTableProps extends ResultActions {
+interface ResultTableBase extends ResultActions {
   tableState: ResultTableState
   onLayoutChange: (update: (current: ResultLayout) => ResultLayout) => void
   onReset: () => void
-  enableSorting?: boolean
+  busy?: boolean
   emptyMessage?: string
   exportNamePrefix?: string
   toolbarEnd?: ReactNode
   statusBarEnd?: ReactNode
 }
+type ResultTableProps = ResultTableBase &
+  (
+    | { readOnly: true; sorting?: never; onSortingChange?: never }
+    | {
+        readOnly: false
+        sorting: SortingState
+        onSortingChange: (sorting: SortingState) => void
+      }
+  )
 
 export function ResultTable({
   onCopy,
@@ -53,12 +61,16 @@ export function ResultTable({
   tableState,
   onLayoutChange,
   onReset,
-  enableSorting = true,
+  readOnly,
+  sorting,
+  busy = false,
+  onSortingChange,
   emptyMessage = "语句执行成功，但没有可展示的结果集",
   exportNamePrefix = "query-result",
   toolbarEnd,
   statusBarEnd,
 }: ResultTableProps) {
+  const enableSorting = !readOnly
   const columns = useMemo<ResultColumnDef[]>(
     () => [
       {
@@ -75,24 +87,15 @@ export function ResultTable({
       },
       ...tableState.columns.map<ResultColumnDef>((resultColumn) => {
         const typeLabel = getQueryColumnTypeLabel(resultColumn)
-        const labelWidth = Math.max(
-          resultColumn.name.length,
-          typeLabel?.length ?? 0,
-        )
+        const labelWidth = resultColumn.name.length + (typeLabel?.length ?? 0)
 
         return {
           id: resultColumn.id,
           header: resultColumn.name,
           accessorKey: resultColumn.id,
-          size: Math.min(Math.max(labelWidth * 14, 140), 320),
+          size: Math.min(Math.max(labelWidth * 8 + 64, 160), 360),
           minSize: MIN_DATA_COLUMN_WIDTH,
           enableSorting,
-          sortFn: (left, right, columnId) =>
-            compareQueryValues(
-              left.getValue(columnId),
-              right.getValue(columnId),
-              resultColumn,
-            ),
           cell: ({ cell }) => (
             <CellValue value={cell.getValue()} column={resultColumn} />
           ),
@@ -109,12 +112,12 @@ export function ResultTable({
 
   const state = useMemo(
     () => ({
-      sorting: tableState.sorting ?? [],
+      sorting: sorting ?? [],
       columnVisibility: tableState.visibility,
       columnSizing: tableState.sizing,
       columnPinning: normalizePinning(tableState.pinning),
     }),
-    [tableState],
+    [sorting, tableState],
   )
 
   const table = useTable({
@@ -124,6 +127,8 @@ export function ResultTable({
     state,
     getRowId: (_, i) => String(i),
     enableSorting,
+    sortDescFirst: false,
+    manualSorting: true,
     enableMultiSort: false,
     enableSortingRemoval: true,
     columnResizeMode: "onEnd",
@@ -132,13 +137,10 @@ export function ResultTable({
       minSize: MIN_DATA_COLUMN_WIDTH,
     },
     onSortingChange: (updater: Updater<SortingState>) => {
-      if (!enableSorting) {
+      if (!enableSorting || busy) {
         return
       }
-      onLayoutChange((current) => ({
-        ...current,
-        sorting: functionalUpdate(updater, current.sorting ?? []),
-      }))
+      if (!readOnly) onSortingChange(functionalUpdate(updater, sorting))
     },
     onColumnVisibilityChange: (updater: Updater<ColumnVisibilityState>) => {
       onLayoutChange((current) => ({
@@ -187,7 +189,7 @@ export function ResultTable({
   const statusText = !hasDataColumns
     ? "语句执行成功，但没有可展示的结果集"
     : hasRows
-      ? "按当前视图复制或导出"
+      ? null
       : "当前结果集为空"
 
   return (
@@ -239,10 +241,7 @@ export function ResultTable({
           列
         </span>
         {sortingSummary && <span>当前排序: {sortingSummary}</span>}
-        <span>{statusText}</span>
-        {!hasRows && tableState.columns.length > 0 && (
-          <span>暂无可复制的当前单元格/行</span>
-        )}
+        {statusText && <span>{statusText}</span>}
         {statusBarEnd}
       </AreaStatusBar>
 
@@ -251,7 +250,7 @@ export function ResultTable({
           <EmptyState message={emptyMessage} />
         ) : (
           <table
-            className="border-separate border-spacing-0 text-sm"
+            className="table-fixed border-separate border-spacing-0 text-sm"
             style={{ width: `${table.getTotalSize()}px`, minWidth: "100%" }}
           >
             <thead>
@@ -262,6 +261,7 @@ export function ResultTable({
                     const serial = column.id === ROW_NUMBER_COLUMN_ID
                     const sorted = column.getIsSorted()
                     const pinned = column.getIsPinned()
+                    const Trigger = column.getCanSort() ? "button" : "div"
                     const resultColumn = serial
                       ? undefined
                       : columnMetaById.get(column.id)
@@ -269,13 +269,20 @@ export function ResultTable({
                     return (
                       <th
                         key={header.id}
+                        aria-sort={
+                          sorted === "asc"
+                            ? "ascending"
+                            : sorted === "desc"
+                              ? "descending"
+                              : undefined
+                        }
                         title={
                           resultColumn
                             ? getQueryColumnHeaderTitle(resultColumn)
                             : undefined
                         }
                         className={cn(
-                          "group sticky top-0 z-10 h-10 px-2 text-xs font-mono tracking-wide border-b border-r last:border-r-0 bg-sidebar",
+                          "group sticky top-0 z-10 h-8 px-2 text-xs font-mono border-b border-r last:border-r-0 bg-sidebar",
                           pinned && "z-20",
                           serial && "text-muted-foreground",
                         )}
@@ -286,14 +293,19 @@ export function ResultTable({
                       >
                         {header.isPlaceholder ? null : (
                           <div className="flex items-center gap-1 min-w-0">
-                            <button
-                              type="button"
+                            <Trigger
+                              type={column.getCanSort() ? "button" : undefined}
+                              disabled={column.getCanSort() ? busy : undefined}
                               className={cn(
-                                "flex min-w-0 flex-1 items-center gap-1 text-left outline-none",
-                                column.getCanSort() && "cursor-pointer",
+                                "flex min-w-0 flex-1 items-center gap-1 text-left rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-primary/30",
+                                column.getCanSort() &&
+                                  !busy &&
+                                  "cursor-pointer",
                               )}
                               onClick={() =>
-                                column.getCanSort() && column.toggleSorting()
+                                column.getCanSort() &&
+                                !busy &&
+                                column.toggleSorting()
                               }
                               title={
                                 resultColumn
@@ -321,12 +333,13 @@ export function ResultTable({
                               {!serial && sorted === "desc" && (
                                 <ArrowDownAZ className="size-3 shrink-0 text-primary" />
                               )}
-                            </button>
+                            </Trigger>
 
                             {!serial && (
                               <HeaderMenu
                                 column={column}
                                 columnMeta={resultColumn}
+                                busy={busy}
                                 disableHide={visibleDataColumnCount <= 1}
                               />
                             )}
@@ -455,10 +468,12 @@ function ColumnHeader({ column }: { column: QueryResultColumn }) {
   const typeLabel = getQueryColumnTypeLabel(column)
 
   return (
-    <span className="grid min-w-0 flex-1 gap-0.5">
-      <span className="truncate leading-4">{column.name}</span>
+    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+      <span className="truncate leading-4 shrink-0 max-w-full">
+        {column.name}
+      </span>
       {typeLabel && (
-        <span className="truncate text-[10px] font-normal leading-3 tracking-normal text-muted-foreground/65">
+        <span className="truncate text-[10px] font-normal leading-4 text-muted-foreground">
           {typeLabel}
         </span>
       )}
@@ -553,10 +568,10 @@ export function normalizePinning(
   return { start, end }
 }
 
-function getSortingSummary(table: ResultTableInstance): string {
+function getSortingSummary(table: ResultTableInstance): string | null {
   const sorting = table.state.sorting[0]
   if (!sorting) {
-    return "未排序"
+    return null
   }
 
   const column = table
@@ -564,7 +579,7 @@ function getSortingSummary(table: ResultTableInstance): string {
     .find((item) => item.id === sorting.id && item.id !== ROW_NUMBER_COLUMN_ID)
 
   if (!column) {
-    return "未排序"
+    return null
   }
 
   return `${String(column.columnDef.header ?? column.id)} ${getSortLabel(column)}`

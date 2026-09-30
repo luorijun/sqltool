@@ -12,7 +12,6 @@ export interface ResultLayout {
   sizing: Record<string, number>
   pinning: { start: string[]; end: string[] }
   selected: { rowId: string; colId: string } | null
-  sorting?: Array<{ id: string; desc: boolean }>
 }
 export const ROW_NUMBER_COLUMN_ID = "__rownum__"
 export type ResultRow = Record<string, unknown>
