@@ -42,8 +42,8 @@ const conn: DatabaseApi = {
   disconnect: (configId: string) => {
     return ipcRenderer.invoke(DISCONNECT, configId)
   },
-  inspect: (configId: string, source?: TableSource) => {
-    return ipcRenderer.invoke(INSPECT, configId, source)
+  inspect: (configId: string, source?: TableSource, refresh = false) => {
+    return ipcRenderer.invoke(INSPECT, configId, source, refresh)
   },
   sync: () => ipcRenderer.invoke(SYNC),
   openSession: (configId: string, tabId: string) =>

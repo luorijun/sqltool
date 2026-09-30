@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react"
-import type { DbDriver } from "@/contracts/database"
+import type { DbDriver, DbSchema } from "@/contracts/database"
 import {
   type CursorPosition,
   createSqlEditorController,
@@ -30,6 +30,8 @@ interface SqlEditorProps {
 
   value: string
   driver?: DbDriver
+  schema?: readonly DbSchema[]
+  loadSchema?: () => Promise<readonly DbSchema[]>
   readOnly?: boolean
   autoFocus?: boolean
   editorState: EditorViewState
@@ -43,6 +45,8 @@ function SqlEditor({
   ref,
   value,
   driver,
+  schema,
+  loadSchema,
   readOnly = false,
   autoFocus = false,
   editorState,
@@ -54,6 +58,8 @@ function SqlEditor({
   const controllerRef = useRef<SqlEditorController | null>(null)
   const initialValueRef = useRef(value)
   const initialDriverRef = useRef(driver)
+  const initialSchemaRef = useRef(schema)
+  const initialLoaderRef = useRef(loadSchema)
   const initialEditorStateRef = useRef(editorState)
   const initialReadOnlyRef = useRef(readOnly)
   const initialAutoFocusRef = useRef(autoFocus)
@@ -61,6 +67,8 @@ function SqlEditor({
 
   initialValueRef.current = value
   initialDriverRef.current = driver
+  initialSchemaRef.current = schema
+  initialLoaderRef.current = loadSchema
   initialEditorStateRef.current = editorState
   initialReadOnlyRef.current = readOnly
   initialAutoFocusRef.current = autoFocus
@@ -109,6 +117,8 @@ function SqlEditor({
       host,
       value: initialValueRef.current,
       driver: initialDriverRef.current,
+      schema: initialSchemaRef.current,
+      loadSchema: initialLoaderRef.current,
       readOnly: initialReadOnlyRef.current,
       editorState: initialEditorStateRef.current,
       onChange: handleChange,
@@ -130,8 +140,8 @@ function SqlEditor({
   }, [host])
 
   useEffect(() => {
-    controllerRef.current?.setDriver(driver)
-  }, [driver])
+    controllerRef.current?.setLanguage(driver, schema, loadSchema)
+  }, [driver, schema, loadSchema])
 
   useEffect(() => {
     controllerRef.current?.setReadOnly(readOnly)

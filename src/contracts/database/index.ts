@@ -236,7 +236,11 @@ export interface DatabaseApi {
   remove(id: string): Promise<ConnResponse<void>>
   connect(configId: string): Promise<ConnResponse<void>>
   disconnect(configId: string): Promise<ConnResponse<boolean>>
-  inspect(configId: string, source?: TableSource): Promise<ConnResponse<void>>
+  inspect(
+    configId: string,
+    source?: TableSource,
+    refresh?: boolean,
+  ): Promise<ConnResponse<void>>
   openSession(configId: string, tabId: string): Promise<ConnResponse<string>>
   closeTab(tabId: string): Promise<ConnResponse<boolean>>
   cancel(requestId: string): Promise<ConnResponse<void>>

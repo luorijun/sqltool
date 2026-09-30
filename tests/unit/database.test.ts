@@ -88,6 +88,90 @@ afterEach(async () => {
 })
 
 describe("database service", () => {
+  test("structure consumers queue behind one load and use its completed cache", async () => {
+    const started = Promise.withResolvers<void>()
+    const ready = Promise.withResolvers<void>()
+    const inspect = mock(async () => {
+      started.resolve()
+      await ready.promise
+      return []
+    })
+    const connect = mock(async () => ({ ...connection().client, inspect }))
+    const { api, database } = setup({ connect })
+    const first = api.inspect("db")
+    try {
+      await started.promise
+      const second = database.forOwner(2).inspect("db")
+      const third = api.inspect("db")
+      ready.resolve()
+      for (const response of await Promise.all([first, second, third])) {
+        value(response)
+        expect(response.snapshot.connections[0].schema).toEqual([])
+      }
+      value(await api.inspect("db"))
+      expect(inspect).toHaveBeenCalledTimes(1)
+      expect(connect).toHaveBeenCalledTimes(1)
+      expect(
+        (await api.sync()).sessions.map((session) => session.kind),
+      ).toEqual(["schema"])
+    } finally {
+      ready.resolve()
+      await first
+      await database.closeOwner(2, true)
+    }
+  })
+
+  test("a queued consumer sees a refresh; targeted refresh without a cache loads the full structure", async () => {
+    const started = Promise.withResolvers<void>()
+    const ready = Promise.withResolvers<void>()
+    let reads = 0
+    const inspect = mock(async () => {
+      reads++
+      if (reads === 2) {
+        started.resolve()
+        await ready.promise
+      }
+      return [{ name: `schema_${reads}`, tables: [], views: [], functions: [] }]
+    })
+    const { api } = setup({
+      connect: async () => ({ ...connection().client, inspect }),
+    })
+    value(await api.inspect("db", { schema: "app", table: "users" }, true))
+    expect(inspect).toHaveBeenLastCalledWith(undefined)
+    const refresh = api.inspect("db", undefined, true)
+    try {
+      await started.promise
+      const consumer = api.inspect("db")
+      ready.resolve()
+      value(await refresh)
+      const response = await consumer
+      value(response)
+      expect(response.snapshot.connections[0].schema?.[0].name).toBe("schema_2")
+      expect(reads).toBe(2)
+    } finally {
+      ready.resolve()
+      await refresh
+    }
+  })
+
+  test("failed structure reads can retry and disconnect clears the shared cache", async () => {
+    let reads = 0
+    const inspect = mock(async () => {
+      if (++reads === 1) throw new Error("structure unavailable")
+      return [{ name: "app", tables: [], views: [], functions: [] }]
+    })
+    const connect = mock(async () => ({ ...connection().client, inspect }))
+    const { api } = setup({ connect })
+    expect((await api.inspect("db")).ok).toBe(false)
+    value(await api.inspect("db"))
+    expect(reads).toBe(2)
+    value(await api.disconnect("db"))
+    expect((await api.sync()).connections[0].schema).toBeNull()
+    value(await api.inspect("db"))
+    expect(reads).toBe(3)
+    expect(connect).toHaveBeenCalledTimes(2)
+  })
+
   test("concurrent window closure releases the last shared metadata connection", async () => {
     const { api, database, clients } = setup()
     value(await api.connect("db"))

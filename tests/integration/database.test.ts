@@ -145,14 +145,14 @@ describe.each(["postgres", "mysql"] as const)("%s database", (driver) => {
       await admin.query(`CREATE TABLE ${table} (id INT PRIMARY KEY)`)
       value(await api.inspect("db"))
       await admin.query(`ALTER TABLE ${table} ADD COLUMN fresh TEXT`)
-      value(await api.inspect("db", source))
+      value(await api.inspect("db", source, true))
       expect(
         (await tables())
           ?.find((entry) => entry.name === table)
           ?.columns.map((column) => column.name),
       ).toEqual(["id", "fresh"])
       await admin.query(`DROP TABLE ${table}`)
-      value(await api.inspect("db", source))
+      value(await api.inspect("db", source, true))
       expect((await tables())?.some((entry) => entry.name === table)).toBe(
         false,
       )

@@ -118,7 +118,7 @@ export default function Sidebar(props: { className?: string }) {
       !node.connection.schema &&
       !node.connection.error
     ) {
-      actions.refresh(node)
+      run(node, () => connect(node.connection.config.id))
     }
   }
   const activate = (node: TreeNode) => {

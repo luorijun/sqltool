@@ -78,8 +78,8 @@ const connApi = {
     if (!(await unwrap(window.main.conn.disconnect(id)))) return undefined
     return currentConnection(id)
   },
-  async inspect(id: string, source?: TableSource) {
-    await unwrap(window.main.conn.inspect(id, source))
+  async inspect(id: string, source?: TableSource, refresh = false) {
+    await unwrap(window.main.conn.inspect(id, source, refresh))
     return currentConnection(id)
   },
   openSession(id: string, tabId: string) {
@@ -122,11 +122,8 @@ function runAction(
   set(actionsAtom, (current) => ({ ...current, [id]: action }))
   const promise = Promise.resolve()
     .then(async () => {
-      if (action === "connect") {
-        await connApi.connect(id)
-        return connApi.inspect(id)
-      }
-      if (action === "inspect") return connApi.inspect(id, source)
+      if (action === "connect") return connApi.inspect(id)
+      if (action === "inspect") return connApi.inspect(id, source, true)
       return connApi.disconnect(id)
     })
     .finally(() => {

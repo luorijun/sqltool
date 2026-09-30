@@ -1,4 +1,3 @@
-import { MySQL, PostgreSQL, sql } from "@codemirror/lang-sql"
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import {
   closeSearchPanel,
@@ -9,17 +8,13 @@ import {
   searchPanelOpen,
   setSearchQuery,
 } from "@codemirror/search"
-import {
-  Compartment,
-  EditorSelection,
-  EditorState,
-  type Extension,
-} from "@codemirror/state"
+import { Compartment, EditorSelection, EditorState } from "@codemirror/state"
 import { EditorView } from "@codemirror/view"
 import { tags } from "@lezer/highlight"
-import { basicSetup } from "codemirror"
-import type { DbDriver } from "@/contracts/database"
+import type { DbDriver, DbSchema } from "@/contracts/database"
+import { createSqlLanguage } from "./completion"
 import { createEditorMode, externalUpdate } from "./mode"
+import { editorSetup } from "./setup"
 import type { EditorState as EditorViewState } from "./types"
 
 export interface CursorPosition {
@@ -36,6 +31,8 @@ interface CreateSqlEditorControllerOptions {
   host: HTMLDivElement
   value: string
   driver?: DbDriver
+  schema?: readonly DbSchema[]
+  loadSchema?: () => Promise<readonly DbSchema[]>
   readOnly?: boolean
   editorState: EditorViewState
   onChange?: (value: string) => void
@@ -48,7 +45,11 @@ export interface SqlEditorController {
   destroy: () => void
   focus: () => void
   openSearch: () => void
-  setDriver: (driver?: DbDriver) => void
+  setLanguage: (
+    driver?: DbDriver,
+    schema?: readonly DbSchema[],
+    loadSchema?: () => Promise<readonly DbSchema[]>,
+  ) => void
   setReadOnly: (readOnly: boolean) => void
   setValue: (value: string) => void
   syncViewState: (editorState: EditorViewState) => void
@@ -211,20 +212,29 @@ const sqlEditorTheme = EditorView.theme({
   ".cm-content ::selection": {
     backgroundColor: "color-mix(in oklab, var(--primary) 22%, transparent)",
   },
+  ".cm-tooltip-autocomplete, .cm-completionInfo": {
+    border: "1px solid var(--border)",
+    borderRadius: "6px",
+    backgroundColor: "var(--popover)",
+    color: "var(--popover-foreground)",
+    boxShadow: "0 4px 16px #0002",
+  },
+  ".cm-tooltip-autocomplete > ul > li": { padding: "3px 8px" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  ".cm-completionDetail": {
+    color: "var(--muted-foreground)",
+    marginLeft: "12px",
+    fontStyle: "normal",
+  },
+  ".cm-completionMatchedText": {
+    textDecoration: "none",
+    fontWeight: "600",
+    color: "var(--primary)",
+  },
 })
-
-function getSqlExtension(driver?: DbDriver): Extension {
-  if (!driver) {
-    return []
-  }
-
-  switch (driver) {
-    case "mysql":
-      return sql({ dialect: MySQL })
-  }
-
-  return sql({ dialect: PostgreSQL })
-}
 
 function getCursorPosition(state: EditorState): CursorPosition {
   const head = state.selection.main.head
@@ -331,6 +341,8 @@ export function createSqlEditorController(
   const mode = new Compartment()
   let readOnly = options.readOnly ?? false
   let currentDriver = options.driver
+  let currentSchema = options.schema
+  let currentLoader = options.loadSchema
   let destroyed = false
   let applyingExternalChange = false
   let syncingSnapshot = false
@@ -353,9 +365,11 @@ export function createSqlEditorController(
         ),
       ),
       extensions: [
-        basicSetup,
+        editorSetup,
         search({ top: true }),
-        language.of(getSqlExtension(options.driver)),
+        language.of(
+          createSqlLanguage(options.driver, options.schema, options.loadSchema),
+        ),
         mode.of(createEditorMode(readOnly, options)),
         sqlEditorTheme,
         syntaxHighlighting(sqlHighlightStyle),
@@ -458,14 +472,23 @@ export function createSqlEditorController(
 
       openSearchPanel(view)
     },
-    setDriver(driver) {
-      if (destroyed || Object.is(currentDriver, driver)) {
+    setLanguage(driver, schema, loadSchema) {
+      if (
+        destroyed ||
+        (currentDriver === driver &&
+          currentSchema === schema &&
+          currentLoader === loadSchema)
+      ) {
         return
       }
 
       currentDriver = driver
+      currentSchema = schema
+      currentLoader = loadSchema
       view.dispatch({
-        effects: language.reconfigure(getSqlExtension(driver)),
+        effects: language.reconfigure(
+          createSqlLanguage(driver, schema, loadSchema),
+        ),
       })
     },
     setReadOnly(nextReadOnly) {

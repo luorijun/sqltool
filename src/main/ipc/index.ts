@@ -48,8 +48,9 @@ export function registerIpc(database: Database): void {
   handle(db.DISCONNECT, z.tuple([id]), (owner, id) => api(owner).disconnect(id))
   handle(
     db.INSPECT,
-    z.tuple([id, tableSource.optional()]),
-    (owner, id, source = undefined) => api(owner).inspect(id, source),
+    z.tuple([id, tableSource.optional(), z.boolean().optional()]),
+    (owner, id, source = undefined, refresh = false) =>
+      api(owner).inspect(id, source, refresh),
   )
   handle(db.OPEN_SESSION, z.tuple([id, id]), (owner, id, tabId) =>
     api(owner).openSession(id, tabId),

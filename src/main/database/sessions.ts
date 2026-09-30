@@ -367,9 +367,10 @@ export class Sessions {
     configId: string,
     owner: number,
     source?: TableSource,
+    refresh = false,
   ): Promise<void> {
     this.check(configId, owner)
-    await this.metadata.inspect(configId, source)
+    await this.metadata.inspect(configId, source, refresh)
   }
   cancel(id: string, owner: number) {
     const pending = this.enrichment.get(id)

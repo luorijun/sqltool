@@ -30,7 +30,6 @@ export class Metadata {
   private epochs = new Map<string, object>()
   private types = new Map<string, TypeCache>()
   private charsets = new Map<string, CharsetCache>()
-  private inspections = new Map<string, Map<string, Promise<void>>>()
 
   constructor(
     private read: Read,
@@ -50,41 +49,32 @@ export class Metadata {
     this.epochs.set(id, {})
     this.types.delete(id)
     this.charsets.delete(id)
-    this.inspections.delete(id)
   }
 
-  inspect(id: string, source?: TableSource): Promise<void> {
-    let pending = this.inspections.get(id)
-    if (!pending) {
-      pending = new Map()
-      this.inspections.set(id, pending)
-    }
-    const key = JSON.stringify(source ?? null)
-    const existing = pending.get(key)
-    if (existing) return existing
+  inspect(id: string, source?: TableSource, refresh = false): Promise<void> {
     const epoch = this.epoch(id)
-    this.types.delete(id)
-    this.charsets.delete(id)
-    const request = this.read(id, (client) => client.inspect(source))
-      .then((schemas) => {
-        if (this.epoch(id) !== epoch) return
-        if (source) this.setTable(id, source, schemas)
-        else this.setSchema(id, schemas)
-        this.clearError(id)
-      })
-      .catch((error) => {
-        if (this.epoch(id) === epoch)
-          this.setError(
-            id,
-            error instanceof Error ? error.message : String(error),
-          )
-        throw error
-      })
-      .finally(() => {
-        if (pending.get(key) === request) pending.delete(key)
-      })
-    pending.set(key, request)
-    return request
+    // The metadata session serializes reads. Check and commit inside that lane
+    // so the next request sees the completed cache, including an empty schema.
+    return this.read(id, async (client) => {
+      if (this.epoch(id) !== epoch) return
+      const cached = this.schemas.has(id)
+      if (cached && !refresh) return
+      this.types.delete(id)
+      this.charsets.delete(id)
+      const target = cached ? source : undefined
+      const schemas = await client.inspect(target)
+      if (this.epoch(id) !== epoch) return
+      if (target) this.setTable(id, target, schemas)
+      else this.setSchema(id, schemas)
+      this.clearError(id)
+    }).catch((error) => {
+      if (this.epoch(id) === epoch)
+        this.setError(
+          id,
+          error instanceof Error ? error.message : String(error),
+        )
+      throw error
+    })
   }
 
   async complete(

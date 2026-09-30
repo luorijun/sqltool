@@ -173,7 +173,7 @@ test("PostgreSQL resolves catalog names, modifiers and user-defined types throug
     await env.admin.query(
       `ALTER TYPE public."${name}" RENAME TO "${name}_renamed"`,
     )
-    value(await env.api.inspect("db"))
+    value(await env.api.inspect("db", undefined, true))
     const renamed = value(
       await env.api.query(
         session,

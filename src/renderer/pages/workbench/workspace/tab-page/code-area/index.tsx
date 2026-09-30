@@ -1,6 +1,6 @@
 import { useAtomValue, useSetAtom } from "jotai"
 import { AlignLeft, Play, RefreshCw, Search, Square } from "lucide-react"
-import { useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import type { SqlLanguage } from "sql-formatter"
 import { format as formatSql } from "sql-formatter"
@@ -12,6 +12,7 @@ import {
 } from "@/renderer/components/sql-editor"
 import { Button } from "@/renderer/components/ui/button"
 import { AreaToolbar } from "@/renderer/components/ui/panel-bar"
+import database, { connectionEntriesAtom } from "@/renderer/modules/database"
 import {
   activeQueryTabAtom,
   activeQueryTabConfigAtom,
@@ -59,11 +60,33 @@ function isSameEditorState(left: EditorState, right: EditorState): boolean {
 export default function CoreArea() {
   const tabId = useAtomValue(activeTabIdAtom)
   const config = useAtomValue(activeQueryTabConfigAtom)
+  const connections = useAtomValue(connectionEntriesAtom)
+  const connection = connections?.find(
+    (entry) => entry.config.id === config?.id,
+  )
   const tab = useAtomValue(activeQueryTabAtom)
   const session = useAtomValue(activeSessionAtom)
   const cancel = useSetAtom(cancelActiveQueryAtom)
   const rebuild = useSetAtom(rebuildActiveSessionAtom)
   const bind = useSetAtom(bindQueryConfigAtom)
+  const configId = config?.id
+  const loadSchema = useCallback(async () => {
+    if (!configId) return []
+    return (await database.inspect(configId)).schema ?? []
+  }, [configId])
+  useEffect(() => {
+    if (!configId) return
+    let active = true
+    void database.inspect(configId).catch((error) => {
+      if (active)
+        toast.error(
+          `无法加载 SQL 提示所需的数据库结构：${error instanceof Error ? error.message : "加载失败"}`,
+        )
+    })
+    return () => {
+      active = false
+    }
+  }, [configId])
   const failed =
     !!tab?.sessionId &&
     (!session || session.status === "failed" || session.status === "closed")
@@ -82,6 +105,11 @@ export default function CoreArea() {
   }
 
   const runSql = useSetAtom(runActiveQueryTabSqlAtom)
+  const canRun =
+    !!config && state.status !== "running" && !tab?.closing && !failed
+  const handleRun = () => {
+    if (canRun) void runSql()
+  }
 
   const editorRef = useRef<SqlEditorHandle | null>(null)
 
@@ -151,11 +179,10 @@ export default function CoreArea() {
             variant="default"
             size="xs"
             className="gap-1.5"
-            onClick={() => runSql()}
-            disabled={
-              !config || state.status === "running" || tab?.closing || failed
-            }
-            title="运行 SQL (Ctrl/Cmd + Enter)"
+            onClick={handleRun}
+            disabled={!canRun}
+            title="运行 SQL (F5)"
+            aria-keyshortcuts="F5"
           >
             <Play className="size-3" />
             运行
@@ -226,10 +253,12 @@ export default function CoreArea() {
           autoFocus
           value={state.text}
           driver={config?.driver}
+          schema={connection?.schema ?? undefined}
+          loadSchema={configId ? loadSchema : undefined}
           editorState={state}
           onChange={(text) => setState((current) => ({ ...current, text }))}
           onEditorStateChange={handleEditorStateChange}
-          onRun={() => runSql()}
+          onRun={handleRun}
           onFormat={handleFormat}
         />
       </div>

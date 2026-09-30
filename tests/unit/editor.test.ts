@@ -76,12 +76,11 @@ describe("SQL editor read-only mode", () => {
     expect(state.doc.toString()).toBe("SELECT 1")
   })
 
-  test("only editable mode registers run and format shortcuts", () => {
-    let runs = 0
+  test("only editable mode registers formatting, with Enter reserved for editing", () => {
     let formats = 0
     const actions = {
       onRun: () => {
-        runs++
+        throw new Error("Editing must not run SQL")
       },
       onFormat: () => {
         formats++
@@ -90,7 +89,7 @@ describe("SQL editor read-only mode", () => {
     const readonly = EditorState.create({
       extensions: [createEditorMode(true, actions)],
     })
-    const shortcuts = ["Mod-Enter", "Shift-Alt-f"]
+    const shortcuts = ["Shift-Alt-f"]
     expect(
       readonly
         .facet(keymap)
@@ -104,7 +103,6 @@ describe("SQL editor read-only mode", () => {
     expect(bindings.map((binding) => binding.key)).toEqual(shortcuts)
     for (const key of shortcuts)
       bindings.find((binding) => binding.key === key)?.run?.({} as EditorView)
-    expect(runs).toBe(1)
     expect(formats).toBe(1)
     const noActions = EditorState.create({
       extensions: [createEditorMode(false, {})],

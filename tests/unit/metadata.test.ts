@@ -281,23 +281,22 @@ describe("metadata", () => {
     )
   })
 
-  test("structure reads are shared and disconnected responses cannot restore old schemas", async () => {
+  test("disconnected responses cannot restore old schemas", async () => {
     const { metadata, client } = setup()
     const pending =
       Promise.withResolvers<Awaited<ReturnType<ConnectionSession["inspect"]>>>()
     const inspect = mock(() => pending.promise)
     client.inspect = inspect
     const first = metadata.inspect("a")
-    const second = metadata.inspect("a")
     try {
       expect(inspect).toHaveBeenCalledTimes(1)
       metadata.disconnected("a")
       pending.resolve([{ name: "stale", tables: [], views: [], functions: [] }])
-      await Promise.all([first, second])
+      await first
       expect(metadata.snapshot("a").schema).toBeNull()
     } finally {
       pending.resolve([])
-      await Promise.all([first, second])
+      await first
     }
   })
 

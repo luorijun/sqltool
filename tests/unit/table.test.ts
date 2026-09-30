@@ -54,7 +54,7 @@ describe("result table migration", () => {
       }),
     )
     const body = html.slice(html.indexOf("<tbody>"))
-    expect(html).toContain("排序：Amount ↑")
+    expect(html).toContain("排序：Amount↑")
     expect(body.indexOf('title="two"')).toBeGreaterThan(
       body.indexOf('title="ten"'),
     )

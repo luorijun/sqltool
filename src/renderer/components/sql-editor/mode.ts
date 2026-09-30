@@ -15,6 +15,23 @@ export function createEditorMode(
       "aria-readonly": String(readOnly),
       ...(readOnly ? { tabindex: "0" } : {}),
     }),
+    EditorView.domEventHandlers({
+      keydown(event, view) {
+        if (
+          event.key !== "F5" ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.altKey ||
+          event.shiftKey
+        )
+          return false
+        if (!readOnly && view.hasFocus && !event.repeat && !event.isComposing)
+          actions.onRun?.()
+        // Suppress the browser reload even when execution is unavailable.
+        event.preventDefault()
+        return true
+      },
+    }),
     readOnly
       ? EditorState.transactionFilter.of((transaction) =>
           transaction.docChanged && !transaction.annotation(externalUpdate)
@@ -22,17 +39,6 @@ export function createEditorMode(
             : transaction,
         )
       : keymap.of([
-          ...(actions.onRun
-            ? [
-                {
-                  key: "Mod-Enter",
-                  run: () => {
-                    actions.onRun?.()
-                    return true
-                  },
-                },
-              ]
-            : []),
           ...(actions.onFormat
             ? [
                 {

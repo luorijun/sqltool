@@ -55,13 +55,9 @@ describe("database client", () => {
   test("connecting coalesces duplicate requests and rejects conflicting actions", async () => {
     const ready = Promise.withResolvers<void>()
     const calls: string[] = []
-    env.bridge.connect = async () => {
-      calls.push("connect")
-      await ready.promise
-      return env.ok(undefined)
-    }
     env.bridge.inspect = async () => {
       calls.push("inspect")
+      await ready.promise
       return env.ok(undefined)
     }
     const first = store.set(connectConnectionAtom, "db")
@@ -73,7 +69,7 @@ describe("database client", () => {
       )
       ready.resolve()
       await Promise.all([first, second])
-      expect(calls).toEqual(["connect", "inspect"])
+      expect(calls).toEqual(["inspect"])
       expect(store.get(connectionActionAtom).db).toBeUndefined()
     } finally {
       ready.resolve()
@@ -81,22 +77,16 @@ describe("database client", () => {
     }
   })
 
-  test("failed connection releases the action and never requests structure", async () => {
-    env.bridge.connect = async () => {
-      throw new Error("connect failed")
-    }
-    let inspected = false
+  test("failed structure acquisition releases the action and can be retried", async () => {
     env.bridge.inspect = async () => {
-      inspected = true
-      return env.ok(undefined)
+      throw new Error("connect failed")
     }
     await expect(store.set(connectConnectionAtom, "db")).rejects.toThrow(
       "connect failed",
     )
-    expect(inspected).toBe(false)
     expect(store.get(connectionActionAtom).db).toBeUndefined()
-    env.bridge.connect = async () => env.ok(undefined)
+    env.bridge.inspect = async () => env.ok(undefined)
     await store.set(connectConnectionAtom, "db")
-    expect(inspected).toBe(true)
+    expect(store.get(connectionActionAtom).db).toBeUndefined()
   })
 })
