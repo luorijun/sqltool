@@ -6,9 +6,5 @@
     "lib": ["ESNext"],
     "types": ["node"]
   },
-  "include": [
-    "src/main/**/*.ts",
-    "src/preload/**/*.ts",
-    "src/contracts/**/*.ts"
-  ]
+  "include": ["src/main/**/*.ts", "src/preload/**/*.ts", "src/core/**/*.ts"]
 }

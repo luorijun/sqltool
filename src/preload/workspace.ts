@@ -1,13 +1,13 @@
-import { ipcRenderer } from "electron"
-import {
-  LOAD_WORKSPACE,
-  SAVE_WORKSPACE,
-  type WorkspaceApi,
-} from "@/contracts/workspace"
+import type { WorkspaceSnapshot } from "@/core/workspace"
+import type { Invoke } from "./invoke"
 
-const workspace: WorkspaceApi = {
-  load: () => ipcRenderer.invoke(LOAD_WORKSPACE),
-  save: (snapshot) => ipcRenderer.invoke(SAVE_WORKSPACE, snapshot),
+export const LOAD_WORKSPACE = "workspace:load"
+export const SAVE_WORKSPACE = "workspace:save"
+
+export function createWorkspaceBridge(invoke: Invoke) {
+  return {
+    load: () => invoke<WorkspaceSnapshot | null>(LOAD_WORKSPACE),
+    save: (snapshot: WorkspaceSnapshot) =>
+      invoke<void>(SAVE_WORKSPACE, snapshot),
+  }
 }
-
-export default workspace

@@ -1,4 +1,4 @@
-import type { SaveTextFileOptions } from "@/contracts/system"
+import type { SaveTextFileOptions } from "@/preload/bridge"
 
 const system = {
   writeClipboardText(text: string): Promise<void> {

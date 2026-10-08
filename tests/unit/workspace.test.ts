@@ -2,11 +2,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { getDefaultStore } from "jotai"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import type {
-  ConnResponse,
-  QueryResult,
-  SelectResult,
-} from "../../src/contracts/database"
+import type { QueryResult, SelectResult } from "../../src/core/database"
+import type { ConnResponse } from "../../src/preload/bridge"
+import ViewTableArea from "../../src/renderer/app/workspace/tab-page/table-area/view"
 import client, {
   snapshotAtom,
 } from "../../src/renderer/modules/database/client"
@@ -40,7 +38,6 @@ import {
   updateQueryLayoutAtom,
   updateViewLayoutAtom,
 } from "../../src/renderer/modules/workspace"
-import ViewTableArea from "../../src/renderer/pages/workbench/workspace/tab-page/table-area/view"
 import { config, renderer } from "../support/renderer"
 
 const store = getDefaultStore()
@@ -735,7 +732,7 @@ describe("table workspace", () => {
     "multi-column priority is sent once and compiled in order (%s)",
     async (driver) => {
       const { compileSelectQuery } = await import(
-        "../../src/main/database/query"
+        "../../src/main/sessions/query"
       )
       const data: QueryResult = {
         columns: [

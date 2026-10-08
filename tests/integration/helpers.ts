@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto"
-import type {
-  Config,
-  ConnResponse,
-  DatabaseApi,
-  DbDriver,
-} from "../../src/contracts/database"
-import { connectDriver, createDatabase } from "../../src/main/database"
-import type { Confirm, ConnectionSession } from "../../src/main/database/ports"
+import type { Config, DbDriver } from "../../src/core/database"
+import type { ConnectionSession } from "../../src/main/drivers"
+import { connectDriver } from "../../src/main/drivers"
+import type { Confirm } from "../../src/main/sessions"
+import type { ConnResponse, DatabaseApi } from "../../src/preload/bridge"
+import { createDatabase } from "../support/database"
 
 export function profile(driver: DbDriver): Config {
   return {

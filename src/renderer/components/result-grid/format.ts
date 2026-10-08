@@ -1,4 +1,4 @@
-import type { DbDriver, QueryResultColumn } from "@/contracts/database"
+import type { DbDriver, QueryResultColumn } from "@/core/database"
 
 export function getTypeLabel(type: string, driver?: DbDriver): string {
   const label = type.trim()

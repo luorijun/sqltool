@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Tasks } from "../../src/main/database/tasks"
+import { Tasks } from "../../src/main/sessions/tasks"
 
 describe("task scheduling", () => {
   test("cancelling a queued task never executes it or blocks another session", async () => {

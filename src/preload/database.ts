@@ -1,62 +1,68 @@
-import { ipcRenderer } from "electron"
 import type {
+  Config,
+  ConfigDraft,
   ConfigProfile,
-  CreateConfig,
-  DatabaseApi,
+  ConnSnapshot,
+  FailureKind,
+  QueryResult,
   SelectQuery,
+  SelectResult,
   TableSource,
-  UpdateConfig,
-} from "@/contracts/database"
-import {
-  CANCEL,
-  CLOSE_TAB,
-  CREATE,
-  DISCONNECT,
-  INSPECT,
-  OPEN_SESSION,
-  QUERY,
-  REMOVE,
-  SELECT,
-  SYNC,
-  TEST,
-  UPDATE,
-} from "@/contracts/database"
+} from "@/core/database"
+import type { Invoke } from "./invoke"
 
-const conn: DatabaseApi = {
-  test: (profile: ConfigProfile) => {
-    return ipcRenderer.invoke(TEST, profile)
-  },
-  create: (input: CreateConfig) => {
-    return ipcRenderer.invoke(CREATE, input)
-  },
-  update: (id: string, input: UpdateConfig) => {
-    return ipcRenderer.invoke(UPDATE, id, input)
-  },
-  remove: (id: string) => {
-    return ipcRenderer.invoke(REMOVE, id)
-  },
-  disconnect: (configId: string) => {
-    return ipcRenderer.invoke(DISCONNECT, configId)
-  },
-  inspect: (configId: string, source?: TableSource, refresh = false) => {
-    return ipcRenderer.invoke(INSPECT, configId, source, refresh)
-  },
-  sync: () => ipcRenderer.invoke(SYNC),
-  openSession: (configId: string, tabId: string) =>
-    ipcRenderer.invoke(OPEN_SESSION, configId, tabId),
-  closeTab: (tabId: string) => ipcRenderer.invoke(CLOSE_TAB, tabId),
-  cancel: (requestId: string) => ipcRenderer.invoke(CANCEL, requestId),
-  query: (sessionId: string, requestId: string, sql: string) => {
-    return ipcRenderer.invoke(QUERY, sessionId, requestId, sql)
-  },
-  select: (
-    configId: string,
-    tabId: string,
-    requestId: string,
-    query: SelectQuery,
-  ) => {
-    return ipcRenderer.invoke(SELECT, configId, tabId, requestId, query)
-  },
+export const TEST = "conn:test"
+export const CREATE = "conn:create"
+export const UPDATE = "conn:update"
+export const REMOVE = "conn:remove"
+export const DISCONNECT = "conn:disconnect"
+export const INSPECT = "conn:inspect"
+export const QUERY = "conn:query"
+export const SELECT = "conn:select"
+export const OPEN_SESSION = "conn:open-session"
+export const CLOSE_TAB = "conn:close-tab"
+export const CANCEL = "conn:cancel"
+export const SYNC = "conn:sync"
+
+export type CreateConfig = ConfigDraft
+export type UpdateConfig = Partial<ConfigDraft>
+export type ConnResponse<T> = {
+  snapshot: ConnSnapshot
+} & ({ ok: true; value: T } | { ok: false; error: string; kind: FailureKind })
+
+export function createDatabaseBridge(invoke: Invoke) {
+  return {
+    test: (profile: ConfigProfile) => invoke<void>(TEST, profile),
+    sync: () => invoke<ConnSnapshot>(SYNC),
+    create: (input: CreateConfig) =>
+      invoke<ConnResponse<Config>>(CREATE, input),
+    update: (id: string, input: UpdateConfig) =>
+      invoke<ConnResponse<Config>>(UPDATE, id, input),
+    remove: (id: string) => invoke<ConnResponse<void>>(REMOVE, id),
+    disconnect: (configId: string) =>
+      invoke<ConnResponse<boolean>>(DISCONNECT, configId),
+    inspect: (configId: string, source?: TableSource, refresh = false) =>
+      invoke<ConnResponse<void>>(INSPECT, configId, source, refresh),
+    openSession: (configId: string, tabId: string) =>
+      invoke<ConnResponse<string>>(OPEN_SESSION, configId, tabId),
+    closeTab: (tabId: string) =>
+      invoke<ConnResponse<boolean>>(CLOSE_TAB, tabId),
+    cancel: (requestId: string) =>
+      invoke<ConnResponse<void>>(CANCEL, requestId),
+    query: (sessionId: string, requestId: string, sql: string) =>
+      invoke<ConnResponse<QueryResult>>(QUERY, sessionId, requestId, sql),
+    select: (
+      configId: string,
+      tabId: string,
+      requestId: string,
+      query: SelectQuery,
+    ) =>
+      invoke<ConnResponse<SelectResult>>(
+        SELECT,
+        configId,
+        tabId,
+        requestId,
+        query,
+      ),
+  }
 }
-
-export default conn

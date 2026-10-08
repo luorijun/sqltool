@@ -13,7 +13,7 @@ import {
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language"
 import type { EditorState, Extension } from "@codemirror/state"
 import type { SyntaxNode } from "@lezer/common"
-import type { DbColumn, DbDriver, DbSchema } from "@/contracts/database"
+import type { DbColumn, DbDriver, DbSchema } from "@/core/database"
 
 interface Name {
   text: string

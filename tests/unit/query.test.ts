@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { compileSelectQuery } from "../../src/main/database/query"
+import { compileSelectQuery } from "../../src/main/sessions/query"
 
 describe.each(["postgres", "mysql"] as const)(
   "%s query compilation",

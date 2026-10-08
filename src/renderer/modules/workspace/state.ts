@@ -1,5 +1,5 @@
 import { atom } from "jotai"
-import type { Config, QueryResult } from "@/contracts/database"
+import type { Config, QueryResult } from "@/core/database"
 import { connectionsAtom, sessionsAtom } from "@/renderer/modules/database"
 import type {
   CodeView,

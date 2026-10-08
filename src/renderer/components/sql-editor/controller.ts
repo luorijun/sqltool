@@ -11,7 +11,7 @@ import {
 import { Compartment, EditorSelection, EditorState } from "@codemirror/state"
 import { EditorView } from "@codemirror/view"
 import { tags } from "@lezer/highlight"
-import type { DbDriver, DbSchema } from "@/contracts/database"
+import type { DbDriver, DbSchema } from "@/core/database"
 import { createSqlLanguage } from "./completion"
 import { createEditorMode, externalUpdate } from "./mode"
 import { editorSetup } from "./setup"

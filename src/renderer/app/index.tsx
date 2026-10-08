@@ -10,7 +10,7 @@ import {
   restoreWorkspace,
   startWorkspaceSaving,
 } from "@/renderer/modules/workspace"
-import Workbench from "@/renderer/pages/workbench"
+import Layout from "./layout"
 
 function syncConnections() {
   void database
@@ -49,7 +49,7 @@ function App() {
       window.removeEventListener("focus", syncConnections)
     }
   }, [])
-  return ready ? <Workbench /> : null
+  return ready ? <Layout /> : null
 }
 
 const root = document.getElementById("root")

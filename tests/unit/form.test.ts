@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { createFormControl } from "react-hook-form"
-import { schema } from "../../src/renderer/pages/workbench/sidebar/dialog"
+import { schema } from "../../src/renderer/app/sidebar/dialog"
 
 test("connection form validates nested SSH fields and clears errors after reset", async () => {
   const defaults = {

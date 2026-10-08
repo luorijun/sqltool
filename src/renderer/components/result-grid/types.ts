@@ -1,6 +1,6 @@
 import type { Column, ColumnDef, ReactTable } from "@tanstack/react-table"
-import type { QueryResultColumn } from "@/contracts/database"
-import type { SaveTextFileOptions } from "@/contracts/system"
+import type { QueryResultColumn } from "@/core/database"
+import type { SaveTextFileOptions } from "@/preload/bridge"
 import type { features } from "./features"
 import type { GridSelection } from "./selection"
 export interface ResultTableState extends ResultLayout {

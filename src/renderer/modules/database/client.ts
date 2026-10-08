@@ -2,14 +2,12 @@ import { atom, getDefaultStore } from "jotai"
 import type { Setter } from "jotai/vanilla"
 import type {
   ConfigProfile,
-  ConnResponse,
   ConnSnapshot,
-  CreateConfig,
   FailureKind,
   SelectQuery,
   TableSource,
-  UpdateConfig,
-} from "@/contracts/database"
+} from "@/core/database"
+import type { ConnResponse, CreateConfig, UpdateConfig } from "@/preload/bridge"
 
 type ConnectionAction = "connect" | "disconnect" | "refresh"
 const connSnapshotAtom = atom<ConnSnapshot | null>(null as ConnSnapshot | null)

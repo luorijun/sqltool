@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import type { Connection } from "../../src/contracts/database"
-import { getColumnTypeLabel } from "../../src/renderer/components/result-grid/format"
+import type { Connection } from "../../src/core/database"
 import {
   buildTree,
   canRefresh,
   nodeKey,
   selectedNode,
   visibleNodes,
-} from "../../src/renderer/pages/workbench/sidebar/tree"
+} from "../../src/renderer/app/sidebar/tree"
+import { getColumnTypeLabel } from "../../src/renderer/components/result-grid/format"
 
 const connection: Connection = {
   config: {

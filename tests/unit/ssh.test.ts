@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { SSHConfig } from "ssh-config"
-import { readExpandedSshConfig } from "../../src/main/database/drivers/ssh"
+import { readExpandedSshConfig } from "../../src/main/drivers/ssh"
 
 test("SSH includes preserve quoted paths, multiple files and nested includes", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "sqltool-ssh-"))

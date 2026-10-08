@@ -17,7 +17,7 @@ import {
   useState,
 } from "react"
 import { cn } from "tailwind-variants"
-import type { QueryResultColumn } from "@/contracts/database"
+import type { QueryResultColumn } from "@/core/database"
 import { Button } from "@/renderer/components/ui/button"
 import { AreaStatusBar, AreaToolbar } from "@/renderer/components/ui/panel-bar"
 import { EmptyState } from "./empty"

@@ -4,7 +4,7 @@ import {
   type CompletionSource,
 } from "@codemirror/autocomplete"
 import { Compartment, EditorState } from "@codemirror/state"
-import type { DbDriver, DbSchema } from "../../src/contracts/database"
+import type { DbDriver, DbSchema } from "../../src/core/database"
 import { createSqlLanguage } from "../../src/renderer/components/sql-editor/completion"
 
 const schemas: DbSchema[] = [

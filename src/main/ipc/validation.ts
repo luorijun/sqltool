@@ -1,13 +1,12 @@
 import { z } from "zod"
 import type {
   ConfigProfile,
-  CreateConfig,
   SelectCondition,
   SelectQuery,
   TableSource,
-  UpdateConfig,
-} from "@/contracts/database"
-import type { WorkspaceSnapshot } from "@/contracts/workspace"
+} from "@/core/database"
+import type { WorkspaceSnapshot } from "@/core/workspace"
+import type { CreateConfig, UpdateConfig } from "@/preload/bridge"
 
 export const id = z.string().min(1)
 export const text = z.string()

@@ -1,8 +1,8 @@
 import type { SortingState } from "@tanstack/react-table"
 import { act, useState } from "react"
 import { createRoot } from "react-dom/client"
+import { Paging } from "../../src/renderer/app/workspace/tab-page/table-area/paging"
 import { ResultTable } from "../../src/renderer/components/result-grid/table"
-import { Paging } from "../../src/renderer/pages/workbench/workspace/tab-page/table-area/paging"
 
 declare global {
   interface Window {

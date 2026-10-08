@@ -1,4 +1,4 @@
-import type { QueryResultColumn, SelectOrderBy } from "@/contracts/database"
+import type { QueryResultColumn, SelectOrderBy } from "@/core/database"
 
 export type TabKind = "query" | "view"
 

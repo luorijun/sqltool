@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { randomUUID } from "node:crypto"
-import { connectDriver } from "../../src/main/database"
-import type { Confirm, ConfirmKind } from "../../src/main/database/ports"
+import { connectDriver } from "../../src/main/drivers"
+import type { Confirm, ConfirmKind } from "../../src/main/sessions"
 import {
   pid,
   profile,

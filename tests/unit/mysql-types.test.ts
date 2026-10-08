@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
+import type { MySqlTypeRef } from "../../src/main/drivers"
 import {
   needsMySqlCharset,
   resolveMySqlType,
-} from "../../src/main/database/drivers/mysql-types"
-import type { MySqlTypeRef } from "../../src/main/database/ports"
+} from "../../src/main/drivers/mysql-types"
 
 const field = (input: Partial<MySqlTypeRef>): MySqlTypeRef => ({
   driver: "mysql",

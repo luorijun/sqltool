@@ -1,5 +1,5 @@
 import { atom, getDefaultStore } from "jotai"
-import type { WorkspaceSnapshot } from "@/contracts/workspace"
+import type { WorkspaceSnapshot } from "@/core/workspace"
 import database from "@/renderer/modules/database"
 import {
   activeIdAtom,

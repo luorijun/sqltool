@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react"
-import type { DbDriver, DbSchema } from "@/contracts/database"
+import type { DbDriver, DbSchema } from "@/core/database"
 import {
   type Controller,
   type CursorPosition,

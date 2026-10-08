@@ -1,11 +1,11 @@
 import { describe, expect, mock, test } from "bun:test"
-import { Metadata } from "../../src/main/database/metadata"
 import type {
   ColumnType,
   ConnectionSession,
   DriverResult,
   MySqlTypeRef,
-} from "../../src/main/database/ports"
+} from "../../src/main/drivers"
+import { Metadata } from "../../src/main/metadata/metadata"
 
 function result(oid = 869, modifier = -1): DriverResult {
   return {

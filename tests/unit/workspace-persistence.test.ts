@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { getDefaultStore } from "jotai"
-import type { WorkspaceSnapshot } from "../../src/contracts/workspace"
+import type { WorkspaceSnapshot } from "../../src/core/workspace"
 import { workspaceSnapshot } from "../../src/main/ipc/validation"
 import client, {
   snapshotAtom,

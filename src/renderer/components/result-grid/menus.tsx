@@ -8,7 +8,7 @@ import {
   Pin,
 } from "lucide-react"
 import { useRef } from "react"
-import type { QueryResultColumn } from "@/contracts/database"
+import type { QueryResultColumn } from "@/core/database"
 import { Button } from "@/renderer/components/ui/button"
 import {
   DropdownMenu,

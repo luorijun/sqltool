@@ -21,12 +21,12 @@ SqlTool 是一个面向开发者的本地桌面数据库客户端，定位接近
 
 ### 目录导读
 
-- `src/contracts`：跨进程请求、结果、快照、API 签名和通道；不依赖任一运行端的实现。
+- `src/core`：必要的数据库模型、状态、领域错误和工作区持久化格式；不依赖任一运行端的实现。
 - `src/main/app`：启动、窗口、存储与确认能力的组装，以及退出清理。
-- `src/main/database`：连接配置、会话、任务、结构缓存、查询编译与驱动；`main/ipc` 负责参数校验和调用者身份，`main/system` 负责文件及剪贴板能力。
-- `src/preload`：只按契约暴露明确的调用方法。
-- `src/renderer/app`：应用挂载、初始化、全局同步和样式。
-- `src/renderer/pages/workbench`：工作台页面，组织侧边栏、编辑区、数据浏览和反馈。
+- `src/main/connections`：连接配置、变更检查与汇总快照；`sessions` 负责真实会话、执行、取消和关闭；`metadata` 负责结构与类型缓存；`drivers` 实现数据库及 SSH 访问。
+- `src/main/ipc`：参数校验、调用者身份、请求适配与响应包装；`workspace` 负责快照存取，`system` 负责文件及剪贴板能力。
+- `src/preload`：就地定义桥接方法、通道与输入输出，API 类型从方法推导；只有 `index.ts` 接入 Electron，`bridge.ts` 是纯公共入口。
+- `src/renderer/app`：应用挂载、初始化、全局同步、布局和样式，内部组织侧边栏、编辑区、数据浏览和反馈。
 - `src/renderer/modules`：数据库快照缓存、工作区状态与命令，以及系统客户端。
 - `src/renderer/components`：通过参数与回调接入的编辑器、结果表格、运行日志和基础 UI。
 - `src/renderer/app/global.css`：Tailwind v4 主题变量和全局样式。
@@ -35,7 +35,7 @@ SqlTool 是一个面向开发者的本地桌面数据库客户端，定位接近
 
 ### 包边界
 
-完整规则见 [架构约定](docs/architecture.md)。先按运行环境隔离，再按业务职责分包。跨包使用 `@/`（映射到 `src/`），仅访问公共 `index.ts` / `index.tsx`，基础 UI 可以使用 `ui/button` 等子入口；包内通过相对路径引用具体文件，不反向导入自身入口。路径映射统一维护在 `tsconfig.json`。禁止跨进程实现依赖和循环依赖，包括类型依赖。
+完整规则见 [架构约定](docs/architecture.md)。先按运行环境隔离，再按业务职责分包。跨包使用 `@/`（映射到 `src/`），仅访问公共 `index.ts` / `index.tsx`，`core/database`、`core/workspace` 为单文件入口，`preload/bridge` 为纯桥接入口，基础 UI 可以使用 `ui/button` 等子入口；包内通过相对路径引用具体文件，不反向导入自身入口。路径映射统一维护在 `tsconfig.json`。禁止跨进程实现依赖和循环依赖，包括类型依赖；仅允许 `main/ipc` 使用纯 `preload/bridge` 定义，以及 renderer 引用其中的类型。
 
 数据库服务通过接口接收驱动、配置存储和确认能力，应用入口负责组装。工作区按标签页标识拥有查询、分页、结果和日志状态；外部通过公开命令更新状态。展示组件定义自身的参数类型，不依赖工作区状态类型。
 

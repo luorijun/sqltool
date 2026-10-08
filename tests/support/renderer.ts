@@ -1,10 +1,9 @@
+import type { Config, ConnSnapshot } from "../../src/core/database"
 import type {
-  Config,
   ConnResponse,
-  ConnSnapshot,
   DatabaseApi,
-} from "../../src/contracts/database"
-import type { WorkspaceApi } from "../../src/contracts/workspace"
+  WorkspaceApi,
+} from "../../src/preload/bridge"
 
 export const config: Config = {
   id: "db",

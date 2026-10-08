@@ -1,4 +1,4 @@
-import type { MainBridge } from "@/contracts/bridge"
+import type { MainBridge } from "@/preload/bridge"
 
 declare global {
   interface Window {

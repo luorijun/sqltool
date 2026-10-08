@@ -1,17 +1,14 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
-import type {
-  Config,
-  ConnResponse,
-  QueryResult,
-} from "../../src/contracts/database"
-import { createDatabase } from "../../src/main/database"
+import type { Config, QueryResult } from "../../src/core/database"
 import type {
   ColumnType,
-  Confirm,
   ConnectionSession,
-  DatabaseOptions,
   DriverResult,
-} from "../../src/main/database/ports"
+} from "../../src/main/drivers"
+import type { Confirm } from "../../src/main/sessions"
+import type { ConnResponse } from "../../src/preload/bridge"
+import type { DatabaseOptions } from "../support/database"
+import { createDatabase } from "../support/database"
 
 const config: Config = {
   id: "db",
