@@ -22,11 +22,6 @@ export interface CursorPosition {
   col: number
 }
 
-export interface EditorSelectionStats {
-  selectedChars: number
-  selectedLines: number
-}
-
 interface CreateSqlEditorControllerOptions {
   host: HTMLDivElement
   value: string
@@ -265,32 +260,6 @@ function clampSelection(
   return {
     anchor: Math.min(Math.max(selection.anchor, 0), length),
     head: Math.min(Math.max(selection.head, 0), length),
-  }
-}
-
-export function getSelectionStats(state: EditorState): EditorSelectionStats {
-  let selectedChars = 0
-  const selectedLines = new Set<number>()
-
-  for (const range of state.selection.ranges) {
-    if (range.empty) {
-      continue
-    }
-
-    selectedChars += Math.abs(range.to - range.from)
-
-    const firstLine = state.doc.lineAt(range.from).number
-    const lastPos = Math.max(range.to - 1, range.from)
-    const lastLine = state.doc.lineAt(lastPos).number
-
-    for (let line = firstLine; line <= lastLine; line += 1) {
-      selectedLines.add(line)
-    }
-  }
-
-  return {
-    selectedChars,
-    selectedLines: selectedLines.size,
   }
 }
 

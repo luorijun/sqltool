@@ -2,7 +2,6 @@ export const TEST = "conn:test"
 export const CREATE = "conn:create"
 export const UPDATE = "conn:update"
 export const REMOVE = "conn:remove"
-export const CONNECT = "conn:connect"
 export const DISCONNECT = "conn:disconnect"
 export const INSPECT = "conn:inspect"
 export const QUERY = "conn:query"
@@ -234,7 +233,6 @@ export interface DatabaseApi {
   create(input: CreateConfig): Promise<ConnResponse<Config>>
   update(id: string, input: UpdateConfig): Promise<ConnResponse<Config>>
   remove(id: string): Promise<ConnResponse<void>>
-  connect(configId: string): Promise<ConnResponse<void>>
   disconnect(configId: string): Promise<ConnResponse<boolean>>
   inspect(
     configId: string,

@@ -60,7 +60,6 @@ function setup() {
       { name: "public", tables: [], views: [], functions: [] },
     ],
     query: async () => result(),
-    select: async () => ({ result: result(), executedSql: "SELECT" }),
     close: async () => {},
     destroy: () => {},
     cancel: async () => {},

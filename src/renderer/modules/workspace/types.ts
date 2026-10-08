@@ -8,25 +8,22 @@ export interface TabMeta {
   label: string
 }
 
-export interface QueryTabState {
-  id: string
+export interface QueryTabState extends TabMeta {
   kind: "query"
   configId?: string
   sessionId?: string
-  requestId?: string
-  phase?: "connecting" | "running" | "cancelling"
-  cancelRequested?: boolean
+  execution?: { requestId: string; cancelRequested: boolean }
   closing?: boolean
   table: QueryTabTableState
   editor: QueryTabEditorState
   logger: TabLoggerState
 }
 
-export interface ViewTabState {
-  id: string
+export interface ViewTabState extends TabMeta {
   kind: "view"
   configId: string
   closing?: boolean
+  cancelling?: boolean
   source: {
     schema: string
     table: string
@@ -39,7 +36,7 @@ export interface ViewTabState {
 export type TabState = QueryTabState | ViewTabState
 
 export interface QueryTabTableState {
-  status: "idle" | "running" | "success" | "error"
+  status: "idle" | "success" | "error"
   error: string | null
   dataAt: number | null
   sessionId?: string
@@ -54,7 +51,6 @@ export interface QueryTabTableState {
 }
 
 export interface QueryTabEditorState extends CodeView {
-  status: "idle" | "running"
   text: string
 }
 
@@ -135,7 +131,7 @@ export type TableLayout = Pick<
   "visibility" | "sizing" | "pinning"
 >
 
-export type EditorView = Omit<QueryTabEditorState, "status">
+export type EditorView = QueryTabEditorState
 export type LogView = Omit<TabLoggerState, "logs">
 
 export interface TableSelection {

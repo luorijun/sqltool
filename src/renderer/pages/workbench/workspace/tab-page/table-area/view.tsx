@@ -1,6 +1,5 @@
-import { useAtom, useAtomValue, useSetAtom } from "jotai"
+import { useAtomValue, useSetAtom } from "jotai"
 import { CircleX, Loader2, RefreshCw } from "lucide-react"
-import { useState } from "react"
 import { toast } from "sonner"
 import {
   type ResultLayout,
@@ -20,6 +19,7 @@ import {
   setActiveViewTabPageAtom,
   setActiveViewTabPageSizeAtom,
   setActiveViewTabRangeAtom,
+  setCopyOptionsAtom,
   setTableSelectionAtom,
   setViewTabSortAtom,
   updateViewLayoutAtom,
@@ -30,7 +30,8 @@ import { Paging } from "./paging"
 export default function ViewTableArea() {
   const tableState = useAtomValue(activeViewTabTableStateAtom)
   const tabId = useAtomValue(activeTabIdAtom)
-  const [copyOptions, setCopyOptions] = useAtom(copyOptionsAtom)
+  const copyOptions = useAtomValue(copyOptionsAtom)
+  const setCopyOptions = useSetAtom(setCopyOptionsAtom)
   const setSelection = useSetAtom(setTableSelectionAtom)
   const update = useSetAtom(updateViewLayoutAtom)
   const setTableState = (change: (current: ResultLayout) => ResultLayout) => {
@@ -40,16 +41,12 @@ export default function ViewTableArea() {
   const viewTab = useAtomValue(activeViewTabAtom)
   const stale = useAtomValue(activeResultStaleAtom)
   const cancel = useSetAtom(cancelActiveViewAtom)
-  const [cancelling, setCancelling] = useState(false)
+  const cancelling = viewTab?.cancelling ?? false
   const stop = async () => {
-    if (cancelling) return
-    setCancelling(true)
     try {
-      await cancel()
+      if (tabId !== null) await cancel({ tabId })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "取消失败")
-    } finally {
-      setCancelling(false)
     }
   }
   const resetTableState = useSetAtom(resetActiveViewTabTableStateAtom)
@@ -85,7 +82,13 @@ export default function ViewTableArea() {
         <p className="text-xs text-muted-foreground">
           {tableState.error ?? "数据表加载失败"}
         </p>
-        <Button variant="outline" size="sm" onClick={() => refresh()}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            if (tabId !== null) void refresh({ tabId })
+          }}
+        >
           <RefreshCw className="size-3.5" />
           重试
         </Button>
@@ -125,7 +128,9 @@ export default function ViewTableArea() {
       onError={showError}
       tableState={tableState}
       onLayoutChange={setTableState}
-      onReset={resetTableState}
+      onReset={() => {
+        if (tabId !== null) resetTableState({ tabId })
+      }}
       readOnly={false}
       sorting={sorting}
       sortOrder={tableState.sortOrder}
@@ -155,7 +160,10 @@ export default function ViewTableArea() {
           size="xs"
           className="gap-1.5 text-muted-foreground"
           disabled={cancelling}
-          onClick={() => (running ? stop() : refresh())}
+          onClick={() => {
+            if (running) void stop()
+            else if (tabId !== null) void refresh({ tabId })
+          }}
           title={running ? "停止查询" : "刷新数据和总行数"}
         >
           {running ? (
@@ -176,9 +184,15 @@ export default function ViewTableArea() {
           total={total}
           hasNext={hasNext}
           busy={busy}
-          onPage={setPage}
-          onSize={setPageSize}
-          onRange={setRange}
+          onPage={(page) => {
+            if (tabId !== null) void setPage({ tabId, page })
+          }}
+          onSize={(limit) => {
+            if (tabId !== null) void setPageSize({ tabId, limit })
+          }}
+          onRange={(range) => {
+            if (tabId !== null) void setRange({ tabId, ...range })
+          }}
         />
       }
       statusBarStart={

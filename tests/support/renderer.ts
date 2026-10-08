@@ -51,7 +51,6 @@ export function renderer(version: number) {
     create: unexpected,
     update: unexpected,
     remove: unexpected,
-    connect: unexpected,
     disconnect: unexpected,
     inspect: unexpected,
     openSession: unexpected,

@@ -35,15 +35,12 @@ function App() {
         { id: "workspace-persistence" },
       )
     void restoreWorkspace()
+      .catch(report)
       .then(() => {
         if (disposed) return
         stop = startWorkspaceSaving(report)
         setReady(true)
         void reloadWorkspaceTables().catch(report)
-      })
-      .catch((error) => {
-        report(error)
-        if (!disposed) setReady(true)
       })
     window.addEventListener("focus", syncConnections)
     return () => {

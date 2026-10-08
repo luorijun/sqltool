@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { getDefaultStore } from "jotai"
 import client, {
   connectConnectionAtom,
   connectionActionAtom,
   disconnectConnectionAtom,
+  refreshConnectionSchemaAtom,
   snapshotAtom,
 } from "../../src/renderer/modules/database/client"
 import { renderer } from "../support/renderer"
@@ -88,5 +89,42 @@ describe("database client", () => {
     env.bridge.inspect = async () => env.ok(undefined)
     await store.set(connectConnectionAtom, "db")
     expect(store.get(connectionActionAtom).db).toBeUndefined()
+  })
+  test.each([false, true])(
+    "disconnect returns its completion decision (%s)",
+    async (closed) => {
+      env.bridge.disconnect = async () => {
+        env.snapshot.connections[0].connected = !closed
+        return env.ok(closed)
+      }
+      expect(await client.disconnect("db")).toBe(closed)
+      expect(store.get(snapshotAtom)?.connections[0].connected).toBe(!closed)
+      expect(await store.set(disconnectConnectionAtom, "db")).toBe(closed)
+    },
+  )
+
+  test("background structure reads can proceed during a user refresh", async () => {
+    const ready = Promise.withResolvers<void>()
+    const inspect = mock<typeof env.bridge.inspect>(async () => {
+      await ready.promise
+      return env.ok(undefined)
+    })
+    env.bridge.inspect = inspect
+    const source = { schema: "public", table: "items" }
+    const refresh = store.set(refreshConnectionSchemaAtom, { id: "db", source })
+    const background = client.ensureSchema("db")
+    try {
+      await Promise.resolve()
+      expect(inspect).toHaveBeenCalledTimes(2)
+      expect(inspect).toHaveBeenCalledWith("db", source, true)
+      expect(inspect).toHaveBeenCalledWith("db", undefined, false)
+      expect(store.get(connectionActionAtom).db).toBe("inspect")
+      await expect(store.set(connectConnectionAtom, "db")).rejects.toThrow(
+        "正在处理中",
+      )
+    } finally {
+      ready.resolve()
+      await Promise.all([refresh, background])
+    }
   })
 })

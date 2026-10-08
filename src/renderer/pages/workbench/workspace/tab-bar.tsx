@@ -1,4 +1,4 @@
-import { atom, useAtomValue, useSetAtom } from "jotai"
+import { useAtomValue, useSetAtom } from "jotai"
 import { Code2, Plus, Table2, X } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "tailwind-variants"
@@ -15,20 +15,10 @@ type TabBarItem = {
   id: string
   label: string
   kind: "query" | "view"
-  dirty: boolean
 }
 
-const tabsViewAtom = atom((get) =>
-  get(tabsAtom).map((tab) => ({
-    id: tab.id,
-    label: tab.label,
-    kind: tab.kind,
-    dirty: false,
-  })),
-)
-
 export function TabBar() {
-  const tabs = useAtomValue(tabsViewAtom)
+  const tabs = useAtomValue(tabsAtom)
   const activeTabId = useAtomValue(activeTabIdAtom)
   const setActiveTabId = useSetAtom(selectTabAtom)
   const openQueryTab = useSetAtom(openQueryTabAtom)
@@ -99,22 +89,12 @@ function TabItem({
           : `自定义查询：${tab.label}`
       }
     >
-      {/* Unsaved dot */}
-      {tab.dirty && !active && (
-        <span className="size-1.5 rounded-full bg-muted-foreground/60 shrink-0" />
-      )}
-
       {tab.kind === "view" ? (
         <Table2 className="size-3.5 shrink-0 text-muted-foreground" />
       ) : (
         <Code2 className="size-3.5 shrink-0 text-muted-foreground" />
       )}
       <span className="max-w-35 truncate">{tab.label}</span>
-
-      {/* Dirty indicator on active tab */}
-      {tab.dirty && active && (
-        <span className="size-1.5 rounded-full bg-primary shrink-0" />
-      )}
 
       {/* Close button */}
       <span

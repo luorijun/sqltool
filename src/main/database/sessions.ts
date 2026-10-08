@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type {
   Config,
-  ConnResponse,
   ConnSnapshot,
   SelectQuery,
   SessionSnapshot,
@@ -15,7 +14,8 @@ import type {
   DriverResult,
   Transaction,
 } from "./ports"
-import { ConnError, Tasks, withTimeout } from "./tasks"
+import { compileSelectQuery } from "./query"
+import { Tasks, withTimeout } from "./tasks"
 
 interface Session extends SessionSnapshot {
   owner: number
@@ -90,23 +90,6 @@ export class Sessions {
     }
   }
 
-  async respond<T>(
-    owner: number,
-    run: () => T | Promise<T>,
-  ): Promise<ConnResponse<T>> {
-    try {
-      const value = await run()
-      return { ok: true, value, snapshot: this.snapshot(owner) }
-    } catch (error) {
-      return {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-        kind: error instanceof ConnError ? error.kind : "error",
-        snapshot: this.snapshot(owner),
-      }
-    }
-  }
-
   hasResources(configId: string): boolean {
     return (
       this.blocked.has(configId) ||
@@ -162,7 +145,8 @@ export class Sessions {
       (s) =>
         s.configId === configId &&
         s.kind === kind &&
-        (kind !== "sql" || (s.owner === owner && s.tabId === tabId)),
+        s.owner === owner &&
+        (kind !== "sql" || s.tabId === tabId),
     )
     if (
       existing &&
@@ -264,29 +248,6 @@ export class Sessions {
     return session.opening
   }
 
-  async connect(configId: string, owner: number): Promise<void> {
-    this.check(configId, owner)
-    const session = this.create(configId, 0, "schema")
-    try {
-      await this.ensure(session)
-      if (
-        this.entries.get(session.id) === session &&
-        session.status === "ready"
-      )
-        this.metadata.clearError(configId)
-    } catch (error) {
-      if (
-        this.entries.get(session.id) === session &&
-        session.status !== "closed"
-      )
-        this.metadata.setError(
-          configId,
-          error instanceof Error ? error.message : String(error),
-        )
-      throw error
-    }
-  }
-
   private run<T>(
     session: Session,
     owner: number,
@@ -354,18 +315,13 @@ export class Sessions {
     query: SelectQuery,
   ) {
     const session = this.create(configId, owner, "browse")
-    const value = await this.run(session, owner, requestId, tabId, (client) =>
-      client.select(query),
+    const compiled = compileSelectQuery(session.profile.driver, query)
+    const result = await this.run(session, owner, requestId, tabId, (client) =>
+      client.query(compiled.sql, compiled.params),
     )
     return {
-      ...value,
-      result: await this.complete(
-        session,
-        owner,
-        requestId,
-        tabId,
-        value.result,
-      ),
+      executedSql: compiled.sql,
+      result: await this.complete(session, owner, requestId, tabId, result),
     }
   }
 
@@ -522,10 +478,6 @@ export class Sessions {
         this.closing.delete(s.id)
       }
     }
-  }
-
-  closeSession(id: string, owner: number): Promise<boolean> {
-    return this.close([this.get(id, owner)], owner)
   }
 
   async closeTab(owner: number, tabId: string): Promise<boolean> {

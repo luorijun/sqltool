@@ -70,17 +70,14 @@ const connApi = {
   remove(id: string) {
     return unwrap(window.main.conn.remove(id))
   },
-  async connect(id: string) {
-    await unwrap(window.main.conn.connect(id))
-    return currentConnection(id)
+  disconnect(id: string) {
+    return unwrap(window.main.conn.disconnect(id))
   },
-  async disconnect(id: string) {
-    if (!(await unwrap(window.main.conn.disconnect(id)))) return undefined
-    return currentConnection(id)
+  ensureSchema(id: string, source?: TableSource) {
+    return readSchema(id, source, false)
   },
-  async inspect(id: string, source?: TableSource, refresh = false) {
-    await unwrap(window.main.conn.inspect(id, source, refresh))
-    return currentConnection(id)
+  refreshSchema(id: string, source?: TableSource) {
+    return readSchema(id, source, true)
   },
   openSession(id: string, tabId: string) {
     return unwrap(window.main.conn.openSession(id, tabId))
@@ -100,32 +97,33 @@ const connApi = {
 }
 export default connApi
 
-export const refreshConnectionsAtom = atom(null, () => connApi.sync())
+async function readSchema(
+  id: string,
+  source: TableSource | undefined,
+  refresh: boolean,
+) {
+  await unwrap(window.main.conn.inspect(id, source, refresh))
+  return currentConnection(id)
+}
 
-const pending = new Map<
-  string,
-  { key: string; promise: ReturnType<typeof connApi.disconnect> }
->()
+const pending = new Map<string, { key: string; promise: Promise<unknown> }>()
 
-function runAction(
+function runAction<T>(
   set: Setter,
   id: string,
   action: ConnectionAction,
-  source?: TableSource,
-) {
+  source: TableSource | undefined,
+  run: () => Promise<T>,
+): Promise<T> {
   const key = JSON.stringify([action, source])
   const current = pending.get(id)
   if (current) {
-    if (current.key === key) return current.promise
+    if (current.key === key) return current.promise as Promise<T>
     return Promise.reject(new Error("连接正在处理中，请稍后重试"))
   }
   set(actionsAtom, (current) => ({ ...current, [id]: action }))
   const promise = Promise.resolve()
-    .then(async () => {
-      if (action === "connect") return connApi.inspect(id)
-      if (action === "inspect") return connApi.inspect(id, source, true)
-      return connApi.disconnect(id)
-    })
+    .then(run)
     .finally(() => {
       pending.delete(id)
       set(actionsAtom, (current) => {
@@ -138,17 +136,21 @@ function runAction(
   return promise
 }
 export const connectConnectionAtom = atom(null, (_get, set, id: string) =>
-  runAction(set, id, "connect"),
+  runAction(set, id, "connect", undefined, () => connApi.ensureSchema(id)),
 )
 export const disconnectConnectionAtom = atom(null, (_get, set, id: string) =>
-  runAction(set, id, "disconnect"),
+  runAction(set, id, "disconnect", undefined, () => connApi.disconnect(id)),
 )
 export const refreshConnectionSchemaAtom = atom(
   null,
   (_get, set, target: string | { id: string; source: TableSource }) =>
     typeof target === "string"
-      ? runAction(set, target, "inspect")
-      : runAction(set, target.id, "inspect", target.source),
+      ? runAction(set, target, "inspect", undefined, () =>
+          connApi.refreshSchema(target),
+        )
+      : runAction(set, target.id, "inspect", target.source, () =>
+          connApi.refreshSchema(target.id, target.source),
+        ),
 )
 export const deleteConnectionAtom = atom(null, (_get, _set, id: string) =>
   connApi.remove(id),

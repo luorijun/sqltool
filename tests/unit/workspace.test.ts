@@ -11,10 +11,13 @@ import client, {
   snapshotAtom,
 } from "../../src/renderer/modules/database/client"
 import {
+  activeQueryRunningAtom,
   activeQueryTabAtom,
   activeResultStaleAtom,
+  activeTabIdAtom,
   activeViewTabAtom,
   bindQueryConfigAtom,
+  cancelActiveQueryAtom,
   cancelActiveViewAtom,
   closeTabAtom,
   copyOptionsAtom,
@@ -23,12 +26,14 @@ import {
   openViewTabAtom,
   rebuildActiveSessionAtom,
   refreshActiveViewTabAtom,
+  resetActiveQueryTabTableStateAtom,
   resetActiveViewTabTableStateAtom,
   runActiveQueryTabSqlAtom,
   selectTabAtom,
   setActiveViewTabPageAtom,
   setActiveViewTabPageSizeAtom,
   setActiveViewTabRangeAtom,
+  setCopyOptionsAtom,
   setTableSelectionAtom,
   setViewTabSortAtom,
   tabsAtom,
@@ -86,6 +91,73 @@ afterEach(async () => {
 })
 
 describe("query workspace", () => {
+  test("query commands target an inactive tab and retain its result while running", async () => {
+    const first = store.set(openQueryTabAtom, {
+      configId: "db",
+      initialSql: "SELECT 1",
+    })
+    env.bridge.query = async () => env.ok(result)
+    await store.set(runActiveQueryTabSqlAtom, { tabId: first })
+    const before = store.get(activeQueryTabAtom)?.table
+    const started = Promise.withResolvers<void>()
+    const pending = Promise.withResolvers<ConnResponse<QueryResult>>()
+    const query = mock<typeof env.bridge.query>(() => {
+      started.resolve()
+      return pending.promise
+    })
+    const cancel = mock(async () => env.ok(undefined))
+    env.bridge.query = query
+    env.bridge.cancel = cancel
+    const second = store.set(openQueryTabAtom, {
+      configId: "db",
+      initialSql: "SELECT 2",
+    })
+    const running = store.set(runActiveQueryTabSqlAtom, { tabId: first })
+    try {
+      await started.promise
+      expect(store.get(activeTabIdAtom)).toBe(second)
+      expect(store.get(activeQueryRunningAtom)).toBe(false)
+      store.set(selectTabAtom, first)
+      expect(store.get(activeQueryRunningAtom)).toBe(true)
+      expect(store.get(activeQueryTabAtom)?.table).toBe(before)
+      expect(store.get(activeQueryTabAtom)?.editor).not.toHaveProperty("status")
+      const requestId = store.get(activeQueryTabAtom)?.execution?.requestId
+      store.set(selectTabAtom, second)
+      await store.set(runActiveQueryTabSqlAtom, { tabId: first })
+      expect(query).toHaveBeenCalledTimes(1)
+      await store.set(cancelActiveQueryAtom, { tabId: first })
+      expect(cancel).toHaveBeenCalledWith(requestId)
+      pending.resolve({
+        ok: false,
+        kind: "cancelled",
+        error: "cancelled",
+        snapshot: env.capture(),
+      })
+      await running
+      expect(store.get(activeTabIdAtom)).toBe(second)
+      expect(store.get(activeQueryTabAtom)?.table.status).toBe("idle")
+      await store.set(rebuildActiveSessionAtom, { tabId: first })
+      expect(query).toHaveBeenCalledTimes(1)
+      store.set(selectTabAtom, first)
+      expect(store.get(activeQueryRunningAtom)).toBe(false)
+      expect(store.get(activeQueryTabAtom)?.table).toMatchObject({
+        status: "error",
+        data: before?.data,
+      })
+      store.set(updateQueryLayoutAtom, {
+        tabId: first,
+        update: (current) => ({ ...current, sizing: { n: 200 } }),
+      })
+      store.set(selectTabAtom, second)
+      store.set(resetActiveQueryTabTableStateAtom, { tabId: first })
+      store.set(selectTabAtom, first)
+      expect(store.get(activeQueryTabAtom)?.table.sizing).toEqual({})
+    } finally {
+      pending.resolve(env.ok(result))
+      await running
+    }
+  })
+
   test("changing a connection preserves the draft and requires a successful close", async () => {
     env.snapshot.connections.push({
       ...env.snapshot.connections[0],
@@ -98,7 +170,9 @@ describe("query workspace", () => {
     await store.set(bindQueryConfigAtom, { tabId, configId: "db" })
     expect(env.snapshot.sessions).toEqual([])
     expect(query).not.toHaveBeenCalled()
-    await store.set(runActiveQueryTabSqlAtom)
+    await store.set(runActiveQueryTabSqlAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+    })
     const before = store.get(activeQueryTabAtom)
     env.bridge.closeTab = async () => env.ok(false)
     await store.set(bindQueryConfigAtom, { tabId, configId: "other" })
@@ -127,7 +201,9 @@ describe("query workspace", () => {
         configId: "db",
         initialSql: "SELECT 1",
       })
-      const running = store.set(runActiveQueryTabSqlAtom)
+      const running = store.set(runActiveQueryTabSqlAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
       try {
         await started.promise
         const response = env.ok(result)
@@ -156,6 +232,99 @@ describe("query workspace", () => {
     },
   )
 
+  test("stopping during session creation prevents SQL and stays with the original tab", async () => {
+    const started = Promise.withResolvers<void>()
+    const opening = Promise.withResolvers<void>()
+    const open = env.bridge.openSession
+    env.bridge.openSession = async (...args) => {
+      started.resolve()
+      await opening.promise
+      return open(...args)
+    }
+    const query = mock(async () => env.ok(result))
+    const cancel = mock(async () => env.ok(undefined))
+    env.bridge.query = query
+    env.bridge.cancel = cancel
+    const first = store.set(openQueryTabAtom, {
+      configId: "db",
+      initialSql: "SELECT 1",
+    })
+    const running = store.set(runActiveQueryTabSqlAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+    })
+    try {
+      await started.promise
+      await store.set(cancelActiveQueryAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
+      await store.set(cancelActiveQueryAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
+      expect(cancel).toHaveBeenCalledTimes(1)
+      const other = store.set(openQueryTabAtom, { initialSql: "other draft" })
+      opening.resolve()
+      await running
+      expect(query).not.toHaveBeenCalled()
+      expect(store.get(activeQueryTabAtom)).toMatchObject({
+        id: other,
+        editor: { text: "other draft" },
+      })
+      store.set(selectTabAtom, first)
+      expect(store.get(activeQueryTabAtom)).toMatchObject({
+        execution: undefined,
+        logger: { logs: [{ status: "cancelled" }] },
+      })
+    } finally {
+      opening.resolve()
+      await running
+    }
+  })
+
+  test("failed cancellation can be retried without replaying the query", async () => {
+    const started = Promise.withResolvers<void>()
+    const pending = Promise.withResolvers<ConnResponse<QueryResult>>()
+    const query = mock(() => {
+      started.resolve()
+      return pending.promise
+    })
+    env.bridge.query = query
+    let attempts = 0
+    const cancel = mock(async () => {
+      if (++attempts === 1) throw new Error("cancel denied")
+      return env.ok(undefined)
+    })
+    env.bridge.cancel = cancel
+    store.set(openQueryTabAtom, { configId: "db", initialSql: "SELECT 1" })
+    const running = store.set(runActiveQueryTabSqlAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+    })
+    try {
+      await started.promise
+      await expect(
+        store.set(cancelActiveQueryAtom, {
+          tabId: store.get(activeTabIdAtom) ?? "",
+        }),
+      ).rejects.toThrow("cancel denied")
+      expect(
+        store.get(activeQueryTabAtom)?.execution?.cancelRequested ?? false,
+      ).toBe(false)
+      await store.set(cancelActiveQueryAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
+      expect(cancel).toHaveBeenCalledTimes(2)
+      pending.resolve(env.ok(result))
+      await running
+      expect(query).toHaveBeenCalledTimes(1)
+      expect(store.get(activeQueryTabAtom)?.table.status).toBe("success")
+      expect(
+        store.get(activeQueryTabAtom)?.execution?.cancelRequested ?? false,
+      ).toBe(false)
+    } finally {
+      pending.resolve(env.ok(result))
+      await running
+    }
+  })
+
   test("rebuilding does not replay SQL and an older result cannot overwrite a new run", async () => {
     const started = Promise.withResolvers<void>()
     const pending = Promise.withResolvers<ConnResponse<QueryResult>>()
@@ -165,15 +334,21 @@ describe("query workspace", () => {
     })
     env.bridge.query = query
     store.set(openQueryTabAtom, { configId: "db", initialSql: "SELECT 1" })
-    const running = store.set(runActiveQueryTabSqlAtom)
+    const running = store.set(runActiveQueryTabSqlAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+    })
     try {
       await started.promise
       const old = env.ok(result)
-      await store.set(rebuildActiveSessionAtom)
+      await store.set(rebuildActiveSessionAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
       expect(query).toHaveBeenCalledTimes(1)
       expect(store.get(activeQueryTabAtom)?.editor.text).toBe("SELECT 1")
       env.bridge.query = async () => env.ok({ ...result, rows: [[99]] })
-      await store.set(runActiveQueryTabSqlAtom)
+      await store.set(runActiveQueryTabSqlAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
       const fresh = store.get(activeQueryTabAtom)?.table.data
       pending.resolve(old)
       await running
@@ -202,7 +377,9 @@ describe("query workspace", () => {
       configId: "db",
       initialSql: "DELETE FROM items",
     })
-    const running = store.set(runActiveQueryTabSqlAtom)
+    const running = store.set(runActiveQueryTabSqlAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+    })
     try {
       await started.promise
       const closing = store.set(closeTabAtom, id)
@@ -218,6 +395,57 @@ describe("query workspace", () => {
 })
 
 describe("table workspace", () => {
+  test("paging and refresh commands keep the explicit target when another tab is active", async () => {
+    const select = mock<typeof env.bridge.select>(
+      async (_config, _tab, _request, query) =>
+        env.ok({
+          result: query.select ? { ...result, rows: [[300]] } : result,
+          executedSql: "browse SQL",
+        }),
+    )
+    env.bridge.select = select
+    const first = await store.set(openViewTabAtom, {
+      configId: "db",
+      source: { schema: "public", table: "first" },
+    })
+    const second = await store.set(openViewTabAtom, {
+      configId: "db",
+      source: { schema: "public", table: "second" },
+    })
+    await store.set(setActiveViewTabPageAtom, { tabId: first, page: 2 })
+    expect(select.mock.calls.at(-1)?.[1]).toBe(first)
+    expect(select.mock.calls.at(-1)?.[3]).toMatchObject({
+      offset: 100,
+      limit: 100,
+    })
+    await store.set(setActiveViewTabPageSizeAtom, { tabId: first, limit: 50 })
+    expect(select.mock.calls.at(-1)?.[3]).toMatchObject({
+      offset: 0,
+      limit: 50,
+    })
+    await store.set(setActiveViewTabRangeAtom, {
+      tabId: first,
+      offset: 125,
+      limit: 50,
+    })
+    const count = select.mock.calls.length
+    await store.set(refreshActiveViewTabAtom, { tabId: first })
+    expect(select.mock.calls.slice(count).map((call) => call[1])).toEqual([
+      first,
+      first,
+    ])
+    expect(store.get(activeTabIdAtom)).toBe(second)
+    expect(store.get(activeViewTabAtom)?.table).toMatchObject({
+      offset: 0,
+      limit: 100,
+    })
+    store.set(selectTabAtom, first)
+    expect(store.get(activeViewTabAtom)?.table).toMatchObject({
+      offset: 125,
+      limit: 50,
+    })
+  })
+
   test("inactive sort order is tab-owned, needs no SQL, and survives paging and layout reset", async () => {
     const data: QueryResult = {
       columns: ["a", "b"].map((id) => ({ id, name: id, typeFamily: "number" })),
@@ -245,8 +473,13 @@ describe("table workspace", () => {
     })
     expect(store.get(activeViewTabAtom)?.table.sortOrder).toEqual([])
     store.set(selectTabAtom, tabId)
-    await store.set(setActiveViewTabPageAtom, 2)
-    store.set(resetActiveViewTabTableStateAtom)
+    await store.set(setActiveViewTabPageAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+      page: 2,
+    })
+    store.set(resetActiveViewTabTableStateAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+    })
     expect(store.get(activeViewTabAtom)?.table.sortOrder).toEqual(["b", "a"])
     env.bridge.select = async () => ({
       ok: false,
@@ -290,7 +523,9 @@ describe("table workspace", () => {
     const count = Promise.withResolvers<ConnResponse<SelectResult>>()
     env.bridge.select = (_config, _tab, _request, query) =>
       query.select ? count.promise : page.promise
-    const refreshed = store.set(refreshActiveViewTabAtom)
+    const refreshed = store.set(refreshActiveViewTabAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+    })
     try {
       html = render()
       expect(html).toContain("共 - 行")
@@ -303,7 +538,9 @@ describe("table workspace", () => {
         return env.ok(undefined)
       }
       const table = store.get(activeViewTabAtom)?.table
-      await store.set(cancelActiveViewAtom)
+      await store.set(cancelActiveViewAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
       expect(cancelled).toHaveLength(2)
       expect(new Set(cancelled)).toEqual(
         new Set(
@@ -338,6 +575,70 @@ describe("table workspace", () => {
     }
   })
 
+  test.each([false, true])(
+    "browse cancellation stays with its tab and clears after completion (failed: %s)",
+    async (failed) => {
+      env.bridge.select = async () =>
+        env.ok({ result, executedSql: "SELECT 1" })
+      const first = await store.set(openViewTabAtom, {
+        configId: "db",
+        source: { schema: "public", table: "first" },
+      })
+      const other = await store.set(openViewTabAtom, {
+        configId: "db",
+        source: { schema: "public", table: "other" },
+      })
+      store.set(selectTabAtom, first)
+      const page = Promise.withResolvers<ConnResponse<SelectResult>>()
+      env.bridge.select = () => page.promise
+      const running = store.set(refreshActiveViewTabAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
+      const pending = Promise.withResolvers<void>()
+      const cancel = mock(async () => {
+        await pending.promise
+        return env.ok(undefined)
+      })
+      env.bridge.cancel = cancel
+      const stopped = store
+        .set(cancelActiveViewAtom, { tabId: store.get(activeTabIdAtom) ?? "" })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        )
+      const render = () => renderToStaticMarkup(createElement(ViewTableArea))
+      try {
+        expect(render()).toContain(">正在停止</button>")
+        await store.set(cancelActiveViewAtom, {
+          tabId: store.get(activeTabIdAtom) ?? "",
+        })
+        expect(cancel).toHaveBeenCalledTimes(2)
+        store.set(selectTabAtom, other)
+        expect(render()).toContain(">刷新</button>")
+        expect(render()).not.toContain("正在停止")
+        store.set(selectTabAtom, first)
+        expect(render()).toContain(">正在停止</button>")
+        store.set(selectTabAtom, other)
+
+        if (failed) pending.reject(new Error("cancel denied"))
+        else pending.resolve()
+        const error = await stopped
+        expect(error instanceof Error).toBe(failed)
+        expect(store.get(activeViewTabAtom)?.id).toBe(other)
+        store.set(selectTabAtom, first)
+        expect(render()).toContain(">停止</button>")
+        expect(render()).not.toContain("正在停止")
+        page.resolve(env.ok({ result, executedSql: "SELECT 1" }))
+        await running
+        expect(render()).toContain(">刷新</button>")
+      } finally {
+        pending.resolve()
+        page.resolve(env.ok({ result, executedSql: "SELECT 1" }))
+        await Promise.all([stopped, running])
+      }
+    },
+  )
+
   test("ranges and page navigation share SQL offsets, realign at home and retain state on failure", async () => {
     const select = mock<typeof env.bridge.select>(
       async (_config, _tab, _request, query) =>
@@ -351,7 +652,11 @@ describe("table workspace", () => {
       configId: "db",
       source: { schema: "public", table: "items" },
     })
-    await store.set(setActiveViewTabRangeAtom, { offset: 125, limit: 50 })
+    await store.set(setActiveViewTabRangeAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+      offset: 125,
+      limit: 50,
+    })
     expect(select.mock.calls.at(-1)?.[3]).toMatchObject({
       offset: 125,
       limit: 50,
@@ -368,23 +673,45 @@ describe("table workspace", () => {
       [2, 50],
       [100, 200],
     ]) {
-      await store.set(setActiveViewTabPageAtom, page)
+      await store.set(setActiveViewTabPageAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+        page: page,
+      })
       expect(select.mock.calls.at(-1)?.[3]).toMatchObject({ offset, limit: 50 })
     }
-    await store.set(setActiveViewTabPageSizeAtom, 100)
+    await store.set(setActiveViewTabPageSizeAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+      limit: 100,
+    })
     expect(store.get(activeViewTabAtom)?.table).toMatchObject({
       offset: 0,
       limit: 100,
     })
     const calls = select.mock.calls.length
-    await store.set(setActiveViewTabRangeAtom, { offset: 0, limit: 100 })
-    await store.set(setActiveViewTabRangeAtom, { offset: -1, limit: 50 })
-    await store.set(setActiveViewTabRangeAtom, { offset: 0, limit: 0 })
     await store.set(setActiveViewTabRangeAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+      offset: 0,
+      limit: 100,
+    })
+    await store.set(setActiveViewTabRangeAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+      offset: -1,
+      limit: 50,
+    })
+    await store.set(setActiveViewTabRangeAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+      offset: 0,
+      limit: 0,
+    })
+    await store.set(setActiveViewTabRangeAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
       offset: Number.MAX_SAFE_INTEGER,
       limit: 50,
     })
-    await store.set(setActiveViewTabPageAtom, 1.5)
+    await store.set(setActiveViewTabPageAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+      page: 1.5,
+    })
     expect(select).toHaveBeenCalledTimes(calls)
     env.bridge.select = async () => ({
       ok: false,
@@ -392,7 +719,11 @@ describe("table workspace", () => {
       error: "failed",
       snapshot: env.capture(),
     })
-    await store.set(setActiveViewTabRangeAtom, { offset: 125, limit: 50 })
+    await store.set(setActiveViewTabRangeAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+      offset: 125,
+      limit: 50,
+    })
     expect(store.get(activeViewTabAtom)?.table).toMatchObject({
       offset: 0,
       limit: 100,
@@ -425,7 +756,11 @@ describe("table workspace", () => {
         configId: "db",
         source: { schema: "public", table: "items" },
       })
-      await store.set(setActiveViewTabRangeAtom, { offset: 125, limit: 50 })
+      await store.set(setActiveViewTabRangeAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+        offset: 125,
+        limit: 50,
+      })
       select.mockClear()
       const sort = [
         { column: "b", direction: "desc" as const },
@@ -502,7 +837,10 @@ describe("table workspace", () => {
     env.bridge.select = select
     const tabId = await store.set(openViewTabAtom, { configId: "db", source })
     expect(select.mock.calls[0][3].orderBy).toBeUndefined()
-    await store.set(setActiveViewTabPageAtom, 2)
+    await store.set(setActiveViewTabPageAtom, {
+      tabId: store.get(activeTabIdAtom) ?? "",
+      page: 2,
+    })
     const pending = Promise.withResolvers<ConnResponse<SelectResult>>()
     env.bridge.select = mock(() => pending.promise)
     const sort = [{ column: "sort value", direction: "desc" as const }]
@@ -541,10 +879,15 @@ describe("table workspace", () => {
         sort,
         sql: "sorted SQL",
       })
-      store.set(resetActiveViewTabTableStateAtom)
+      store.set(resetActiveViewTabTableStateAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
       expect(store.get(activeViewTabAtom)?.table.sort).toEqual(sort)
       env.bridge.select = select
-      await store.set(setActiveViewTabPageAtom, 2)
+      await store.set(setActiveViewTabPageAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+        page: 2,
+      })
       expect(select.mock.calls.at(-1)?.[3]).toMatchObject({
         offset: 100,
         orderBy: [{ column: "sort value", direction: "desc" }],
@@ -577,7 +920,10 @@ describe("table workspace", () => {
         configId: "db",
         source: { schema: "public", table: "items" },
       })
-      await store.set(setActiveViewTabPageAtom, 2)
+      await store.set(setActiveViewTabPageAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+        page: 2,
+      })
       const before = store.get(activeViewTabAtom)?.table
       env.bridge.select = async () => ({
         ok: false,
@@ -590,8 +936,14 @@ describe("table workspace", () => {
         tabId,
         sort: [{ column: "n", direction: "asc" }],
       })
-      await store.set(setActiveViewTabPageAtom, 3)
-      await store.set(setActiveViewTabPageSizeAtom, 50)
+      await store.set(setActiveViewTabPageAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+        page: 3,
+      })
+      await store.set(setActiveViewTabPageSizeAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+        limit: 50,
+      })
       expect(store.get(activeViewTabAtom)?.table).toMatchObject({
         status: "error",
         offset: 100,
@@ -639,7 +991,10 @@ describe("table workspace", () => {
         env.bridge.select = mock(async () =>
           env.ok({ result, executedSql: "next page SQL" }),
         )
-        await store.set(setActiveViewTabPageAtom, 2)
+        await store.set(setActiveViewTabPageAtom, {
+          tabId: store.get(activeTabIdAtom) ?? "",
+          page: 2,
+        })
         expect(env.bridge.select).toHaveBeenCalledWith(
           "db",
           id,
@@ -649,7 +1004,9 @@ describe("table workspace", () => {
         expect(store.get(activeViewTabAtom)?.table.sql).toBe("next page SQL")
         const query = mock(async () => env.ok(result))
         env.bridge.query = query
-        await store.set(runActiveQueryTabSqlAtom)
+        await store.set(runActiveQueryTabSqlAtom, {
+          tabId: store.get(activeTabIdAtom) ?? "",
+        })
         expect(query).not.toHaveBeenCalled()
       } finally {
         unsubscribe()
@@ -680,7 +1037,9 @@ test("table selection is tab-owned, survives sizing, and is cleared by result or
     configId: "db",
     initialSql: "SELECT 1",
   })
-  await store.set(runActiveQueryTabSqlAtom)
+  await store.set(runActiveQueryTabSqlAtom, {
+    tabId: store.get(activeTabIdAtom) ?? "",
+  })
   store.set(setTableSelectionAtom, { tabId: query, selection })
   store.set(updateQueryLayoutAtom, {
     tabId: query,
@@ -699,7 +1058,10 @@ test("table selection is tab-owned, survives sizing, and is cleared by result or
   })
   expect(store.get(activeViewTabAtom)?.table.selection).toBeNull()
   store.set(setTableSelectionAtom, { tabId: view, selection })
-  await store.set(setActiveViewTabPageSizeAtom, 50)
+  await store.set(setActiveViewTabPageSizeAtom, {
+    tabId: store.get(activeTabIdAtom) ?? "",
+    limit: 50,
+  })
   expect(store.get(activeViewTabAtom)?.table.selection).toBeNull()
   store.set(selectTabAtom, query)
   expect(store.get(activeQueryTabAtom)?.table.selection).toEqual(selection)
@@ -709,17 +1071,19 @@ test("table selection is tab-owned, survives sizing, and is cleared by result or
   })
   expect(store.get(activeQueryTabAtom)?.table.selection).toBeNull()
   store.set(setTableSelectionAtom, { tabId: query, selection })
-  await store.set(runActiveQueryTabSqlAtom)
+  await store.set(runActiveQueryTabSqlAtom, {
+    tabId: store.get(activeTabIdAtom) ?? "",
+  })
   expect(store.get(activeQueryTabAtom)?.table.selection).toBeNull()
 })
 
 test("copy preferences are shared across tabs independently of selection and layout", () => {
   const first = store.set(openQueryTabAtom)
-  store.set(copyOptionsAtom, { format: "json", headers: true })
+  store.set(setCopyOptionsAtom, { format: "json", headers: true })
   const second = store.set(openQueryTabAtom)
   expect(store.get(copyOptionsAtom)).toEqual({ format: "json", headers: true })
   store.set(selectTabAtom, first)
   expect(store.get(copyOptionsAtom).format).toBe("json")
   store.set(selectTabAtom, second)
-  store.set(copyOptionsAtom, { format: "tsv", headers: false })
+  store.set(setCopyOptionsAtom, { format: "tsv", headers: false })
 })

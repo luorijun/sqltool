@@ -1,4 +1,4 @@
-import { useAtom, useAtomValue, useSetAtom } from "jotai"
+import { useAtomValue, useSetAtom } from "jotai"
 import { CircleX, Loader2 } from "lucide-react"
 import {
   EmptyState,
@@ -6,11 +6,13 @@ import {
   ResultTable,
 } from "@/renderer/components/result-grid"
 import {
+  activeQueryRunningAtom,
   activeQueryTabTableStateAtom,
   activeResultStaleAtom,
   activeTabIdAtom,
   copyOptionsAtom,
   resetActiveQueryTabTableStateAtom,
+  setCopyOptionsAtom,
   setTableSelectionAtom,
   updateQueryLayoutAtom,
 } from "@/renderer/modules/workspace"
@@ -19,7 +21,8 @@ import { saveText, showError } from "../../feedback"
 export default function QueryTableArea() {
   const tableState = useAtomValue(activeQueryTabTableStateAtom)
   const tabId = useAtomValue(activeTabIdAtom)
-  const [copyOptions, setCopyOptions] = useAtom(copyOptionsAtom)
+  const copyOptions = useAtomValue(copyOptionsAtom)
+  const setCopyOptions = useSetAtom(setCopyOptionsAtom)
   const setSelection = useSetAtom(setTableSelectionAtom)
   const update = useSetAtom(updateQueryLayoutAtom)
   const setTableState = (change: (current: ResultLayout) => ResultLayout) => {
@@ -27,14 +30,15 @@ export default function QueryTableArea() {
     update({ tabId, update: change })
   }
   const resetTableState = useSetAtom(resetActiveQueryTabTableStateAtom)
+  const running = useAtomValue(activeQueryRunningAtom)
   const { status, error } = tableState
   const stale = useAtomValue(activeResultStaleAtom)
 
-  if (status === "idle") {
+  if (status === "idle" && !running) {
     return <EmptyState message="运行 SQL 语句以查看结果" />
   }
 
-  if (status === "running") {
+  if (running) {
     return (
       <EmptyState
         icon={<Loader2 className="size-8 text-primary/40 animate-spin" />}
@@ -65,7 +69,9 @@ export default function QueryTableArea() {
       onError={showError}
       tableState={tableState}
       onLayoutChange={setTableState}
-      onReset={resetTableState}
+      onReset={() => {
+        if (tabId !== null) resetTableState({ tabId })
+      }}
       statusBarEnd={
         <>
           {(stale || status === "error") && <span>此前执行的结果</span>}

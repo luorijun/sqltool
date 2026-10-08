@@ -23,12 +23,10 @@ import {
 import {
   reloadWorkspaceTables,
   restoreWorkspace,
-  startWorkspaceSaving,
-} from "../../src/renderer/modules/workspace/persistence"
-import {
   restoreWorkspaceAtom,
+  startWorkspaceSaving,
   workspaceSnapshotAtom,
-} from "../../src/renderer/modules/workspace/state"
+} from "../../src/renderer/modules/workspace/persistence"
 import { renderer } from "../support/renderer"
 
 const store = getDefaultStore()
@@ -91,7 +89,9 @@ describe("workspace persistence", () => {
         configId: "db",
         initialSql: "SELECT 1",
       })
-      await store.set(runActiveQueryTabSqlAtom)
+      await store.set(runActiveQueryTabSqlAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
       store.set(updateQueryEditorAtom, {
         tabId: queryId,
         update: (editor) => ({
@@ -112,8 +112,14 @@ describe("workspace persistence", () => {
         order: ["n"],
         sort: [{ column: "n", direction: "desc" }],
       })
-      await store.set(setActiveViewTabPageSizeAtom, 50)
-      await store.set(setActiveViewTabPageAtom, 3)
+      await store.set(setActiveViewTabPageSizeAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+        limit: 50,
+      })
+      await store.set(setActiveViewTabPageAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+        page: 3,
+      })
       const secondViewId = await store.set(openViewTabAtom, {
         configId: "db",
         source: { ...source, table: "other" },
@@ -154,7 +160,6 @@ describe("workspace persistence", () => {
       ])
       expect(store.get(activeQueryTabAtom)).toMatchObject({
         editor: {
-          status: "idle",
           text: "DELETE FROM users;",
           selections: [{ anchor: 7, head: 7 }],
         },
@@ -245,7 +250,9 @@ describe("workspace persistence", () => {
     try {
       await Bun.sleep(30)
       expect(save).not.toHaveBeenCalled()
-      await store.set(runActiveQueryTabSqlAtom)
+      await store.set(runActiveQueryTabSqlAtom, {
+        tabId: store.get(activeTabIdAtom) ?? "",
+      })
       await Bun.sleep(30)
       expect(save).not.toHaveBeenCalled()
       store.set(updateQueryEditorAtom, {

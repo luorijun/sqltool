@@ -13,6 +13,7 @@ import {
   query,
   tableSource,
   text,
+  updateConfig,
   workspaceSnapshot,
 } from "./validation"
 
@@ -45,11 +46,10 @@ export function registerIpc(
   handle(db.CREATE, z.tuple([config]), (owner, input) =>
     api(owner).create(input),
   )
-  handle(db.UPDATE, z.tuple([id, config.partial()]), (owner, id, input) =>
+  handle(db.UPDATE, z.tuple([id, updateConfig]), (owner, id, input) =>
     api(owner).update(id, input),
   )
   handle(db.REMOVE, z.tuple([id]), (owner, id) => api(owner).remove(id))
-  handle(db.CONNECT, z.tuple([id]), (owner, id) => api(owner).connect(id))
   handle(db.DISCONNECT, z.tuple([id]), (owner, id) => api(owner).disconnect(id))
   handle(
     db.INSPECT,

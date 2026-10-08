@@ -1,10 +1,108 @@
-import { getDefaultStore } from "jotai"
+import { atom, getDefaultStore } from "jotai"
+import type { WorkspaceSnapshot } from "@/contracts/workspace"
 import database from "@/renderer/modules/database"
 import {
-  reloadViewTabsAtom,
-  restoreWorkspaceAtom,
-  workspaceSnapshotAtom,
+  activeIdAtom,
+  createDefaultCodeView,
+  createDefaultLoggerState,
+  createDefaultQueryEditorState,
+  createDefaultQueryTableState,
+  createDefaultViewTableState,
+  type TabStateMap,
+  tabOrderAtom,
+  tabStatesAtom,
 } from "./state"
+import { reserveTabId } from "./tabs"
+import { reloadViewTabsAtom } from "./view"
+
+export const workspaceSnapshotAtom = atom<WorkspaceSnapshot>((get) => {
+  const states = get(tabStatesAtom)
+  return {
+    version: 1,
+    activeTabId: get(activeIdAtom),
+    tabs: get(tabOrderAtom).map((id): WorkspaceSnapshot["tabs"][number] => {
+      const tab = states[id]
+      const meta = { id, label: tab.label }
+      if (tab.kind === "query") {
+        const { text, cursor, selections, mainSelectionIndex, scroll, search } =
+          tab.editor
+        return {
+          ...meta,
+          kind: "query",
+          configId: tab.configId,
+          editor: {
+            text,
+            cursor,
+            selections,
+            mainSelectionIndex,
+            scroll,
+            search,
+          },
+        }
+      }
+      const { sort, sortOrder, offset, limit } = tab.table
+      return {
+        ...meta,
+        kind: "view",
+        configId: tab.configId,
+        source: tab.source,
+        sort,
+        sortOrder,
+        offset,
+        limit,
+      }
+    }),
+  }
+})
+
+export const restoreWorkspaceAtom = atom(
+  null,
+  (get, set, snapshot: WorkspaceSnapshot) => {
+    if (get(tabOrderAtom).length) throw new Error("仅能在空工作区中恢复页面")
+    const states: TabStateMap = {}
+    const tabs: string[] = []
+    for (const tab of snapshot.tabs) {
+      tabs.push(tab.id)
+      const id = Number(tab.id)
+      if (Number.isSafeInteger(id) && id >= 0) reserveTabId(id)
+      states[tab.id] =
+        tab.kind === "query"
+          ? {
+              id: tab.id,
+              label: tab.label,
+              kind: "query",
+              configId: tab.configId,
+              editor: { ...createDefaultQueryEditorState(), ...tab.editor },
+              table: createDefaultQueryTableState(),
+              logger: createDefaultLoggerState(),
+            }
+          : {
+              id: tab.id,
+              label: tab.label,
+              kind: "view",
+              configId: tab.configId,
+              source: tab.source,
+              table: {
+                ...createDefaultViewTableState(),
+                sort: tab.sort,
+                sortOrder: tab.sortOrder,
+                offset: tab.offset,
+                limit: tab.limit,
+              },
+              code: createDefaultCodeView(),
+              logger: createDefaultLoggerState(),
+            }
+    }
+    set(tabStatesAtom, states)
+    set(tabOrderAtom, tabs)
+    set(
+      activeIdAtom,
+      snapshot.activeTabId && states[snapshot.activeTabId]
+        ? snapshot.activeTabId
+        : (tabs[0] ?? null),
+    )
+  },
+)
 
 export async function restoreWorkspace(): Promise<void> {
   const [snapshot] = await Promise.all([

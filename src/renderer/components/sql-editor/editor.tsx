@@ -12,13 +12,11 @@ import type { DbDriver, DbSchema } from "@/contracts/database"
 import {
   type CursorPosition,
   createSqlEditorController,
-  type EditorSelectionStats,
-  getSelectionStats,
   type SqlEditorController,
 } from "./controller"
 import type { EditorState as EditorViewState } from "./types"
 
-export type { CursorPosition, EditorSelectionStats }
+export type { CursorPosition }
 
 export interface SqlEditorHandle {
   focus: () => void
@@ -158,4 +156,4 @@ function SqlEditor({
   return <div ref={setHostRef} className="size-full min-w-0 min-h-0" />
 }
 
-export { getSelectionStats, SqlEditor }
+export { SqlEditor }

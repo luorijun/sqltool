@@ -1,9 +1,20 @@
 import { z } from "zod"
+import type {
+  ConfigProfile,
+  CreateConfig,
+  SelectCondition,
+  SelectQuery,
+  TableSource,
+  UpdateConfig,
+} from "@/contracts/database"
 import type { WorkspaceSnapshot } from "@/contracts/workspace"
 
 export const id = z.string().min(1)
 export const text = z.string()
-export const tableSource = z.strictObject({ schema: id, table: id })
+export const tableSource = z.strictObject({
+  schema: id,
+  table: id,
+}) satisfies z.ZodType<TableSource>
 export const profile = z.object({
   driver: z.enum(["postgres", "mysql"]),
   host: text,
@@ -25,9 +36,12 @@ export const profile = z.object({
       ]),
     })
     .optional(),
-})
-export const config = profile.extend({ name: text.optional() })
-const condition = z.object({
+}) satisfies z.ZodType<ConfigProfile>
+export const config = profile.extend({
+  name: text.optional(),
+}) satisfies z.ZodType<CreateConfig>
+export const updateConfig = config.partial() satisfies z.ZodType<UpdateConfig>
+const condition: z.ZodType<SelectCondition> = z.object({
   column: text.optional(),
   operator: z.enum([
     "eq",
@@ -72,7 +86,7 @@ export const query = z.object({
     .optional(),
   limit: z.number().int().nonnegative().optional(),
   offset: z.number().int().nonnegative().optional(),
-})
+}) satisfies z.ZodType<SelectQuery>
 export const file = z.object({
   defaultPath: text.optional(),
   content: text,

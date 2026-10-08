@@ -8,11 +8,9 @@ import type {
   ConfigProfile,
   DbSchema,
   DbTable,
-  SelectQuery,
   TableSource,
 } from "@/contracts/database"
 import type { ConnectionSession, DriverResult, Transaction } from "../ports"
-import { compileSelectQuery } from "../query"
 import { withTimeout } from "../tasks"
 import type { QueryColumnInput } from "./shared"
 import {
@@ -417,15 +415,8 @@ export async function connectMySql(
     inspect(source) {
       return inspectMySqlClient(client, source)
     },
-    query(sql) {
-      return queryMySqlClient(client, sql)
-    },
-    async select(query: SelectQuery) {
-      const compiled = compileSelectQuery("mysql", query)
-      return {
-        result: await queryMySqlClient(client, compiled.sql, compiled.params),
-        executedSql: compiled.sql,
-      }
+    query(sql, params) {
+      return queryMySqlClient(client, sql, params)
     },
     close: async () => {
       try {

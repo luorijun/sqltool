@@ -10,7 +10,6 @@ interface CreateConnectionSessionOptions {
   types?: ConnectionSession["types"]
   charsets?: ConnectionSession["charsets"]
   query: ConnectionSession["query"]
-  select: ConnectionSession["select"]
   close: () => Promise<void>
   destroy: () => void
   cancel: (active: () => boolean) => Promise<void>
@@ -87,8 +86,7 @@ export function createConnectionSession(
     inspect: (source) => execute(() => options.inspect(source)),
     types: types ? (refs) => execute(() => types(refs)) : undefined,
     charsets: charsets ? () => execute(charsets) : undefined,
-    query: (sql) => execute(() => options.query(sql)),
-    select: (query) => execute(() => options.select(query)),
+    query: (sql, params) => execute(() => options.query(sql, params)),
     cancel: () => options.cancel(() => active && !closed && !failure),
     destroy: () => {
       closed = true

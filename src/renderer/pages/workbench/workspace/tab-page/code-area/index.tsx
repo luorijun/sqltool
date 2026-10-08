@@ -14,6 +14,7 @@ import { Button } from "@/renderer/components/ui/button"
 import { AreaToolbar } from "@/renderer/components/ui/panel-bar"
 import database, { connectionEntriesAtom } from "@/renderer/modules/database"
 import {
+  activeQueryRunningAtom,
   activeQueryTabAtom,
   activeQueryTabConfigAtom,
   activeQueryTabEditorStateAtom,
@@ -72,12 +73,12 @@ export default function CoreArea() {
   const configId = config?.id
   const loadSchema = useCallback(async () => {
     if (!configId) return []
-    return (await database.inspect(configId)).schema ?? []
+    return (await database.ensureSchema(configId)).schema ?? []
   }, [configId])
   useEffect(() => {
     if (!configId) return
     let active = true
-    void database.inspect(configId).catch((error) => {
+    void database.ensureSchema(configId).catch((error) => {
       if (active)
         toast.error(
           `无法加载 SQL 提示所需的数据库结构：${error instanceof Error ? error.message : "加载失败"}`,
@@ -96,6 +97,7 @@ export default function CoreArea() {
     )
   }
 
+  const running = useAtomValue(activeQueryRunningAtom)
   const state = useAtomValue(activeQueryTabEditorStateAtom)
 
   const update = useSetAtom(updateQueryEditorAtom)
@@ -105,22 +107,19 @@ export default function CoreArea() {
   }
 
   const runSql = useSetAtom(runActiveQueryTabSqlAtom)
-  const canRun =
-    !!config && state.status !== "running" && !tab?.closing && !failed
+  const canRun = !!config && !running && !tab?.closing && !failed
   const handleRun = () => {
-    if (canRun) void runSql()
+    if (canRun && tab) void runSql({ tabId: tab.id })
   }
 
   const editorRef = useRef<SqlEditorHandle | null>(null)
 
   const connectionStatus = tab?.closing
     ? "正在关闭会话"
-    : tab?.phase === "cancelling"
+    : tab?.execution?.cancelRequested
       ? "取消请求处理中，等待查询最终结果"
-      : state.status === "running"
-        ? tab?.phase === "connecting"
-          ? "连接中"
-          : "正在执行查询"
+      : running
+        ? "正在执行查询"
         : failed
           ? "会话已失效，请重建会话"
           : session
@@ -188,23 +187,27 @@ export default function CoreArea() {
             运行
           </Button>
 
-          {state.status === "running" && (
+          {running && (
             <Button
               variant="outline"
               size="xs"
-              disabled={tab?.phase === "cancelling" || tab?.closing}
-              onClick={() => act(cancel)}
+              disabled={tab?.execution?.cancelRequested || tab?.closing}
+              onClick={() => {
+                if (tab) act(() => cancel({ tabId: tab.id }))
+              }}
             >
               <Square className="size-3" />
-              {tab?.phase === "cancelling" ? "取消中" : "停止"}
+              {tab?.execution?.cancelRequested ? "取消中" : "停止"}
             </Button>
           )}
-          {(failed || state.status === "running") && (
+          {(failed || running) && (
             <Button
               variant="ghost"
               size="xs"
               disabled={tab?.closing}
-              onClick={() => act(rebuild)}
+              onClick={() => {
+                if (tab) act(() => rebuild({ tabId: tab.id }))
+              }}
               title="关闭原会话并建立新会话，SQL 不会自动执行"
             >
               <RefreshCw className="size-3" />
@@ -236,7 +239,7 @@ export default function CoreArea() {
           <CodeConfig
             configId={tab?.configId}
             status={connectionStatus}
-            disabled={tab?.closing || state.status === "running"}
+            disabled={tab?.closing || running}
             onChange={(configId) => {
               if (tab) act(() => bind({ tabId: tab.id, configId }))
             }}

@@ -1,7 +1,8 @@
-import type { DatabaseApi } from "@/contracts/database"
+import type { ConnResponse, DatabaseApi } from "@/contracts/database"
 import { Configs } from "./configs"
 import type { DatabaseOptions } from "./ports"
 import { Sessions } from "./sessions"
+import { ConnError } from "./tasks"
 
 export function createDatabase(options: DatabaseOptions) {
   const configs = new Configs(options.store)
@@ -13,6 +14,22 @@ export function createDatabase(options: DatabaseOptions) {
   function checkClosed(id: string) {
     if (sessions.hasResources(id)) throw new Error("连接尚未关闭，请先断开连接")
   }
+  async function respond<T>(
+    owner: number,
+    run: () => T | Promise<T>,
+  ): Promise<ConnResponse<T>> {
+    try {
+      const value = await run()
+      return { ok: true, value, snapshot: sessions.snapshot(owner) }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        kind: error instanceof ConnError ? error.kind : "error",
+        snapshot: sessions.snapshot(owner),
+      }
+    }
+  }
   return {
     closeOwner: (owner: number, force = false) =>
       sessions.closeOwner(owner, force),
@@ -23,42 +40,35 @@ export function createDatabase(options: DatabaseOptions) {
           await client.close()
         },
         sync: async () => sessions.snapshot(owner),
-        create: (input) => sessions.respond(owner, () => configs.create(input)),
+        create: (input) => respond(owner, () => configs.create(input)),
         update: (id, input) =>
-          sessions.respond(owner, () => {
+          respond(owner, () => {
             checkClosed(id)
             const config = configs.update(id, input)
             sessions.forget(id)
             return config
           }),
         remove: (id) =>
-          sessions.respond(owner, () => {
+          respond(owner, () => {
             checkClosed(id)
             sessions.forget(id)
             configs.remove(id)
           }),
-        connect: (id) =>
-          sessions.respond(owner, () => sessions.connect(id, owner)),
         disconnect: (id) =>
-          sessions.respond(owner, () => sessions.disconnect(id, owner)),
+          respond(owner, () => sessions.disconnect(id, owner)),
         inspect: (id, source, refresh) =>
-          sessions.respond(owner, () =>
-            sessions.inspect(id, owner, source, refresh),
-          ),
+          respond(owner, () => sessions.inspect(id, owner, source, refresh)),
         openSession: (id, tabId) =>
-          sessions.respond(owner, () => sessions.open(id, owner, tabId)),
+          respond(owner, () => sessions.open(id, owner, tabId)),
         closeTab: (tabId) =>
-          sessions.respond(owner, () => sessions.closeTab(owner, tabId)),
+          respond(owner, () => sessions.closeTab(owner, tabId)),
         query: (id, requestId, sql) =>
-          sessions.respond(owner, () =>
-            sessions.query(id, owner, requestId, sql),
-          ),
+          respond(owner, () => sessions.query(id, owner, requestId, sql)),
         select: (id, tabId, requestId, query) =>
-          sessions.respond(owner, () =>
+          respond(owner, () =>
             sessions.select(id, owner, tabId, requestId, query),
           ),
-        cancel: (id) =>
-          sessions.respond(owner, () => sessions.cancel(id, owner)),
+        cancel: (id) => respond(owner, () => sessions.cancel(id, owner)),
       }
     },
   }

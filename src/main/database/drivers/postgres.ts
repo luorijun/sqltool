@@ -9,7 +9,6 @@ import type {
   DbTable,
   QueryColumnTypeFamily,
   QueryResultRow,
-  SelectQuery,
   TableSource,
 } from "@/contracts/database"
 import type {
@@ -18,7 +17,6 @@ import type {
   DriverResult,
   PostgresTypeRef,
 } from "../ports"
-import { compileSelectQuery } from "../query"
 import { withTimeout } from "../tasks"
 import type { QueryColumnInput } from "./shared"
 import {
@@ -502,19 +500,8 @@ export async function connectPostgres(
     inspect(source) {
       return inspectPostgresClient(client, source)
     },
-    query(sql) {
-      return queryPostgresClient(client, sql)
-    },
-    async select(query: SelectQuery) {
-      const compiled = compileSelectQuery("postgres", query)
-      return {
-        result: await queryPostgresClient(
-          client,
-          compiled.sql,
-          compiled.params,
-        ),
-        executedSql: compiled.sql,
-      }
+    query(sql, params) {
+      return queryPostgresClient(client, sql, params)
     },
     close: async () => {
       try {

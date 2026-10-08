@@ -10,7 +10,6 @@ import type {
 import {
   CANCEL,
   CLOSE_TAB,
-  CONNECT,
   CREATE,
   DISCONNECT,
   INSPECT,
@@ -35,9 +34,6 @@ const conn: DatabaseApi = {
   },
   remove: (id: string) => {
     return ipcRenderer.invoke(REMOVE, id)
-  },
-  connect: (configId: string) => {
-    return ipcRenderer.invoke(CONNECT, configId)
   },
   disconnect: (configId: string) => {
     return ipcRenderer.invoke(DISCONNECT, configId)

@@ -7,6 +7,5 @@ export {
   disconnectConnectionAtom,
   RequestError,
   refreshConnectionSchemaAtom,
-  refreshConnectionsAtom,
   sessionEntriesAtom,
 } from "./client"

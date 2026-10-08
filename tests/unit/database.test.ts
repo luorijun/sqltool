@@ -46,9 +46,6 @@ function connection() {
     inspect: async () => [
       { name: "public", tables: [], views: [], functions: [] },
     ],
-    select: async () => {
-      throw new Error("Unexpected select")
-    },
     close: async () => closed.resolve(),
     destroy: () => closed.resolve(),
     cancel: async () => {},
@@ -179,8 +176,8 @@ describe("database service", () => {
 
   test("concurrent window closure releases the last shared metadata connection", async () => {
     const { api, database, clients } = setup()
-    value(await api.connect("db"))
-    value(await database.forOwner(2).connect("db"))
+    value(await api.inspect("db"))
+    value(await database.forOwner(2).inspect("db"))
     expect(clients).toHaveLength(1)
     const destroy = mock(clients[0].client.destroy)
     clients[0].client.destroy = destroy
@@ -224,7 +221,8 @@ describe("database service", () => {
         return entry.client
       },
     })
-    const connecting = api.connect("db")
+    const firstSession = value(await api.openSession("db", "first"))
+    const connecting = api.query(firstSession, "first", "SELECT ip")
     let query: ReturnType<typeof api.query> | undefined
     try {
       await preparing.promise
@@ -308,7 +306,7 @@ describe("database service", () => {
 
   test("configuration changes require disconnecting and invalidate the catalog", async () => {
     const { api, entries } = setup()
-    value(await api.connect("db"))
+    value(await api.inspect("db"))
     value(await api.inspect("db"))
     expect((await api.sync()).connections[0].schema).toHaveLength(1)
     expect((await api.update("db", { name: "changed" })).ok).toBe(false)
@@ -656,6 +654,74 @@ describe("database service", () => {
     }
   })
 
+  test.each(["postgres", "mysql"] as const)(
+    "browse compilation passes SQL and bound parameters through the query port (%s)",
+    async (driver) => {
+      const entry = connection()
+      const query = mock<ConnectionSession["query"]>(async () => result)
+      entry.client.query = query
+      const { api, entries } = setup({ connect: async () => entry.client })
+      entries.set("db", { ...config, driver })
+      const input = "a' OR 1=1 --"
+      const selected = value(
+        await api.select("db", "view", "request", {
+          from: { schema: "public", table: "items" },
+          where: { column: "name", operator: "eq", value: input },
+          limit: 50,
+          offset: 100,
+        }),
+      )
+      expect(query).toHaveBeenCalledTimes(1)
+      const [sql, params] = query.mock.calls[0]
+      expect(selected.executedSql).toBe(sql)
+      expect(sql).not.toContain(input)
+      expect(params).toEqual([input, 50, 100])
+      expect(sql).toContain(
+        driver === "postgres" ? '"name" = $1' : "\x60name\x60 = ?",
+      )
+      expect(selected.result).toEqual(result)
+    },
+  )
+
+  test("browse sessions are reused within a window and survive another window closing", async () => {
+    const entries: ReturnType<typeof connection>[] = []
+    const { api, database } = setup({
+      connect: async () => {
+        const entry = connection()
+        entries.push(entry)
+        return entry.client
+      },
+    })
+    const other = database.forOwner(2)
+    const query = { from: { schema: "public", table: "items" } }
+    try {
+      value(await api.select("db", "a", "first", query))
+      value(await api.select("db", "b", "same-window", query))
+      expect(entries).toHaveLength(1)
+      value(await other.select("db", "a", "other-window", query))
+      expect(entries).toHaveLength(2)
+      const first = (await api.sync()).sessions[0]
+      const second = (await other.sync()).sessions[0]
+      expect(first.kind).toBe("browse")
+      expect(second.kind).toBe("browse")
+      expect(first.id).not.toBe(second.id)
+      const destroy = mock(entries[1].client.destroy)
+      entries[1].client.destroy = destroy
+
+      expect(await database.closeOwner(1, true)).toBe(true)
+      expect(destroy).not.toHaveBeenCalled()
+      expect((await other.sync()).sessions[0]).toMatchObject({
+        id: second.id,
+        status: "ready",
+      })
+      value(await other.select("db", "b", "after-close", query))
+      expect(entries).toHaveLength(2)
+      expect(destroy).not.toHaveBeenCalled()
+    } finally {
+      await database.closeOwner(2, true)
+    }
+  })
+
   test.each([false, true])(
     "browse closure decision %s stops only the target tab and preserves its shared connection",
     async (accepted) => {
@@ -665,13 +731,14 @@ describe("database service", () => {
       const calls: string[] = []
       const cancel = mock(async () => slow.reject(new Error("cancelled")))
       entry.client.cancel = cancel
-      entry.client.select = async (query) => {
-        calls.push(query.from.table)
-        if (query.from.table === "slow") {
+      entry.client.query = async (sql) => {
+        const table = sql.match(/FROM "public"[.]"([a-z]+)"/)?.[1] ?? ""
+        calls.push(table)
+        if (table === "slow") {
           started.resolve()
-          return { result: await slow.promise, executedSql: "SLOW" }
+          return slow.promise
         }
-        return { result, executedSql: "SELECT 1" }
+        return result
       }
       const confirm = mock<Confirm>(async () => accepted)
       const { api } = setup({ connect: async () => entry.client, confirm })

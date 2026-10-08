@@ -4,8 +4,6 @@ import type {
   DbSchema,
   QueryResult,
   QueryResultColumn,
-  SelectQuery,
-  SelectResult,
   TableSource,
 } from "@/contracts/database"
 
@@ -40,10 +38,7 @@ export interface ConnectionSession {
   inspect(source?: TableSource): Promise<DbSchema[]>
   types?: (refs: PostgresTypeRef[]) => Promise<Array<ColumnType | null>>
   charsets?: () => Promise<Map<number, number>>
-  query(sql: string): Promise<DriverResult>
-  select(
-    query: SelectQuery,
-  ): Promise<Omit<SelectResult, "result"> & { result: DriverResult }>
+  query(sql: string, params?: unknown[]): Promise<DriverResult>
   close(): Promise<void>
   destroy(): void
   cancel(): Promise<void>
