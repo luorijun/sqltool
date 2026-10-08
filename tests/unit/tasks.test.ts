@@ -47,7 +47,7 @@ describe("task scheduling", () => {
     const first = tasks.run(
       { id: "first", sessionId: "a", owner: 1 },
       async (start) => {
-        start(() => {
+        await start(() => {
           cancelling.resolve()
           return control.promise
         })
@@ -91,7 +91,7 @@ describe("task scheduling", () => {
     const running = tasks.run(
       { id: "request", sessionId: "a", owner: 1 },
       async (start) => {
-        start(async () => {
+        await start(async () => {
           throw new Error("cancel denied")
         })
         started.resolve()

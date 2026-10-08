@@ -28,6 +28,64 @@ interface Task extends TaskSnapshot {
 export class Tasks {
   private tasks = new Map<string, Task>()
   private lanes = new Map<string, Promise<void>>()
+  private holds = new Map<
+    string,
+    ReturnType<typeof Promise.withResolvers<void>>
+  >()
+
+  pause(sessionId: string): () => void {
+    const hold = Promise.withResolvers<void>()
+    this.holds.set(sessionId, hold)
+    return () => {
+      if (this.holds.get(sessionId) === hold) this.holds.delete(sessionId)
+      hold.resolve()
+    }
+  }
+
+  running(sessionId: string): boolean {
+    return [...this.tasks.values()].some(
+      (t) =>
+        t.sessionId === sessionId &&
+        !t.finished &&
+        (t.status === "running" || t.status === "cancelling"),
+    )
+  }
+
+  pauseTab(owner: number, tabId: string): () => void {
+    return this.pause(`tab:${owner}:${tabId}`)
+  }
+
+  runningTab(owner: number, tabId: string): boolean {
+    return [...this.tasks.values()].some(
+      (t) =>
+        t.owner === owner &&
+        t.tabId === tabId &&
+        !t.finished &&
+        (t.status === "running" || t.status === "cancelling"),
+    )
+  }
+
+  private hold(task: Task) {
+    return (
+      this.holds.get(task.sessionId) ??
+      this.holds.get(`tab:${task.owner}:${task.tabId}`)
+    )
+  }
+
+  private async wait(task: Task): Promise<void> {
+    const hold = this.hold(task)
+    if (hold) {
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => reject(task.abort.signal.reason)
+        task.abort.signal.addEventListener("abort", abort, { once: true })
+        hold.promise
+          .then(resolve)
+          .finally(() => task.abort.signal.removeEventListener("abort", abort))
+        if (task.abort.signal.aborted) abort()
+      })
+    }
+    task.abort.signal.throwIfAborted()
+  }
 
   snapshot(owner: number): TaskSnapshot[] {
     return [...this.tasks.values()]
@@ -42,7 +100,7 @@ export class Tasks {
 
   run<T>(
     input: { id: string; sessionId: string; owner: number; tabId?: string },
-    run: (start: (cancel: () => Promise<void>) => void) => Promise<T>,
+    run: (start: (cancel: () => Promise<void>) => Promise<void>) => Promise<T>,
   ): Promise<T> {
     if (this.tasks.has(input.id)) throw new Error("重复的请求编号")
     const task: Task = {
@@ -54,10 +112,11 @@ export class Tasks {
     this.tasks.set(task.id, task)
     const previous = this.lanes.get(task.sessionId) ?? Promise.resolve()
     const work = previous.then(async () => {
-      task.abort.signal.throwIfAborted()
+      await this.wait(task)
       task.status = "connecting"
       try {
-        return await run((cancel) => {
+        return await run(async (cancel) => {
+          while (this.hold(task)) await this.wait(task)
           task.abort.signal.throwIfAborted()
           task.cancel = cancel
           task.status = "running"

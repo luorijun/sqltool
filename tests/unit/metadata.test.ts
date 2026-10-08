@@ -54,6 +54,7 @@ function setup() {
     })),
   )
   const client: ConnectionSession = {
+    transaction: async () => "idle",
     types,
     inspect: async () => [
       { name: "public", tables: [], views: [], functions: [] },

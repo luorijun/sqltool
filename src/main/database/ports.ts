@@ -31,7 +31,11 @@ export type DriverResult = Omit<QueryResult, "columns"> & {
   columns: DriverColumn[]
 }
 
+export type Transaction = "idle" | "active" | "failed" | "unknown"
+export type ConfirmKind = "stop" | "rollback" | "unknown" | "force"
+
 export interface ConnectionSession {
+  transaction(): Promise<Transaction>
   prepareMetadata?: () => Promise<void>
   inspect(source?: TableSource): Promise<DbSchema[]>
   types?: (refs: PostgresTypeRef[]) => Promise<Array<ColumnType | null>>
@@ -51,7 +55,7 @@ export type Confirm = (
   owner: number,
   message: string,
   detail: string,
-  force?: boolean,
+  kind: ConfirmKind,
 ) => Promise<boolean>
 export interface ConfigStore {
   list(): Config[]

@@ -438,6 +438,41 @@ export async function connectPostgres(
   }
 
   return createConnectionSession({
+    async transaction() {
+      // pg rejects a failed query before ReadyForQuery updates its transaction status.
+      if (!("readyForQuery" in client)) return "unknown"
+      if (!client.readyForQuery) {
+        await new Promise<void>((resolve, reject) => {
+          const clear = () => {
+            client.connection.off("readyForQuery", ready)
+            client.off("error", error)
+            client.off("end", end)
+          }
+          const ready = () => {
+            clear()
+            resolve()
+          }
+          const error = (cause: Error) => {
+            clear()
+            reject(cause)
+          }
+          const end = () => error(new Error("数据库连接已断开"))
+          client.connection.once("readyForQuery", ready)
+          client.once("error", error)
+          client.once("end", end)
+        })
+      }
+      switch (client.getTransactionStatus()) {
+        case "I":
+          return "idle"
+        case "T":
+          return "active"
+        case "E":
+          return "failed"
+        default:
+          return "unknown"
+      }
+    },
     async prepareMetadata() {
       await client.query("SET search_path TO pg_catalog")
     },

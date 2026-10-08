@@ -14,7 +14,7 @@ export const database = createDatabase({
     set: (config) => store.set(`configs.${config.id}`, config),
     remove: (id) => store.delete(`configs.${id}`),
   },
-  async confirm(owner, message, detail, force) {
+  async confirm(owner, message, detail, kind) {
     const window = BrowserWindow.getAllWindows().find(
       (w) => w.webContents.id === owner,
     )
@@ -23,7 +23,15 @@ export const database = createDatabase({
       type: "warning",
       message,
       detail,
-      buttons: ["返回", force ? "强制断开" : "回滚并关闭"],
+      buttons: [
+        "返回",
+        {
+          stop: "停止任务并继续关闭",
+          rollback: "回滚并关闭",
+          unknown: "尝试回滚并关闭",
+          force: "强制断开",
+        }[kind],
+      ],
       defaultId: 0,
       cancelId: 0,
       noLink: true,

@@ -4,6 +4,7 @@ import { ConnError, withTimeout } from "../tasks"
 export type QueryColumnInput = Omit<DriverColumn, "id">
 
 interface CreateConnectionSessionOptions {
+  transaction: ConnectionSession["transaction"]
   prepareMetadata?: ConnectionSession["prepareMetadata"]
   inspect: ConnectionSession["inspect"]
   types?: ConnectionSession["types"]
@@ -81,6 +82,7 @@ export function createConnectionSession(
   const types = options.types
   const charsets = options.charsets
   return {
+    transaction: () => execute(options.transaction),
     prepareMetadata: options.prepareMetadata,
     inspect: (source) => execute(() => options.inspect(source)),
     types: types ? (refs) => execute(() => types(refs)) : undefined,

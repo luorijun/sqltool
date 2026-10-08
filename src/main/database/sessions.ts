@@ -8,7 +8,13 @@ import type {
   TableSource,
 } from "@/contracts/database"
 import { Metadata } from "./metadata"
-import type { Confirm, Connect, ConnectionSession, DriverResult } from "./ports"
+import type {
+  Confirm,
+  Connect,
+  ConnectionSession,
+  DriverResult,
+  Transaction,
+} from "./ports"
 import { ConnError, Tasks, withTimeout } from "./tasks"
 
 interface Session extends SessionSnapshot {
@@ -295,7 +301,7 @@ export class Sessions {
       { id: requestId, sessionId: session.id, owner, tabId },
       async (start) => {
         const client = await this.ensure(session)
-        start(() => client.cancel())
+        await start(() => client.cancel())
         if (session.kind === "sql") session.used = true
         return run(client)
       },
@@ -403,30 +409,96 @@ export class Sessions {
     }
     if (entries.some((s) => this.closing.has(s.id)))
       throw new Error("正在关闭，请稍后再试")
-    for (const s of entries) this.closing.add(s.id)
+    const resumes = new Map<string, () => void>()
+    for (const s of entries) {
+      this.closing.add(s.id)
+      resumes.set(s.id, this.tasks.pause(s.id))
+    }
+    const states = new Map<Session, Transaction>()
+    const faults = new Map<Session, string>()
+    const fault = (session: Session, error: unknown) => {
+      session.error = error instanceof Error ? error.message : String(error)
+      faults.set(session, session.error)
+    }
+    const confirmForce = (detail: string) =>
+      this.options.confirm(
+        owner,
+        "无法安全关闭会话，强制断开？",
+        `${detail}\n服务端执行结果可能未知，强制断开不会保证此前语句已回滚。`,
+        "force",
+      )
     try {
-      if (!force && entries.some((s) => s.used && s.status !== "closed")) {
+      if (entries.some((s) => this.tasks.running(s.id))) {
         const accepted = await this.options.confirm(
           owner,
-          "回滚并关闭会话？",
-          "这些会话执行过 SQL，可能存在未提交事务。将停止任务并尝试回滚，临时表和会话设置也会丢失。已经提交的更改不会撤销。",
+          "停止任务并继续关闭？",
+          "这些会话仍有 SQL 正在执行。停止后将检查事务状态；已经完成或提交的更改不会撤销。",
+          "stop",
         )
         if (!accepted) return false
       }
+      // Drain all user SQL before reading status. Confirm all affected sessions
+      // before releasing any connection, including in a batch close.
       for (const session of entries) {
+        if (session.status === "closed") continue
         try {
-          await this.tasks.stop(session.id)
+          await withTimeout(this.tasks.stop(session.id))
           if (session.opening) await withTimeout(session.opening)
+          resumes.get(session.id)?.()
           if (session.used && session.status === "failed")
-            throw new Error(session.error ?? "连接已失效，无法确认回滚结果")
-          if (session.used && session.client) {
-            const client = session.client
-            // A timed-out rollback stays in the lane until it settles or is cancelled.
+            throw new Error(session.error ?? "连接已失效，无法确认执行结果")
+          const client = session.client
+          const state =
+            session.kind === "sql" && session.used && client
+              ? await withTimeout(
+                  this.tasks.run(
+                    { id: randomUUID(), sessionId: session.id, owner },
+                    async (start) => {
+                      await start(() => client.cancel())
+                      return client.transaction()
+                    },
+                  ),
+                )
+              : "idle"
+          states.set(session, state)
+        } catch (error) {
+          fault(session, error)
+        }
+      }
+      const unknown = [...states.values()].includes("unknown")
+      const pending = [...states.values()].some(
+        (state) => state === "active" || state === "failed",
+      )
+      if (unknown || pending) {
+        const accepted = await this.options.confirm(
+          owner,
+          unknown ? "无法确认事务状态，尝试回滚并关闭？" : "回滚并关闭会话？",
+          unknown
+            ? "部分会话的事务状态无法确认，将尝试回滚；如有未结束事务，其未提交更改将丢失。临时表和会话设置也会丢失，已经提交的更改不会撤销。"
+            : "这些会话存在未结束事务，回滚将丢弃其中的未提交更改。临时表和会话设置也会丢失，已经提交的更改不会撤销。",
+          unknown ? "unknown" : "rollback",
+        )
+        if (!accepted) return false
+      }
+      if (faults.size && !(await confirmForce([...faults.values()].join("\n"))))
+        return false
+      for (const session of entries) {
+        if (session.status === "closed") continue
+        if (faults.has(session)) {
+          this.destroy(session)
+          continue
+        }
+        try {
+          if (session.used && session.status === "failed")
+            throw new Error(session.error ?? "连接已失效，无法确认执行结果")
+          const client = session.client
+          if (client && states.get(session) !== "idle") {
+            // Keep rollback in the lane until it settles or the connection is destroyed.
             await withTimeout(
               this.tasks.run(
                 { id: randomUUID(), sessionId: session.id, owner },
                 async (start) => {
-                  start(() => client.cancel())
+                  await start(() => client.cancel())
                   return client.query("ROLLBACK")
                 },
               ),
@@ -437,20 +509,18 @@ export class Sessions {
           if (session.client) await session.client.close()
           this.destroy(session)
         } catch (error) {
-          session.error = error instanceof Error ? error.message : String(error)
-          const accepted = await this.options.confirm(
-            owner,
-            "无法确认停止或回滚，强制断开？",
-            `${session.error}\n服务端执行结果可能未知，强制断开不会保证此前语句已回滚。`,
-            true,
-          )
-          if (!accepted) return false
+          fault(session, error)
+          if (!(await confirmForce(session.error ?? "无法确认关闭结果")))
+            return false
           this.destroy(session)
         }
       }
       return true
     } finally {
-      for (const s of entries) this.closing.delete(s.id)
+      for (const s of entries) {
+        resumes.get(s.id)?.()
+        this.closing.delete(s.id)
+      }
     }
   }
 
@@ -471,7 +541,24 @@ export class Sessions {
         (s) => s.owner === owner && s.tabId === tabId,
       )
       // Browse tasks share their connection; cancel only this tab's requests.
-      if (entries.length === 0) await this.tasks.stopTab(owner, tabId)
+      if (entries.length === 0) {
+        const resume = this.tasks.pauseTab(owner, tabId)
+        try {
+          if (this.tasks.runningTab(owner, tabId)) {
+            const accepted = await this.options.confirm(
+              owner,
+              "停止任务并关闭标签页？",
+              "这个标签页仍有查询正在执行，将停止它的任务并关闭标签页。",
+              "stop",
+            )
+            if (!accepted) return false
+          }
+          // Never force-disconnect a browse connection shared with other tabs.
+          await withTimeout(this.tasks.stopTab(owner, tabId))
+        } finally {
+          resume()
+        }
+      }
       const closed = await this.close(entries, owner)
       if (closed) for (const s of entries) this.entries.delete(s.id)
       return closed

@@ -6,7 +6,7 @@ import type {
   DbDriver,
 } from "../../src/contracts/database"
 import { connectDriver, createDatabase } from "../../src/main/database"
-import type { ConnectionSession } from "../../src/main/database/ports"
+import type { Confirm, ConnectionSession } from "../../src/main/database/ports"
 
 export function profile(driver: DbDriver): Config {
   return {
@@ -25,7 +25,10 @@ export function value<T>(response: ConnResponse<T>): T {
   if (response.ok === false) throw new Error(response.error)
   return response.value
 }
-export async function setup(config: Config) {
+export async function setup(
+  config: Config,
+  confirm: Confirm = async () => true,
+) {
   const admin = await connectDriver(profile(config.driver))
   const database = createDatabase({
     store: {
@@ -39,7 +42,7 @@ export async function setup(config: Config) {
       },
     },
     connect: connectDriver,
-    confirm: async () => true,
+    confirm,
   })
   return {
     api: database.forOwner(1),

@@ -7,6 +7,7 @@ import type {
 import { createDatabase } from "../../src/main/database"
 import type {
   ColumnType,
+  Confirm,
   ConnectionSession,
   DatabaseOptions,
   DriverResult,
@@ -33,9 +34,13 @@ function connection() {
   const sql: string[] = []
   const closed = Promise.withResolvers<void>()
   let fail: (error: Error) => void = () => {}
+  let state: Awaited<ReturnType<ConnectionSession["transaction"]>> = "idle"
   const client: ConnectionSession = {
+    transaction: async () => state,
     query: async (text) => {
       sql.push(text)
+      if (text === "BEGIN") state = "active"
+      if (text === "COMMIT" || text === "ROLLBACK") state = "idle"
       return result
     },
     inspect: async () => [
@@ -406,6 +411,380 @@ describe("database service", () => {
     await clients[0].closed.promise
     expect((await api.sync()).sessions).toEqual([])
   })
+
+  test.each(["SELECT 1", "COMMIT", "ROLLBACK"])(
+    "closing an idle session after %s needs neither confirmation nor rollback",
+    async (sql) => {
+      const confirm = mock<Confirm>(async () => true)
+      const { api, clients } = setup({ confirm })
+      const id = value(await api.openSession("db", "a"))
+      if (sql !== "SELECT 1") value(await api.query(id, "begin", "BEGIN"))
+      value(await api.query(id, "last", sql))
+      expect(value(await api.closeTab("a"))).toBe(true)
+      expect(confirm).not.toHaveBeenCalled()
+      expect(clients[0].sql.at(-1)).toBe(sql)
+    },
+  )
+
+  test("a failed ordinary query does not invent a transaction", async () => {
+    const confirm = mock<Confirm>(async () => true)
+    const { api, clients } = setup({ confirm })
+    const id = value(await api.openSession("db", "a"))
+    value(await api.query(id, "first", "SELECT 1"))
+    clients[0].client.query = async () => {
+      throw new Error("syntax error")
+    }
+    expect((await api.query(id, "bad", "BAD SQL")).ok).toBe(false)
+    expect(value(await api.closeTab("a"))).toBe(true)
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  test.each(["active", "failed"] as const)(
+    "closing a %s transaction confirms rollback and preserves it on refusal",
+    async (state) => {
+      let accepted = false
+      const confirm = mock<Confirm>(async () => accepted)
+      const { api, clients } = setup({ confirm })
+      const id = value(await api.openSession("db", "a"))
+      value(await api.query(id, "begin", "BEGIN"))
+      clients[0].client.transaction = async () => state
+      expect(value(await api.closeTab("a"))).toBe(false)
+      expect(clients[0].sql).toEqual(["BEGIN"])
+      expect(confirm.mock.calls[0][3]).toBe("rollback")
+      value(await api.query(id, "still-open", "SELECT 1"))
+      accepted = true
+      expect(value(await api.closeTab("a"))).toBe(true)
+      expect(clients[0].sql.at(-1)).toBe("ROLLBACK")
+    },
+  )
+
+  test("batch closure confirms once and rolls back only unfinished transactions", async () => {
+    const confirm = mock<Confirm>(async () => true)
+    const { api, clients } = setup({ confirm })
+    for (const tab of ["a", "b", "c"]) {
+      const id = value(await api.openSession("db", tab))
+      value(await api.query(id, tab, tab === "c" ? "SELECT 1" : "BEGIN"))
+    }
+    expect(value(await api.disconnect("db"))).toBe(true)
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(confirm.mock.calls[0][3]).toBe("rollback")
+    expect(clients.map((c) => c.sql)).toEqual([
+      ["BEGIN", "ROLLBACK"],
+      ["BEGIN", "ROLLBACK"],
+      ["SELECT 1"],
+    ])
+  })
+
+  test("unknown transaction status gets its own confirmation before attempting rollback", async () => {
+    const confirm = mock<Confirm>(async () => true)
+    const { api, clients } = setup({ confirm })
+    const id = value(await api.openSession("db", "a"))
+    value(await api.query(id, "first", "SELECT 1"))
+    clients[0].client.transaction = async () => "unknown"
+    expect(value(await api.closeTab("a"))).toBe(true)
+    expect(confirm.mock.calls.map((call) => call[3])).toEqual(["unknown"])
+    expect(clients[0].sql).toEqual(["SELECT 1", "ROLLBACK"])
+  })
+
+  test("a failed connection requires only a force decision and is retained on refusal", async () => {
+    let accepted = false
+    const confirm = mock<Confirm>(async () => accepted)
+    const { api, clients } = setup({ confirm })
+    const id = value(await api.openSession("db", "a"))
+    value(await api.query(id, "first", "SELECT 1"))
+    clients[0].fail()
+    expect(value(await api.closeTab("a"))).toBe(false)
+    expect((await api.sync()).sessions[0].status).toBe("failed")
+    expect(confirm.mock.calls.map((call) => call[3])).toEqual(["force"])
+    accepted = true
+    expect(value(await api.closeTab("a"))).toBe(true)
+    expect(clients[0].sql).toEqual(["SELECT 1"])
+  })
+
+  test("status retrieval failure cannot silently close or roll back another session", async () => {
+    const confirm = mock<Confirm>(async () => false)
+    const { api, clients } = setup({ confirm })
+    for (const tab of ["a", "b"]) {
+      const id = value(await api.openSession("db", tab))
+      value(await api.query(id, tab, "SELECT 1"))
+    }
+    clients[0].client.transaction = async () => {
+      throw new Error("status unavailable")
+    }
+    expect(value(await api.disconnect("db"))).toBe(false)
+    expect(confirm.mock.calls[0][3]).toBe("force")
+    expect(clients.map((c) => c.sql)).toEqual([["SELECT 1"], ["SELECT 1"]])
+    expect((await api.sync()).sessions.every((s) => s.status === "ready")).toBe(
+      true,
+    )
+  })
+
+  test("connection loss during rollback confirmation requires a separate force decision", async () => {
+    const kinds: string[] = []
+    const { api, clients } = setup({
+      confirm: async (_owner, _message, _detail, kind) => {
+        kinds.push(kind)
+        if (kind === "rollback") clients[0].fail()
+        return kind === "rollback"
+      },
+    })
+    const id = value(await api.openSession("db", "a"))
+    value(await api.query(id, "begin", "BEGIN"))
+    expect(value(await api.closeTab("a"))).toBe(false)
+    expect(kinds).toEqual(["rollback", "force"])
+    expect(clients[0].sql).toEqual(["BEGIN"])
+  })
+
+  test("declining stop leaves running SQL untouched and resumes the queued SQL", async () => {
+    const deciding = Promise.withResolvers<void>()
+    const decision = Promise.withResolvers<boolean>()
+    const confirm = mock<Confirm>(async () => {
+      deciding.resolve()
+      return decision.promise
+    })
+    const { api, clients } = setup({ confirm })
+    const id = value(await api.openSession("db", "a"))
+    value(await api.query(id, "initial", "SELECT 1"))
+    const slow = Promise.withResolvers<DriverResult>()
+    const started = Promise.withResolvers<void>()
+    const query = clients[0].client.query
+    const cancel = mock(async () => {})
+    clients[0].client.cancel = cancel
+    clients[0].client.query = async (sql) => {
+      if (sql !== "SLOW") return query(sql)
+      started.resolve()
+      return slow.promise
+    }
+    const running = api.query(id, "slow", "SLOW")
+    await started.promise
+    const queued = api.query(id, "queued", "BEGIN")
+    const closing = api.closeTab("a")
+    try {
+      await deciding.promise
+      expect(confirm.mock.calls[0][3]).toBe("stop")
+      slow.resolve(result)
+      value(await running)
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(clients[0].sql).toEqual(["SELECT 1"])
+      expect((await api.query(id, "blocked", "SELECT 2")).ok).toBe(false)
+      decision.resolve(false)
+      expect(value(await closing)).toBe(false)
+      value(await queued)
+      expect(clients[0].sql).toEqual(["SELECT 1", "BEGIN"])
+      expect(cancel).not.toHaveBeenCalled()
+    } finally {
+      slow.resolve(result)
+      decision.resolve(false)
+      await Promise.allSettled([running, queued, closing])
+    }
+  })
+
+  test.each([true, false])(
+    "after stopping SQL, rollback decision %s cannot run queued SQL or replay the cancelled query",
+    async (accepted) => {
+      const confirm = mock<Confirm>(
+        async (_owner, _message, _detail, kind) => kind === "stop" || accepted,
+      )
+      const { api, clients } = setup({ confirm })
+      const id = value(await api.openSession("db", "a"))
+      value(await api.query(id, "begin", "BEGIN"))
+      const slow = Promise.withResolvers<DriverResult>()
+      const started = Promise.withResolvers<void>()
+      const query = clients[0].client.query
+      clients[0].client.query = async (sql) => {
+        if (sql !== "SLOW") return query(sql)
+        started.resolve()
+        return slow.promise
+      }
+      clients[0].client.cancel = async () => {
+        slow.reject(new Error("cancelled"))
+      }
+      const running = api.query(id, "slow", "SLOW")
+      await started.promise
+      const queued = api.query(id, "queued", "INSERT INTO items VALUES (1)")
+      try {
+        expect(value(await api.closeTab("a"))).toBe(accepted)
+        expect((await running).ok).toBe(false)
+        expect(await queued).toMatchObject({ ok: false, kind: "cancelled" })
+        expect(confirm.mock.calls.map((call) => call[3])).toEqual([
+          "stop",
+          "rollback",
+        ])
+        expect(clients[0].sql).toEqual(
+          accepted ? ["BEGIN", "ROLLBACK"] : ["BEGIN"],
+        )
+        if (!accepted) value(await api.query(id, "usable", "SELECT 1"))
+      } finally {
+        slow.resolve(result)
+        await Promise.allSettled([running, queued])
+      }
+    },
+  )
+
+  test("a stop failure requires force confirmation without losing the running result", async () => {
+    const confirm = mock<Confirm>(
+      async (_owner, _message, _detail, kind) => kind === "stop",
+    )
+    const { api, clients } = setup({ confirm })
+    const id = value(await api.openSession("db", "a"))
+    value(await api.query(id, "initial", "SELECT 1"))
+    const slow = Promise.withResolvers<DriverResult>()
+    const started = Promise.withResolvers<void>()
+    const query = clients[0].client.query
+    clients[0].client.query = async (sql) => {
+      if (sql !== "SLOW") return query(sql)
+      started.resolve()
+      return slow.promise
+    }
+    clients[0].client.cancel = async () => {
+      throw new Error("cancel denied")
+    }
+    const running = api.query(id, "slow", "SLOW")
+    try {
+      await started.promise
+      expect(value(await api.closeTab("a"))).toBe(false)
+      expect(confirm.mock.calls.map((call) => call[3])).toEqual([
+        "stop",
+        "force",
+      ])
+      slow.resolve(result)
+      value(await running)
+      value(await api.query(id, "usable", "SELECT 1"))
+    } finally {
+      slow.resolve(result)
+      await running
+    }
+  })
+
+  test.each([false, true])(
+    "browse closure decision %s stops only the target tab and preserves its shared connection",
+    async (accepted) => {
+      const slow = Promise.withResolvers<DriverResult>()
+      const started = Promise.withResolvers<void>()
+      const entry = connection()
+      const calls: string[] = []
+      const cancel = mock(async () => slow.reject(new Error("cancelled")))
+      entry.client.cancel = cancel
+      entry.client.select = async (query) => {
+        calls.push(query.from.table)
+        if (query.from.table === "slow") {
+          started.resolve()
+          return { result: await slow.promise, executedSql: "SLOW" }
+        }
+        return { result, executedSql: "SELECT 1" }
+      }
+      const confirm = mock<Confirm>(async () => accepted)
+      const { api } = setup({ connect: async () => entry.client, confirm })
+      const running = api.select("db", "a", "slow", {
+        from: { schema: "public", table: "slow" },
+      })
+      await started.promise
+      const queued = api.select("db", "a", "queued", {
+        from: { schema: "public", table: "queued" },
+      })
+      const other = api.select("db", "b", "other", {
+        from: { schema: "public", table: "other" },
+      })
+      try {
+        expect(value(await api.closeTab("a"))).toBe(accepted)
+        expect(confirm.mock.calls.map((call) => call[3])).toEqual(["stop"])
+        if (accepted) {
+          expect((await running).ok).toBe(false)
+          expect(await queued).toMatchObject({ ok: false, kind: "cancelled" })
+          expect(cancel).toHaveBeenCalledTimes(1)
+        } else {
+          expect(cancel).not.toHaveBeenCalled()
+          slow.resolve(result)
+          value(await running)
+          value(await queued)
+        }
+        value(await other)
+        expect(calls).toEqual(
+          accepted ? ["slow", "other"] : ["slow", "queued", "other"],
+        )
+        expect((await api.sync()).sessions[0].status).toBe("ready")
+      } finally {
+        slow.resolve(result)
+        await Promise.allSettled([running, queued, other])
+      }
+    },
+  )
+
+  test("a stop timeout requires force confirmation while a late cancellation still drains", async () => {
+    const confirm = mock<Confirm>(
+      async (_owner, _message, _detail, kind) => kind === "stop",
+    )
+    const { api, clients } = setup({ confirm })
+    const id = value(await api.openSession("db", "a"))
+    value(await api.query(id, "initial", "SELECT 1"))
+    const slow = Promise.withResolvers<DriverResult>()
+    const started = Promise.withResolvers<void>()
+    const control = Promise.withResolvers<void>()
+    const query = clients[0].client.query
+    clients[0].client.query = async (sql) => {
+      if (sql !== "SLOW") return query(sql)
+      started.resolve()
+      return slow.promise
+    }
+    clients[0].client.cancel = () => control.promise
+    const running = api.query(id, "slow", "SLOW")
+    let next: ReturnType<typeof api.query> | undefined
+    try {
+      await started.promise
+      expect(value(await api.closeTab("a"))).toBe(false)
+      expect(confirm.mock.calls.map((call) => call[3])).toEqual([
+        "stop",
+        "force",
+      ])
+      next = api.query(id, "next", "SELECT 2")
+      slow.resolve(result)
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(clients[0].sql).toEqual(["SELECT 1"])
+      control.resolve()
+      value(await running)
+      value(await next)
+      expect(clients[0].sql).toEqual(["SELECT 1", "SELECT 2"])
+    } finally {
+      slow.resolve(result)
+      control.resolve()
+      await Promise.allSettled([running, next])
+    }
+  }, 10000)
+
+  test("a rollback timeout preserves its lane when force closure is declined", async () => {
+    const confirm = mock<Confirm>(
+      async (_owner, _message, _detail, kind) => kind === "rollback",
+    )
+    const { api, clients } = setup({ confirm })
+    const id = value(await api.openSession("db", "a"))
+    value(await api.query(id, "begin", "BEGIN"))
+    const rollback = Promise.withResolvers<DriverResult>()
+    const query = clients[0].client.query
+    clients[0].client.query = async (sql) => {
+      if (sql === "ROLLBACK") {
+        await rollback.promise
+        return query(sql)
+      }
+      return query(sql)
+    }
+    let next: ReturnType<typeof api.query> | undefined
+    try {
+      expect(value(await api.closeTab("a"))).toBe(false)
+      expect(confirm.mock.calls.map((call) => call[3])).toEqual([
+        "rollback",
+        "force",
+      ])
+      next = api.query(id, "next", "SELECT 1")
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(clients[0].sql).toEqual(["BEGIN"])
+      rollback.resolve(result)
+      value(await next)
+      expect(clients[0].sql).toEqual(["BEGIN", "ROLLBACK", "SELECT 1"])
+    } finally {
+      rollback.resolve(result)
+      await next
+    }
+  }, 10000)
 
   test("testing a connection closes it without saving a configuration", async () => {
     const { api, clients, entries } = setup()

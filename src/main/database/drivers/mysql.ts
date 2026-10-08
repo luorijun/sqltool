@@ -11,7 +11,7 @@ import type {
   SelectQuery,
   TableSource,
 } from "@/contracts/database"
-import type { ConnectionSession, DriverResult } from "../ports"
+import type { ConnectionSession, DriverResult, Transaction } from "../ports"
 import { compileSelectQuery } from "../query"
 import { withTimeout } from "../tasks"
 import type { QueryColumnInput } from "./shared"
@@ -53,6 +53,47 @@ interface FunctionRow extends RowDataPacket {
 interface ConnectedMySqlClient {
   client: MySqlConnection
   closeTransport?: () => void
+}
+
+interface PingPacket {
+  offset: number
+  end: number
+  clone(): PingPacket
+  readInt8(): number
+  readLengthCodedNumber(): number | null
+  readInt16(): number
+}
+
+function readTransaction(client: MySqlConnection): Promise<Transaction> {
+  // mysql2 discards Ping's OK status. Observe only this command's reply, without
+  // changing the connection parser or executing SQL on the user's transaction.
+  const core = client as MySqlConnection & {
+    connection: {
+      ping(callback: (error?: Error) => void): {
+        next: ((packet: PingPacket) => unknown) | null
+      }
+    }
+  }
+  return new Promise((resolve, reject) => {
+    let state: Transaction = "unknown"
+    const ping = core.connection.ping((error) => {
+      if (error) reject(error)
+      else resolve(state)
+    })
+    const next = ping.next
+    if (!next) return
+    ping.next = function (packet) {
+      const reply = packet.clone()
+      if (reply.readInt8() === 0) {
+        reply.readLengthCodedNumber()
+        reply.readLengthCodedNumber()
+        if (reply.offset + 4 <= reply.end) {
+          state = reply.readInt16() & 1 ? "active" : "idle"
+        }
+      }
+      return next.call(this, packet)
+    }
+  })
 }
 
 function destroyMySqlClient(client: MySqlConnection): void {
@@ -340,6 +381,7 @@ export async function connectMySql(
   const { client, closeTransport } = await createMySqlClient(profile)
 
   return createConnectionSession({
+    transaction: () => readTransaction(client),
     async charsets() {
       const rows = await queryRows<
         RowDataPacket & { id: number; width: number }
