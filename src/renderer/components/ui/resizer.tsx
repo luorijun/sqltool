@@ -1,3 +1,4 @@
+import { Button as ButtonPrimitive } from "@base-ui/react"
 import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
@@ -12,6 +13,8 @@ import { cn } from "tailwind-variants"
 
 type ResizeAxis = "x" | "y"
 type FixedPane = "first" | "second"
+
+const DIVIDER_SIZE = 11
 
 interface DragState {
   startPos: number
@@ -49,47 +52,84 @@ export function ResizeDivider({
   ariaLabel,
 }: ResizeDividerProps) {
   const isHorizontal = orientation === "horizontal"
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [position, setPosition] = useState<number | null>(null)
+
+  const updatePosition = useCallback(
+    (e: { clientX: number; clientY: number }) => {
+      const button = buttonRef.current
+      if (!button) {
+        return
+      }
+
+      const rect = button.getBoundingClientRect()
+      const length = isHorizontal ? rect.width : rect.height
+      const offset = isHorizontal ? e.clientX - rect.left : e.clientY - rect.top
+      const inset = Math.min(8, length / 2)
+      setPosition(Math.min(length - inset, Math.max(inset, offset)))
+    },
+    [isHorizontal],
+  )
+
+  useEffect(() => {
+    if (!active) {
+      return
+    }
+
+    document.addEventListener("mousemove", updatePosition)
+    return () => document.removeEventListener("mousemove", updatePosition)
+  }, [active, updatePosition])
 
   return (
-    <div
+    <ButtonPrimitive
+      ref={buttonRef}
+      type="button"
+      aria-label={
+        ariaLabel ?? (isHorizontal ? "上下拖拽调节高度" : "左右拖拽调节宽度")
+      }
       className={cn(
-        "group relative z-40 shrink-0 overflow-visible self-stretch",
-        // isHorizontal ? "h-px" : "w-px",
+        "group relative shrink-0 self-stretch overflow-hidden touch-none select-none p-0 text-muted-foreground outline-none transition-colors focus-visible:bg-primary/5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+        active ? "bg-muted" : "bg-muted/50 hover:bg-muted",
+        isHorizontal ? "cursor-row-resize border-t border-b" : "cursor-col-resize border-l border-r",
         className,
       )}
+      style={getPaneStyle(isHorizontal ? "y" : "x", DIVIDER_SIZE)}
+      onMouseEnter={updatePosition}
+      onMouseMove={updatePosition}
+      onMouseDown={(e) => {
+        updatePosition(e)
+        onMouseDown(e)
+      }}
     >
-      <div
+      <span
+        aria-hidden="true"
         className={cn(
-          "trans transition-colors",
-          active ? "border-border" : "group-hover:border-primary",
-          isHorizontal ? "border-b w-full" : "border-r h-full",
+          "pointer-events-none absolute top-1/2 left-1/2 -translate-1/2 transition-opacity",
+          active
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
         )}
-      />
-
-      <button
-        type="button"
-        aria-label={
-          ariaLabel ?? (isHorizontal ? "上下拖拽调节高度" : "左右拖拽调节宽度")
-        }
-        className={cn(
-          "absolute touch-none select-none border-none bg-transparent p-0 outline-none",
+        style={
           isHorizontal
-            ? "inset-x-0 top-1/2 h-2.75 -translate-y-1/2 cursor-row-resize"
-            : "inset-y-0 left-1/2 w-2.75 -translate-x-1/2 cursor-col-resize",
-        )}
-        onMouseDown={onMouseDown}
+            ? { left: position ?? "50%" }
+            : { top: position ?? "50%" }
+        }
       >
-        <span
-          className={cn(
-            "pointer-events-none absolute rounded-full bg-primary/40 transition-opacity",
-            active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-            isHorizontal
-              ? "top-1/2 left-1/2 h-1.25 w-8 -translate-1/2"
-              : "top-1/2 left-1/2 h-8 w-1.25 -translate-1/2",
-          )}
-        />
-      </button>
-    </div>
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 16 8"
+          fill="currentColor"
+          className={cn("h-2 w-4", !isHorizontal && "rotate-90")}
+        >
+          <circle cx="3" cy="2" r="1" />
+          <circle cx="8" cy="2" r="1" />
+          <circle cx="13" cy="2" r="1" />
+          <circle cx="3" cy="6" r="1" />
+          <circle cx="8" cy="6" r="1" />
+          <circle cx="13" cy="6" r="1" />
+        </svg>
+      </span>
+    </ButtonPrimitive>
   )
 }
 
@@ -136,7 +176,8 @@ export function ResizeContainer({
       return null
     }
 
-    return axis === "x" ? container.clientWidth : container.clientHeight
+    const size = axis === "x" ? container.clientWidth : container.clientHeight
+    return Math.max(0, size - DIVIDER_SIZE)
   }, [axis])
 
   const resolveDefaultSize = useCallback(
