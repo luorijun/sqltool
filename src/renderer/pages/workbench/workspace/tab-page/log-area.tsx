@@ -1,15 +1,15 @@
 import { useAtomValue, useSetAtom } from "jotai"
 import { type LogView, RunLog } from "@/renderer/components/run-log"
 import {
+  activeLogAtom,
   activeTabIdAtom,
-  activeTabLoggerAtom,
   clearLogsAtom,
   updateLogViewAtom,
 } from "@/renderer/modules/workspace"
 import { copyText, showError } from "../feedback"
 
-export default function LoggerArea() {
-  const state = useAtomValue(activeTabLoggerAtom)
+export default function LogArea() {
+  const state = useAtomValue(activeLogAtom)
   const tabId = useAtomValue(activeTabIdAtom)
   const clear = useSetAtom(clearLogsAtom)
   const update = useSetAtom(updateLogViewAtom)

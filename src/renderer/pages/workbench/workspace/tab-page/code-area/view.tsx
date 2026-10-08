@@ -7,7 +7,7 @@ import {
 } from "@/renderer/components/sql-editor"
 import { Button } from "@/renderer/components/ui/button"
 import { AreaToolbar } from "@/renderer/components/ui/panel-bar"
-import { connectionEntriesAtom } from "@/renderer/modules/database"
+import { connectionsAtom } from "@/renderer/modules/database"
 import {
   activeResultStaleAtom,
   activeViewTabAtom,
@@ -18,7 +18,7 @@ import CodeStatus from "./status"
 
 export default function ViewCodeArea() {
   const tab = useAtomValue(activeViewTabAtom)
-  const connections = useAtomValue(connectionEntriesAtom)
+  const connections = useAtomValue(connectionsAtom)
   const stale = useAtomValue(activeResultStaleAtom)
   const update = useSetAtom(updateViewCodeAtom)
   const editorRef = useRef<SqlEditorHandle | null>(null)

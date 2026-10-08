@@ -1,16 +1,14 @@
 import { expect, test } from "bun:test"
-import { getQueryColumnTypeLabel } from "../../src/renderer/components/result-grid/format"
+import { getColumnTypeLabel } from "../../src/renderer/components/result-grid/format"
 
 import { serializeTable } from "../../src/renderer/components/result-grid/serialize"
 
 test("type labels preserve database names and make missing metadata explicit", () => {
-  expect(getQueryColumnTypeLabel({ dbType: 'public."Mixed Case"[]' })).toBe(
+  expect(getColumnTypeLabel({ dbType: 'public."Mixed Case"[]' })).toBe(
     'public."Mixed Case"[]',
   )
-  expect(getQueryColumnTypeLabel({ dbType: "numeric(3,-1)" })).toBe(
-    "numeric(3,-1)",
-  )
-  expect(getQueryColumnTypeLabel({ driver: "postgres", typeCode: 12345 })).toBe(
+  expect(getColumnTypeLabel({ dbType: "numeric(3,-1)" })).toBe("numeric(3,-1)")
+  expect(getColumnTypeLabel({ driver: "postgres", typeCode: 12345 })).toBe(
     "未知类型 (postgres:12345)",
   )
 })

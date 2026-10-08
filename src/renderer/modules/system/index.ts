@@ -1,12 +1,12 @@
 import type { SaveTextFileOptions } from "@/contracts/system"
 
-const serialize = {
+const system = {
   writeClipboardText(text: string): Promise<void> {
-    return window.main.serialize.writeClipboardText(text)
+    return window.main.system.writeClipboardText(text)
   },
   saveTextFile(options: SaveTextFileOptions): Promise<string | null> {
-    return window.main.serialize.saveTextFile(options)
+    return window.main.system.saveTextFile(options)
   },
 }
 
-export default serialize
+export default system

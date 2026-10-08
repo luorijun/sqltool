@@ -23,7 +23,7 @@ export function SidebarHeader({
 }: {
   onCreate: () => void
   selected?: TreeNode
-  action?: "connect" | "disconnect" | "inspect"
+  action?: "connect" | "disconnect" | "refresh"
   actions: NodeActions
 }) {
   const connected = selected?.connection.connected ?? false
@@ -56,7 +56,7 @@ export function SidebarHeader({
               ? `${connectLabel}：${selected.connection.config.name ?? "未命名"}`
               : "请先选择条目"
           }
-          onClick={() => selected && actions.connect(selected)}
+          onClick={() => selected && actions.toggleConnection(selected)}
         >
           {action === "connect" || action === "disconnect" ? (
             <LoaderCircle className="animate-spin" />
@@ -79,7 +79,7 @@ export function SidebarHeader({
           onClick={() => selected && actions.refresh(selected)}
         >
           <RefreshCw
-            className={action === "inspect" ? "animate-spin" : undefined}
+            className={action === "refresh" ? "animate-spin" : undefined}
           />
         </Button>
         <DropdownMenu>

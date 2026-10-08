@@ -1,6 +1,6 @@
 import { atom } from "jotai"
 import connApi, {
-  connectionEntriesAtom,
+  connectionsAtom,
   RequestError,
 } from "@/renderer/modules/database"
 import { createLogEntry, trimLogs, upsertLogEntry } from "./logs"
@@ -10,17 +10,17 @@ import {
   tabStatesAtom,
   toTableRows,
   toTotalCount,
-  updateTabLoggerState,
-  updateViewTabState,
-  updateViewTabTableState,
+  updateLog,
+  updateViewTab,
+  updateViewTable,
 } from "./state"
-import type { ViewTabTableState } from "./types"
+import type { ViewTableState } from "./types"
 
 type ViewPage = { tabId: string } & Partial<
-  Pick<ViewTabTableState, "offset" | "limit" | "sort" | "sortOrder">
+  Pick<ViewTableState, "offset" | "limit" | "sort" | "sortOrder">
 >
 
-export const loadViewTabPageByIdAtom = atom(
+export const loadViewPageAtom = atom(
   null,
   async (get, set, input: ViewPage) => {
     const { tabId } = input
@@ -40,7 +40,7 @@ export const loadViewTabPageByIdAtom = atom(
     }
 
     const requestId = crypto.randomUUID()
-    const generation = get(connectionEntriesAtom)?.find(
+    const generation = get(connectionsAtom)?.find(
       (c) => c.config.id === tab.configId,
     )?.generation
     const isCurrent = () => {
@@ -54,7 +54,7 @@ export const loadViewTabPageByIdAtom = atom(
     })
 
     set(tabStatesAtom, (states) =>
-      updateViewTabTableState(states, tabId, (current) => ({
+      updateViewTable(states, tabId, (current) => ({
         ...current,
         requestId: requestId,
         status: "running",
@@ -62,7 +62,7 @@ export const loadViewTabPageByIdAtom = atom(
       })),
     )
     set(tabStatesAtom, (states) =>
-      updateTabLoggerState(states, tabId, (current) => ({
+      updateLog(states, tabId, (current) => ({
         ...current,
         logs: trimLogs([...current.logs, runningLog]),
       })),
@@ -85,7 +85,7 @@ export const loadViewTabPageByIdAtom = atom(
       const durationMs = Math.max(1, finishedAt - startedAt)
 
       set(tabStatesAtom, (states) =>
-        updateViewTabTableState(states, tabId, (current) => ({
+        updateViewTable(states, tabId, (current) => ({
           ...current,
           status: "success",
           error: null,
@@ -102,7 +102,7 @@ export const loadViewTabPageByIdAtom = atom(
         })),
       )
       set(tabStatesAtom, (states) =>
-        updateTabLoggerState(states, tabId, (current) => ({
+        updateLog(states, tabId, (current) => ({
           ...current,
           logs: trimLogs(
             upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
@@ -124,14 +124,14 @@ export const loadViewTabPageByIdAtom = atom(
       const message = error instanceof Error ? error.message : "数据表加载失败"
 
       set(tabStatesAtom, (states) =>
-        updateViewTabTableState(states, tabId, (current) => ({
+        updateViewTable(states, tabId, (current) => ({
           ...current,
           status: "error",
           error: message,
         })),
       )
       set(tabStatesAtom, (states) =>
-        updateTabLoggerState(states, tabId, (current) => ({
+        updateLog(states, tabId, (current) => ({
           ...current,
           logs: trimLogs(
             upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
@@ -149,120 +149,117 @@ export const loadViewTabPageByIdAtom = atom(
   },
 )
 
-export const loadViewTabCountByIdAtom = atom(
-  null,
-  async (get, set, tabId: string) => {
-    const tab = get(tabStatesAtom)[tabId]
-    if (
-      !tab ||
-      tab.closing ||
-      tab.kind !== "view" ||
-      tab.table.countStatus === "running"
-    ) {
-      return
-    }
+export const loadViewCountAtom = atom(null, async (get, set, tabId: string) => {
+  const tab = get(tabStatesAtom)[tabId]
+  if (
+    !tab ||
+    tab.closing ||
+    tab.kind !== "view" ||
+    tab.table.countStatus === "running"
+  ) {
+    return
+  }
 
-    const requestId = crypto.randomUUID()
-    const isCurrent = () => {
-      const current = get(tabStatesAtom)[tabId]
-      return (
-        current?.kind === "view" && current.table.countRequestId === requestId
-      )
-    }
-    const startedAt = Date.now()
-    const runningLog = createLogEntry("running", "", "正在统计数据表行数", {
-      detail: `${tab.source.schema}.${tab.source.table}`,
-      startedAt,
-    })
+  const requestId = crypto.randomUUID()
+  const isCurrent = () => {
+    const current = get(tabStatesAtom)[tabId]
+    return (
+      current?.kind === "view" && current.table.countRequestId === requestId
+    )
+  }
+  const startedAt = Date.now()
+  const runningLog = createLogEntry("running", "", "正在统计数据表行数", {
+    detail: `${tab.source.schema}.${tab.source.table}`,
+    startedAt,
+  })
+
+  set(tabStatesAtom, (states) =>
+    updateViewTable(states, tabId, (current) => ({
+      ...current,
+      countRequestId: requestId,
+      countStatus: "running",
+      countError: null,
+    })),
+  )
+  set(tabStatesAtom, (states) =>
+    updateLog(states, tabId, (current) => ({
+      ...current,
+      logs: trimLogs([...current.logs, runningLog]),
+    })),
+  )
+
+  try {
+    const { result, executedSql } = await connApi.select(
+      tab.configId,
+      tabId,
+      requestId,
+      {
+        from: tab.source,
+        select: [{ aggregate: "count", alias: "total" }],
+      },
+    )
+    const totalCount = toTotalCount(result.rows[0]?.[0])
+    if (!isCurrent()) return
+    const finishedAt = Date.now()
+    const durationMs = Math.max(1, finishedAt - startedAt)
 
     set(tabStatesAtom, (states) =>
-      updateViewTabTableState(states, tabId, (current) => ({
+      updateViewTable(states, tabId, (current) => ({
         ...current,
-        countRequestId: requestId,
-        countStatus: "running",
+        totalCount,
+        countStatus: "success",
         countError: null,
       })),
     )
     set(tabStatesAtom, (states) =>
-      updateTabLoggerState(states, tabId, (current) => ({
+      updateLog(states, tabId, (current) => ({
         ...current,
-        logs: trimLogs([...current.logs, runningLog]),
+        logs: trimLogs(
+          upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
+            ...(currentLog ?? runningLog),
+            status: "success",
+            sql: executedSql,
+            summary: `共 ${totalCount.toLocaleString()} 行`,
+            detail: undefined,
+            finishedAt,
+            durationMs,
+          })),
+        ),
       })),
     )
+  } catch (error) {
+    if (!isCurrent()) return
+    const finishedAt = Date.now()
+    const durationMs = Math.max(1, finishedAt - startedAt)
+    const message = error instanceof Error ? error.message : "总行数统计失败"
 
-    try {
-      const { result, executedSql } = await connApi.select(
-        tab.configId,
-        tabId,
-        requestId,
-        {
-          from: tab.source,
-          select: [{ aggregate: "count", alias: "total" }],
-        },
-      )
-      const totalCount = toTotalCount(result.rows[0]?.[0])
-      if (!isCurrent()) return
-      const finishedAt = Date.now()
-      const durationMs = Math.max(1, finishedAt - startedAt)
+    set(tabStatesAtom, (states) =>
+      updateViewTable(states, tabId, (current) => ({
+        ...current,
+        totalCount: null,
+        countStatus: "error",
+        countError: message,
+      })),
+    )
+    set(tabStatesAtom, (states) =>
+      updateLog(states, tabId, (current) => ({
+        ...current,
+        logs: trimLogs(
+          upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
+            ...(currentLog ?? runningLog),
+            status: error instanceof RequestError ? error.kind : "error",
+            summary: message,
+            detail: message,
+            finishedAt,
+            durationMs,
+          })),
+        ),
+      })),
+    )
+  }
+})
 
-      set(tabStatesAtom, (states) =>
-        updateViewTabTableState(states, tabId, (current) => ({
-          ...current,
-          totalCount,
-          countStatus: "success",
-          countError: null,
-        })),
-      )
-      set(tabStatesAtom, (states) =>
-        updateTabLoggerState(states, tabId, (current) => ({
-          ...current,
-          logs: trimLogs(
-            upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
-              ...(currentLog ?? runningLog),
-              status: "success",
-              sql: executedSql,
-              summary: `共 ${totalCount.toLocaleString()} 行`,
-              detail: undefined,
-              finishedAt,
-              durationMs,
-            })),
-          ),
-        })),
-      )
-    } catch (error) {
-      if (!isCurrent()) return
-      const finishedAt = Date.now()
-      const durationMs = Math.max(1, finishedAt - startedAt)
-      const message = error instanceof Error ? error.message : "总行数统计失败"
-
-      set(tabStatesAtom, (states) =>
-        updateViewTabTableState(states, tabId, (current) => ({
-          ...current,
-          totalCount: null,
-          countStatus: "error",
-          countError: message,
-        })),
-      )
-      set(tabStatesAtom, (states) =>
-        updateTabLoggerState(states, tabId, (current) => ({
-          ...current,
-          logs: trimLogs(
-            upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
-              ...(currentLog ?? runningLog),
-              status: error instanceof RequestError ? error.kind : "error",
-              summary: message,
-              detail: message,
-              finishedAt,
-              durationMs,
-            })),
-          ),
-        })),
-      )
-    }
-  },
-)
-
-export const refreshActiveViewTabAtom = atom(
+export const refreshViewAtom = atom(
   null,
   async (get, set, { tabId }: { tabId: string }) => {
     const tab = get(tabStatesAtom)[tabId]
@@ -270,13 +267,13 @@ export const refreshActiveViewTabAtom = atom(
       return
     }
     await Promise.all([
-      set(loadViewTabPageByIdAtom, { tabId: tab.id }),
-      set(loadViewTabCountByIdAtom, tab.id),
+      set(loadViewPageAtom, { tabId: tab.id }),
+      set(loadViewCountAtom, tab.id),
     ])
   },
 )
 
-export const setActiveViewTabRangeAtom = atom(
+export const setViewRangeAtom = atom(
   null,
   async (
     get,
@@ -295,11 +292,11 @@ export const setActiveViewTabRangeAtom = atom(
       (range.offset === tab.table.offset && range.limit === tab.table.limit)
     )
       return
-    await set(loadViewTabPageByIdAtom, { tabId: tab.id, ...range })
+    await set(loadViewPageAtom, { tabId: tab.id, ...range })
   },
 )
 
-export const setActiveViewTabPageAtom = atom(
+export const setViewPageAtom = atom(
   null,
   async (get, set, { tabId, page }: { tabId: string; page: number }) => {
     const tab = get(tabStatesAtom)[tabId]
@@ -311,7 +308,7 @@ export const setActiveViewTabPageAtom = atom(
       tab.table.countStatus === "success" ? totalCount : null,
     )
     const next = totalPages === null ? page : Math.min(page, totalPages)
-    await set(setActiveViewTabRangeAtom, {
+    await set(setViewRangeAtom, {
       tabId,
       offset: pageOffset(next, offset, limit),
       limit,
@@ -319,16 +316,16 @@ export const setActiveViewTabPageAtom = atom(
   },
 )
 
-export const setActiveViewTabPageSizeAtom = atom(
+export const setViewPageSizeAtom = atom(
   null,
   async (get, set, { tabId, limit }: { tabId: string; limit: number }) => {
     const tab = get(tabStatesAtom)[tabId]
     if (tab?.kind !== "view" || limit === tab.table.limit) return
-    await set(setActiveViewTabRangeAtom, { tabId, offset: 0, limit })
+    await set(setViewRangeAtom, { tabId, offset: 0, limit })
   },
 )
 
-export const setViewTabSortAtom = atom(
+export const setViewSortAtom = atom(
   null,
   async (
     get,
@@ -337,7 +334,7 @@ export const setViewTabSortAtom = atom(
       tabId,
       sort,
       order,
-    }: { tabId: string; sort: ViewTabTableState["sort"]; order: string[] },
+    }: { tabId: string; sort: ViewTableState["sort"]; order: string[] },
   ) => {
     const tab = get(tabStatesAtom)[tabId]
     if (tab?.kind !== "view" || tab.closing || tab.table.status === "running")
@@ -364,14 +361,14 @@ export const setViewTabSortAtom = atom(
       )
     ) {
       set(tabStatesAtom, (states) =>
-        updateViewTabTableState(states, tabId, (current) => ({
+        updateViewTable(states, tabId, (current) => ({
           ...current,
           sortOrder: order,
         })),
       )
       return
     }
-    await set(loadViewTabPageByIdAtom, {
+    await set(loadViewPageAtom, {
       tabId,
       sort,
       sortOrder: order,
@@ -380,7 +377,7 @@ export const setViewTabSortAtom = atom(
   },
 )
 
-export const cancelActiveViewAtom = atom(
+export const cancelViewAtom = atom(
   null,
   async (get, set, { tabId }: { tabId: string }) => {
     const tab = get(tabStatesAtom)[tabId]
@@ -393,7 +390,7 @@ export const cancelActiveViewAtom = atom(
     ].filter((id) => id !== undefined)
     if (!ids.length) return
     set(tabStatesAtom, (states) =>
-      updateViewTabState(states, tab.id, (current) => ({
+      updateViewTab(states, tab.id, (current) => ({
         ...current,
         cancelling: true,
       })),
@@ -402,7 +399,7 @@ export const cancelActiveViewAtom = atom(
       await Promise.all(ids.map((id) => connApi.cancel(id)))
     } finally {
       set(tabStatesAtom, (states) =>
-        updateViewTabState(states, tab.id, (current) => ({
+        updateViewTab(states, tab.id, (current) => ({
           ...current,
           cancelling: false,
         })),
@@ -418,8 +415,8 @@ export const reloadViewTabsAtom = atom(null, async (get, set) => {
   await Promise.all(
     tabs.map((tabId) =>
       Promise.all([
-        set(loadViewTabPageByIdAtom, { tabId }),
-        set(loadViewTabCountByIdAtom, tabId),
+        set(loadViewPageAtom, { tabId }),
+        set(loadViewCountAtom, tabId),
       ]),
     ),
   )

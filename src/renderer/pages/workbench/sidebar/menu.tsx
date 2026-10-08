@@ -14,7 +14,7 @@ import {
 import { canRefresh, type TreeNode } from "./tree"
 
 export interface NodeActions {
-  connect: (node: TreeNode) => void
+  toggleConnection: (node: TreeNode) => void
   disconnect: (node: TreeNode) => void
   refresh: (node: TreeNode) => void
   query: (node: TreeNode) => void
@@ -39,7 +39,10 @@ export function NodeMenu({
     connection.failedCount > 0
   return (
     <>
-      <DropdownMenuItem disabled={busy} onClick={() => actions.connect(node)}>
+      <DropdownMenuItem
+        disabled={busy}
+        onClick={() => actions.toggleConnection(node)}
+      >
         {connection.connected ? <LogOut /> : <LogIn />}
         {connection.connected ? "断开连接" : "连接"}
       </DropdownMenuItem>

@@ -1,6 +1,6 @@
 import { ResizeContainer } from "@/renderer/components/ui/resizer"
-import CoreArea from "./code-area"
-import LoggerArea from "./logger-area"
+import QueryCodeArea from "./code-area"
+import LogArea from "./log-area"
 import TableArea from "./table-area"
 
 const MIN_TABLE_HEIGHT = 80
@@ -28,8 +28,8 @@ export function QueryTabPage() {
           minRemainingSize={MIN_CODE_WIDTH}
           className="size-full min-h-0"
           dividerLabel="左右拖拽调节日志区宽度"
-          first={<CoreArea />}
-          second={<LoggerArea />}
+          first={<QueryCodeArea />}
+          second={<LogArea />}
         />
       }
     />

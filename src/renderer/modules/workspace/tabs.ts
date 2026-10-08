@@ -1,20 +1,20 @@
 import { atom } from "jotai"
-import connApi, { connectionEntriesAtom } from "@/renderer/modules/database"
+import connApi, { connectionsAtom } from "@/renderer/modules/database"
 import { openings } from "./query"
 import {
   activeIdAtom,
-  createDefaultCodeView,
-  createDefaultLoggerState,
-  createDefaultQueryEditorState,
-  createDefaultQueryTableState,
-  createDefaultViewTableState,
-  deleteTabState,
+  createCodeView,
+  createLog,
+  createQueryEditor,
+  createQueryTable,
+  createViewTable,
+  removeTab,
   tabOrderAtom,
   tabStatesAtom,
-  updateQueryTabState,
+  updateQueryTab,
 } from "./state"
 import type { QueryTabState, ViewTabState } from "./types"
-import { loadViewTabCountByIdAtom, loadViewTabPageByIdAtom } from "./view"
+import { loadViewCountAtom, loadViewPageAtom } from "./view"
 
 let nextTabId = 1
 
@@ -41,9 +41,9 @@ export const openQueryTabAtom = atom(
       kind: "query",
       label: opts?.label ?? `查询 ${id}`,
       configId: opts?.configId,
-      table: createDefaultQueryTableState(),
-      editor: createDefaultQueryEditorState(opts?.initialSql),
-      logger: createDefaultLoggerState(),
+      table: createQueryTable(),
+      editor: createQueryEditor(opts?.initialSql),
+      log: createLog(),
     } satisfies QueryTabState
 
     set(tabStatesAtom, (states) => ({ ...states, [id]: tab }))
@@ -75,9 +75,9 @@ export const openViewTabAtom = atom(
       label: opts.source.table,
       configId: opts.configId,
       source: { ...opts.source },
-      table: createDefaultViewTableState(),
-      code: createDefaultCodeView(),
-      logger: createDefaultLoggerState(),
+      table: createViewTable(),
+      code: createCodeView(),
+      log: createLog(),
     } satisfies ViewTabState
 
     set(tabOrderAtom, (ids) => [...ids, id])
@@ -85,8 +85,8 @@ export const openViewTabAtom = atom(
     set(activeIdAtom, id)
 
     await Promise.all([
-      set(loadViewTabPageByIdAtom, { tabId: id }),
-      set(loadViewTabCountByIdAtom, id),
+      set(loadViewPageAtom, { tabId: id }),
+      set(loadViewCountAtom, id),
     ])
     return id
   },
@@ -119,7 +119,7 @@ export const closeTabAtom = atom(null, async (get, set, tabId: string) => {
 
     set(tabOrderAtom, nextTabs)
     set(activeIdAtom, nextActiveTabId)
-    set(tabStatesAtom, (states) => deleteTabState(states, tabId))
+    set(tabStatesAtom, (states) => removeTab(states, tabId))
   } finally {
     set(tabStatesAtom, (states) =>
       states[tabId]
@@ -147,11 +147,11 @@ export const bindQueryConfigAtom = atom(
 
     const exists = () =>
       !configId ||
-      get(connectionEntriesAtom)?.some((entry) => entry.config.id === configId)
+      get(connectionsAtom)?.some((entry) => entry.config.id === configId)
     if (!exists()) throw new Error("连接配置不存在或已删除")
 
     set(tabStatesAtom, (states) =>
-      updateQueryTabState(states, tabId, (current) => ({
+      updateQueryTab(states, tabId, (current) => ({
         ...current,
         closing: true,
       })),
@@ -160,7 +160,7 @@ export const bindQueryConfigAtom = atom(
       if (tab.sessionId && !(await connApi.closeTab(tabId))) return
       if (!exists()) throw new Error("连接配置不存在或已删除")
       set(tabStatesAtom, (states) =>
-        updateQueryTabState(states, tabId, (current) => ({
+        updateQueryTab(states, tabId, (current) => ({
           ...current,
           configId,
           sessionId: undefined,
@@ -169,7 +169,7 @@ export const bindQueryConfigAtom = atom(
       )
     } finally {
       set(tabStatesAtom, (states) =>
-        updateQueryTabState(states, tabId, (current) => ({
+        updateQueryTab(states, tabId, (current) => ({
           ...current,
           closing: false,
         })),

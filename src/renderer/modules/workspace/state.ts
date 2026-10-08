@@ -1,22 +1,19 @@
 import { atom } from "jotai"
 import type { Config, QueryResult } from "@/contracts/database"
-import {
-  connectionEntriesAtom,
-  sessionEntriesAtom,
-} from "@/renderer/modules/database"
+import { connectionsAtom, sessionsAtom } from "@/renderer/modules/database"
 import type {
   CodeView,
   EditorView,
-  QueryTabEditorState,
+  LogState,
+  QueryEditorState,
+  QueryTableState,
   QueryTabState,
-  QueryTabTableState,
-  TabLoggerState,
   TableLayout,
   TableSelection,
   TabMeta,
   TabState,
+  ViewTableState,
   ViewTabState,
-  ViewTabTableState,
 } from "./types"
 
 const DEFAULT_VIEW_PAGE_SIZE = 100
@@ -49,16 +46,14 @@ export const activeQueryTabAtom = atom<QueryTabState | null>((get) => {
 
 export const activeSessionAtom = atom((get) => {
   const tab = get(activeQueryTabAtom)
-  return get(sessionEntriesAtom).find((s) => s.id === tab?.sessionId)
+  return get(sessionsAtom).find((s) => s.id === tab?.sessionId)
 })
 
 export const activeResultStaleAtom = atom((get) => {
   const tab = get(activeTabAtom)
   if (!tab?.table.dataAt) return false
   if (tab.kind === "query") {
-    const session = get(sessionEntriesAtom).find(
-      (s) => s.id === tab.table.sessionId,
-    )
+    const session = get(sessionsAtom).find((s) => s.id === tab.table.sessionId)
     return (
       !session ||
       session.status === "closed" ||
@@ -66,7 +61,7 @@ export const activeResultStaleAtom = atom((get) => {
       session.id !== tab.sessionId
     )
   }
-  const connection = get(connectionEntriesAtom)?.find(
+  const connection = get(connectionsAtom)?.find(
     (c) => c.config.id === tab.configId,
   )
   return (
@@ -81,18 +76,18 @@ export const activeViewTabAtom = atom<ViewTabState | null>((get) => {
 
 export const hasActiveTabAtom = atom((get) => get(activeTabAtom) !== null)
 
-export const activeQueryTabConfigAtom = atom<Config | undefined>((get) => {
+export const activeQueryConfigAtom = atom<Config | undefined>((get) => {
   const tab = get(activeQueryTabAtom)
   if (!tab?.configId) {
     return undefined
   }
 
-  return get(connectionEntriesAtom)?.find(
+  return get(connectionsAtom)?.find(
     (connection) => connection.config.id === tab.configId,
   )?.config
 })
 
-export const resetActiveQueryTabTableStateAtom = atom(
+export const resetQueryLayoutAtom = atom(
   null,
   (_get, set, { tabId }: { tabId: string }) => {
     set(updateQueryLayoutAtom, {
@@ -110,7 +105,7 @@ export const resetActiveQueryTabTableStateAtom = atom(
   },
 )
 
-export const resetActiveViewTabTableStateAtom = atom(
+export const resetViewLayoutAtom = atom(
   null,
   (_get, set, { tabId }: { tabId: string }) => {
     set(updateViewLayoutAtom, {
@@ -167,7 +162,7 @@ function applyStateAction<T extends object>(
   return typeof action === "function" ? action(current) : action
 }
 
-export function updateQueryTabState(
+export function updateQueryTab(
   states: TabStateMap,
   tabId: string,
   action: StateAction<QueryTabState>,
@@ -181,7 +176,7 @@ export function updateQueryTabState(
   return Object.is(next, current) ? states : { ...states, [tabId]: next }
 }
 
-export function updateViewTabState(
+export function updateViewTab(
   states: TabStateMap,
   tabId: string,
   action: StateAction<ViewTabState>,
@@ -195,47 +190,47 @@ export function updateViewTabState(
   return Object.is(next, current) ? states : { ...states, [tabId]: next }
 }
 
-export function updateQueryTabTableState(
+export function updateQueryTable(
   states: TabStateMap,
   tabId: string,
-  action: StateAction<QueryTabTableState>,
+  action: StateAction<QueryTableState>,
 ): TabStateMap {
-  return updateQueryTabState(states, tabId, (current) => {
+  return updateQueryTab(states, tabId, (current) => {
     const table = applyStateAction(current.table, action)
     return Object.is(table, current.table) ? current : { ...current, table }
   })
 }
 
-export function updateViewTabTableState(
+export function updateViewTable(
   states: TabStateMap,
   tabId: string,
-  action: StateAction<ViewTabTableState>,
+  action: StateAction<ViewTableState>,
 ): TabStateMap {
-  return updateViewTabState(states, tabId, (current) => {
+  return updateViewTab(states, tabId, (current) => {
     const table = applyStateAction(current.table, action)
     return Object.is(table, current.table) ? current : { ...current, table }
   })
 }
 
-export function updateTabLoggerState(
+export function updateLog(
   states: TabStateMap,
   tabId: string,
-  action: StateAction<TabLoggerState>,
+  action: StateAction<LogState>,
 ): TabStateMap {
   const current = states[tabId]
   if (!current) {
     return states
   }
 
-  const logger = applyStateAction(current.logger, action)
-  if (Object.is(logger, current.logger)) {
+  const log = applyStateAction(current.log, action)
+  if (Object.is(log, current.log)) {
     return states
   }
   return {
     ...states,
     [tabId]: {
       ...current,
-      logger,
+      log,
     },
   }
 }
@@ -267,7 +262,7 @@ export function toTotalCount(value: unknown): number {
   return Math.trunc(count)
 }
 
-export function createDefaultViewTableState(): ViewTabTableState {
+export function createViewTable(): ViewTableState {
   return {
     sort: [],
     sortOrder: [],
@@ -292,10 +287,7 @@ export function createDefaultViewTableState(): ViewTabTableState {
   }
 }
 
-export function deleteTabState(
-  states: TabStateMap,
-  tabId: string,
-): TabStateMap {
+export function removeTab(states: TabStateMap, tabId: string): TabStateMap {
   if (!(tabId in states)) {
     return states
   }
@@ -304,7 +296,7 @@ export function deleteTabState(
   return nextStates
 }
 
-export function createDefaultQueryTableState(): QueryTabTableState {
+export function createQueryTable(): QueryTableState {
   return {
     status: "idle",
     dataAt: null,
@@ -321,14 +313,14 @@ export function createDefaultQueryTableState(): QueryTabTableState {
   }
 }
 
-export function createDefaultQueryEditorState(text = ""): QueryTabEditorState {
+export function createQueryEditor(text = ""): QueryEditorState {
   return {
-    ...createDefaultCodeView(),
+    ...createCodeView(),
     text,
   }
 }
 
-export function createDefaultCodeView(): CodeView {
+export function createCodeView(): CodeView {
   return {
     cursor: { ...DEFAULT_CURSOR },
     selections: [{ anchor: 0, head: 0 }],
@@ -345,7 +337,7 @@ export function createDefaultCodeView(): CodeView {
   }
 }
 
-export function createDefaultLoggerState(): TabLoggerState {
+export function createLog(): LogState {
   return {
     query: "",
     statuses: [],
@@ -368,9 +360,7 @@ export const activeQueryRunningAtom = atom(
 
 export const activeTabIdAtom = atom((get) => get(activeIdAtom))
 
-export const activeQueryTabTableStateAtom = atom(
-  (get) => getActiveQueryTab(get).table,
-)
+export const activeQueryTableAtom = atom((get) => getActiveQueryTab(get).table)
 
 export const updateQueryLayoutAtom = atom(
   null,
@@ -412,9 +402,7 @@ export const updateQueryLayoutAtom = atom(
   },
 )
 
-export const activeViewTabTableStateAtom = atom(
-  (get) => getActiveViewTab(get).table,
-)
+export const activeViewTableAtom = atom((get) => getActiveViewTab(get).table)
 
 export const updateViewLayoutAtom = atom(
   null,
@@ -456,7 +444,7 @@ export const updateViewLayoutAtom = atom(
   },
 )
 
-export const activeQueryTabEditorStateAtom = atom(
+export const activeQueryEditorAtom = atom(
   (get) => getActiveQueryTab(get).editor,
 )
 
@@ -503,7 +491,7 @@ export const updateViewCodeAtom = atom(
   null,
   (_get, set, { tabId, view }: { tabId: string; view: CodeView }) => {
     set(tabStatesAtom, (states) =>
-      updateViewTabState(states, tabId, (current) => {
+      updateViewTab(states, tabId, (current) => {
         const { cursor, selections, mainSelectionIndex, scroll, search } = view
         return {
           ...current,
@@ -514,7 +502,7 @@ export const updateViewCodeAtom = atom(
   },
 )
 
-export const activeTabLoggerAtom = atom((get) => getActiveTab(get).logger)
+export const activeLogAtom = atom((get) => getActiveTab(get).log)
 
 type CopyOptions = {
   format: "tsv" | "csv" | "json"

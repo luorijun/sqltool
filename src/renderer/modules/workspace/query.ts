@@ -1,21 +1,21 @@
 import { atom } from "jotai"
 import connApi, {
   RequestError,
-  sessionEntriesAtom,
+  sessionsAtom,
 } from "@/renderer/modules/database"
 import { createLogEntry, trimLogs, upsertLogEntry } from "./logs"
 import {
-  createDefaultQueryTableState,
+  createQueryTable,
   tabStatesAtom,
   toTableRows,
-  updateQueryTabTableState,
-  updateTabLoggerState,
+  updateLog,
+  updateQueryTable,
 } from "./state"
-import type { QueryTabState, TabLogStatus } from "./types"
+import type { LogStatus, QueryTabState } from "./types"
 
 export const openings = new Map<string, Promise<string>>()
 
-export const runActiveQueryTabSqlAtom = atom(
+export const runQueryAtom = atom(
   null,
   async (get, set, { tabId }: { tabId: string }) => {
     const tab = get(tabStatesAtom)[tabId]
@@ -32,14 +32,14 @@ export const runActiveQueryTabSqlAtom = atom(
       const finishedAt = Date.now()
 
       set(tabStatesAtom, (states) =>
-        updateQueryTabTableState(states, tabId, (current) => ({
+        updateQueryTable(states, tabId, (current) => ({
           ...current,
           status: "error",
           error: "SQL 不能为空",
         })),
       )
       set(tabStatesAtom, (states) =>
-        updateTabLoggerState(states, tabId, (current) => ({
+        updateLog(states, tabId, (current) => ({
           ...current,
           logs: trimLogs([
             ...current.logs,
@@ -57,14 +57,14 @@ export const runActiveQueryTabSqlAtom = atom(
       const finishedAt = Date.now()
 
       set(tabStatesAtom, (states) =>
-        updateQueryTabTableState(states, tabId, (current) => ({
+        updateQueryTable(states, tabId, (current) => ({
           ...current,
           status: "error",
           error: "该标签页未绑定数据库连接",
         })),
       )
       set(tabStatesAtom, (states) =>
-        updateTabLoggerState(states, tabId, (current) => ({
+        updateLog(states, tabId, (current) => ({
           ...current,
           logs: trimLogs([
             ...current.logs,
@@ -100,9 +100,9 @@ export const runActiveQueryTabSqlAtom = atom(
       detail: "正在等待数据库返回结果",
       startedAt,
     })
-    const recordLate = (status: TabLogStatus, summary: string) => {
+    const recordLate = (status: LogStatus, summary: string) => {
       set(tabStatesAtom, (states) =>
-        updateTabLoggerState(states, tabId, (current) => ({
+        updateLog(states, tabId, (current) => ({
           ...current,
           logs: current.logs.map((entry) =>
             entry.id === runningLog.id
@@ -121,7 +121,7 @@ export const runActiveQueryTabSqlAtom = atom(
     }
 
     set(tabStatesAtom, (states) =>
-      updateTabLoggerState(states, tabId, (current) => ({
+      updateLog(states, tabId, (current) => ({
         ...current,
         logs: trimLogs([...current.logs, runningLog]),
       })),
@@ -151,7 +151,7 @@ export const runActiveQueryTabSqlAtom = atom(
         (current.kind === "query" && current.execution?.cancelRequested)
       )
         throw new RequestError("请求已取消，未执行 SQL", "cancelled")
-      const session = get(sessionEntriesAtom).find((s) => s.id === sessionId)
+      const session = get(sessionsAtom).find((s) => s.id === sessionId)
       if (
         !session ||
         session.status === "closed" ||
@@ -176,8 +176,8 @@ export const runActiveQueryTabSqlAtom = atom(
       const finishedAt = Date.now()
 
       set(tabStatesAtom, (states) =>
-        updateQueryTabTableState(states, tabId, {
-          ...createDefaultQueryTableState(),
+        updateQueryTable(states, tabId, {
+          ...createQueryTable(),
           status: "success",
           error: null,
           dataAt: finishedAt,
@@ -187,7 +187,7 @@ export const runActiveQueryTabSqlAtom = atom(
         }),
       )
       set(tabStatesAtom, (states) =>
-        updateTabLoggerState(states, tabId, (current) => ({
+        updateLog(states, tabId, (current) => ({
           ...current,
           logs: trimLogs(
             upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
@@ -214,14 +214,14 @@ export const runActiveQueryTabSqlAtom = atom(
       const message = error instanceof Error ? error.message : "查询执行失败"
 
       set(tabStatesAtom, (states) =>
-        updateQueryTabTableState(states, tabId, (current) => ({
+        updateQueryTable(states, tabId, (current) => ({
           ...current,
           status: "error",
           error: message,
         })),
       )
       set(tabStatesAtom, (states) =>
-        updateTabLoggerState(states, tabId, (current) => ({
+        updateLog(states, tabId, (current) => ({
           ...current,
           logs: trimLogs(
             upsertLogEntry(current.logs, runningLog.id, (currentLog) => ({
@@ -248,7 +248,7 @@ export const runActiveQueryTabSqlAtom = atom(
   },
 )
 
-export const cancelActiveQueryAtom = atom(
+export const cancelQueryAtom = atom(
   null,
   async (get, set, { tabId }: { tabId: string }) => {
     const tab = get(tabStatesAtom)[tabId]
@@ -285,7 +285,7 @@ export const cancelActiveQueryAtom = atom(
   },
 )
 
-export const rebuildActiveSessionAtom = atom(
+export const rebuildSessionAtom = atom(
   null,
   async (get, set, { tabId }: { tabId: string }) => {
     const tab = get(tabStatesAtom)[tabId]

@@ -1,6 +1,6 @@
 import { ResizeContainer } from "@/renderer/components/ui/resizer"
 import ViewCodeArea from "./code-area/view"
-import LoggerArea from "./logger-area"
+import LogArea from "./log-area"
 import ViewTableArea from "./table-area/view"
 
 const MIN_TABLE_HEIGHT = 80
@@ -29,7 +29,7 @@ export function ViewTabPage() {
           className="size-full min-h-0"
           dividerLabel="左右拖拽调节日志区宽度"
           first={<ViewCodeArea />}
-          second={<LoggerArea />}
+          second={<LogArea />}
         />
       }
     />

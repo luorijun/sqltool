@@ -1,11 +1,11 @@
 export {
   connectConnectionAtom,
   connectionActionAtom,
-  connectionEntriesAtom,
+  connectionsAtom,
   default,
-  deleteConnectionAtom,
   disconnectConnectionAtom,
   RequestError,
-  refreshConnectionSchemaAtom,
-  sessionEntriesAtom,
+  refreshConnectionAtom,
+  removeConnectionAtom,
+  sessionsAtom,
 } from "./client"

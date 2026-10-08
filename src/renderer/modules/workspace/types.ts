@@ -14,9 +14,9 @@ export interface QueryTabState extends TabMeta {
   sessionId?: string
   execution?: { requestId: string; cancelRequested: boolean }
   closing?: boolean
-  table: QueryTabTableState
-  editor: QueryTabEditorState
-  logger: TabLoggerState
+  table: QueryTableState
+  editor: QueryEditorState
+  log: LogState
 }
 
 export interface ViewTabState extends TabMeta {
@@ -28,14 +28,14 @@ export interface ViewTabState extends TabMeta {
     schema: string
     table: string
   }
-  table: ViewTabTableState
+  table: ViewTableState
   code: CodeView
-  logger: TabLoggerState
+  log: LogState
 }
 
 export type TabState = QueryTabState | ViewTabState
 
-export interface QueryTabTableState {
+export interface QueryTableState {
   status: "idle" | "success" | "error"
   error: string | null
   dataAt: number | null
@@ -50,7 +50,7 @@ export interface QueryTabTableState {
   selection: TableSelection | null
 }
 
-export interface QueryTabEditorState extends CodeView {
+export interface QueryEditorState extends CodeView {
   text: string
 }
 
@@ -78,14 +78,14 @@ export interface CodeView {
   }
 }
 
-export interface TabLoggerState {
+export interface LogState {
   query: string
-  statuses: TabLogStatus[]
+  statuses: LogStatus[]
   followTail: boolean
-  logs: TabLogEntry[]
+  logs: LogEntry[]
 }
 
-export interface ViewTabTableState {
+export interface ViewTableState {
   sort: SelectOrderBy[]
   sortOrder: string[]
   status: "idle" | "running" | "success" | "error"
@@ -108,16 +108,16 @@ export interface ViewTabTableState {
   countError: string | null
 }
 
-export type TabLogStatus =
+export type LogStatus =
   | "success"
   | "error"
   | "running"
   | "cancelled"
   | "unknown"
 
-export interface TabLogEntry {
+export interface LogEntry {
   id: string
-  status: TabLogStatus
+  status: LogStatus
   sql: string
   summary: string
   detail?: string
@@ -127,12 +127,12 @@ export interface TabLogEntry {
 }
 
 export type TableLayout = Pick<
-  QueryTabTableState,
+  QueryTableState,
   "visibility" | "sizing" | "pinning"
 >
 
-export type EditorView = QueryTabEditorState
-export type LogView = Omit<TabLoggerState, "logs">
+export type EditorView = QueryEditorState
+export type LogView = Omit<LogState, "logs">
 
 export interface TableSelection {
   rows: number[]

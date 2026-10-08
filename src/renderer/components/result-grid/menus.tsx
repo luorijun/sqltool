@@ -23,9 +23,9 @@ import {
   DropdownMenuTrigger,
 } from "@/renderer/components/ui/dropdown-menu"
 import {
-  getQueryColumnFlagLabels,
-  getQueryColumnSourceLabel,
-  getQueryColumnTypeLabel,
+  getColumnFlagLabels,
+  getColumnSourceLabel,
+  getColumnTypeLabel,
 } from "./format"
 import {
   type CopyOptions,
@@ -287,9 +287,9 @@ export function HeaderMenu({
   }
 
   const title = columnMeta?.name ?? String(column.columnDef.header ?? column.id)
-  const typeLabel = getQueryColumnTypeLabel(columnMeta)
-  const sourceLabel = getQueryColumnSourceLabel(columnMeta)
-  const flags = getQueryColumnFlagLabels(columnMeta)
+  const typeLabel = getColumnTypeLabel(columnMeta)
+  const sourceLabel = getColumnSourceLabel(columnMeta)
+  const flags = getColumnFlagLabels(columnMeta)
   const hasMetaDetails = Boolean(typeLabel || sourceLabel || flags.length)
 
   return (

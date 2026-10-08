@@ -58,20 +58,18 @@ interface FunctionRow {
   function_name: string
 }
 
-interface ConnectedPostgresClient {
+interface ConnectedClient {
   client: PgClient
   closeTransport?: () => void
 }
 
-const POSTGRES_CONNECTION_TIMEOUT_MS = 20_000
+const CONNECTION_TIMEOUT_MS = 20_000
 
 function excludeSystemSchemas(column: string): string {
   return `${column} NOT IN ('pg_catalog', 'information_schema') AND ${column} NOT LIKE 'pg_toast%' AND ${column} NOT LIKE 'pg_temp_%'`
 }
 
-async function connectDirectPostgres(
-  profile: ConfigProfile,
-): Promise<ConnectedPostgresClient> {
+async function connectDirect(profile: ConfigProfile): Promise<ConnectedClient> {
   const port = parsePort(profile.port, "数据库端口")
   const client = new PgClient({
     host: profile.host,
@@ -79,7 +77,7 @@ async function connectDirectPostgres(
     user: profile.username,
     password: profile.password,
     database: profile.database,
-    connectionTimeoutMillis: POSTGRES_CONNECTION_TIMEOUT_MS,
+    connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
   })
 
   client.on("error", () => {})
@@ -93,9 +91,7 @@ async function connectDirectPostgres(
   return { client }
 }
 
-async function connectPostgresViaSsh(
-  profile: ConfigProfile,
-): Promise<ConnectedPostgresClient> {
+async function connectSsh(profile: ConfigProfile): Promise<ConnectedClient> {
   if (!profile.ssh) {
     throw new Error("缺少 SSH 配置")
   }
@@ -110,7 +106,7 @@ async function connectPostgresViaSsh(
     user: profile.username,
     password: profile.password,
     database: profile.database,
-    connectionTimeoutMillis: POSTGRES_CONNECTION_TIMEOUT_MS,
+    connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
     stream: () => stream,
   })
   client.on("error", () => {})
@@ -132,14 +128,12 @@ async function connectPostgresViaSsh(
   }
 }
 
-async function createPostgresClient(
-  profile: ConfigProfile,
-): Promise<ConnectedPostgresClient> {
+async function connectClient(profile: ConfigProfile): Promise<ConnectedClient> {
   if (!profile.ssh) {
-    return connectDirectPostgres(profile)
+    return connectDirect(profile)
   }
 
-  return connectPostgresViaSsh(profile)
+  return connectSsh(profile)
 }
 
 async function queryRows<T extends PgRow>(
@@ -151,7 +145,7 @@ async function queryRows<T extends PgRow>(
   return Array.isArray(result.rows) ? result.rows : []
 }
 
-async function inspectPostgresClient(
+async function inspectClient(
   client: PgClient,
   source?: TableSource,
 ): Promise<DbSchema[]> {
@@ -354,7 +348,7 @@ function typeFamily(type: TypeRow): QueryColumnTypeFamily {
   return "unknown"
 }
 
-async function readPostgresTypes(
+async function readTypes(
   client: PgClient,
   refs: PostgresTypeRef[],
 ): Promise<Array<ColumnType | null>> {
@@ -376,13 +370,11 @@ async function readPostgresTypes(
   )
 }
 
-function getPositivePostgresNumber(
-  value: number | undefined,
-): number | undefined {
+function getPositiveNumber(value: number | undefined): number | undefined {
   return typeof value === "number" && value > 0 ? value : undefined
 }
 
-function createPostgresQueryColumn(field: PgField): QueryColumnInput {
+function createColumn(field: PgField): QueryColumnInput {
   return {
     name: field.name,
     driver: "postgres",
@@ -393,13 +385,13 @@ function createPostgresQueryColumn(field: PgField): QueryColumnInput {
     },
     typeCode: field.dataTypeID,
     typeFamily: "unknown",
-    sourceTableId: getPositivePostgresNumber(field.tableID),
-    sourceColumnId: getPositivePostgresNumber(field.columnID),
+    sourceTableId: getPositiveNumber(field.tableID),
+    sourceColumnId: getPositiveNumber(field.columnID),
     format: field.format,
   }
 }
 
-async function queryPostgresClient(
+async function queryClient(
   client: PgClient,
   sql: string,
   params: unknown[] = [],
@@ -412,7 +404,7 @@ async function queryPostgresClient(
 
   const rows = Array.isArray(result.rows) ? result.rows : []
   const columns = Array.isArray(result.fields)
-    ? createQueryColumns(result.fields.map(createPostgresQueryColumn))
+    ? createQueryColumns(result.fields.map(createColumn))
     : []
 
   return {
@@ -425,7 +417,7 @@ async function queryPostgresClient(
 export async function connectPostgres(
   profile: ConfigProfile,
 ): Promise<ConnectionSession> {
-  const { client, closeTransport } = await createPostgresClient(profile)
+  const { client, closeTransport } = await connectClient(profile)
 
   // pg supplies the backend PID at connection time but omits it from its public types.
   const pid = "processID" in client ? client.processID : undefined
@@ -475,7 +467,7 @@ export async function connectPostgres(
       await client.query("SET search_path TO pg_catalog")
     },
     types(refs) {
-      return readPostgresTypes(client, refs)
+      return readTypes(client, refs)
     },
     watch(fail) {
       client.on("error", fail)
@@ -486,7 +478,7 @@ export async function connectPostgres(
       closeTransport?.()
     },
     async cancel(active) {
-      const control = await createPostgresClient(profile)
+      const control = await connectClient(profile)
       try {
         if (active())
           await withTimeout(
@@ -498,10 +490,10 @@ export async function connectPostgres(
       }
     },
     inspect(source) {
-      return inspectPostgresClient(client, source)
+      return inspectClient(client, source)
     },
     query(sql, params) {
-      return queryPostgresClient(client, sql, params)
+      return queryClient(client, sql, params)
     },
     close: async () => {
       try {

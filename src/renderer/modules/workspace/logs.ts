@@ -1,19 +1,19 @@
 import { atom } from "jotai"
-import { tabStatesAtom, updateTabLoggerState } from "./state"
-import type { LogView, TabLogEntry, TabLogStatus } from "./types"
+import { tabStatesAtom, updateLog } from "./state"
+import type { LogEntry, LogStatus, LogView } from "./types"
 
 let nextLogId = 1
 
 const MAX_TAB_LOG_ENTRIES = 300
 
-export function trimLogs(entries: TabLogEntry[]): TabLogEntry[] {
+export function trimLogs(entries: LogEntry[]): LogEntry[] {
   return entries.length <= MAX_TAB_LOG_ENTRIES
     ? entries
     : entries.slice(entries.length - MAX_TAB_LOG_ENTRIES)
 }
 
 export function createLogEntry(
-  status: TabLogStatus,
+  status: LogStatus,
   sql: string,
   summary: string,
   options?: {
@@ -22,7 +22,7 @@ export function createLogEntry(
     finishedAt?: number
     durationMs?: number
   },
-): TabLogEntry {
+): LogEntry {
   return {
     id: String(nextLogId++),
     status,
@@ -36,10 +36,10 @@ export function createLogEntry(
 }
 
 export function upsertLogEntry(
-  entries: TabLogEntry[],
+  entries: LogEntry[],
   entryId: string,
-  getNextEntry: (current?: TabLogEntry) => TabLogEntry,
-): TabLogEntry[] {
+  getNextEntry: (current?: LogEntry) => LogEntry,
+): LogEntry[] {
   const index = entries.findIndex((entry) => entry.id === entryId)
   if (index === -1) {
     return [...entries, getNextEntry()]
@@ -60,14 +60,14 @@ export const updateLogViewAtom = atom(
     set(tabStatesAtom, (states) => {
       const tab = states[tabId]
       if (!tab) return states
-      const next = update(tab.logger)
-      if (next === tab.logger) return states
+      const next = update(tab.log)
+      if (next === tab.log) return states
       const { query, statuses, followTail } = next
       return {
         ...states,
         [tabId]: {
           ...tab,
-          logger: { ...tab.logger, query, statuses, followTail },
+          log: { ...tab.log, query, statuses, followTail },
         },
       }
     })
@@ -76,7 +76,7 @@ export const updateLogViewAtom = atom(
 
 export const clearLogsAtom = atom(null, (_get, set, tabId: string) => {
   set(tabStatesAtom, (states) =>
-    updateTabLoggerState(states, tabId, (current) => ({
+    updateLog(states, tabId, (current) => ({
       ...current,
       logs: [],
     })),

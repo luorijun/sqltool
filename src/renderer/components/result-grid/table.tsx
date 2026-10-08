@@ -23,11 +23,11 @@ import { AreaStatusBar, AreaToolbar } from "@/renderer/components/ui/panel-bar"
 import { EmptyState } from "./empty"
 import { features } from "./features"
 import {
-  getQueryColumnHeaderTitle,
-  getQueryColumnTypeLabel,
-  getQueryValueDisplay,
-  isQueryColumnRightAligned,
-  serializeQueryValue,
+  getColumnHeaderTitle,
+  getColumnTypeLabel,
+  getValueDisplay,
+  isColumnRightAligned,
+  serializeValue,
 } from "./format"
 import {
   ColumnVisibilityMenu,
@@ -125,7 +125,7 @@ export function ResultTable({
         cell: ({ row }) => row.index + 1,
       },
       ...tableState.columns.map<ResultColumnDef>((resultColumn) => {
-        const typeLabel = getQueryColumnTypeLabel(resultColumn)
+        const typeLabel = getColumnTypeLabel(resultColumn)
         const labelWidth = resultColumn.name.length + (typeLabel?.length ?? 0)
 
         return {
@@ -395,7 +395,7 @@ export function ResultTable({
                         }
                         title={
                           resultColumn
-                            ? getQueryColumnHeaderTitle(resultColumn)
+                            ? getColumnHeaderTitle(resultColumn)
                             : undefined
                         }
                         className={cn(
@@ -498,12 +498,9 @@ export function ResultTable({
                           ? undefined
                           : columnMetaById.get(column.id)
                         const rawValue = cell.getValue()
-                        const display = getQueryValueDisplay(
-                          rawValue,
-                          resultColumn,
-                        )
+                        const display = getValueDisplay(rawValue, resultColumn)
                         const alignRight = resultColumn
-                          ? isQueryColumnRightAligned(resultColumn)
+                          ? isColumnRightAligned(resultColumn)
                           : display.kind === "number"
                         const pinned = column.getIsPinned()
                         const Cell = serial ? "th" : "td"
@@ -573,10 +570,7 @@ export function ResultTable({
                                   "block w-full min-w-0",
                                   alignRight ? "text-right" : "text-left",
                                 )}
-                                title={serializeQueryValue(
-                                  rawValue,
-                                  resultColumn,
-                                )}
+                                title={serializeValue(rawValue, resultColumn)}
                               >
                                 {flexRender(
                                   cell.column.columnDef.cell,
@@ -609,7 +603,7 @@ export function ResultTable({
 }
 
 function ColumnHeader({ column }: { column: QueryResultColumn }) {
-  const typeLabel = getQueryColumnTypeLabel(column)
+  const typeLabel = getColumnTypeLabel(column)
 
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-2">
@@ -632,7 +626,7 @@ function CellValue({
   value: unknown
   column?: QueryResultColumn
 }) {
-  const display = getQueryValueDisplay(value, column)
+  const display = getValueDisplay(value, column)
 
   if (display.kind === "null") {
     return (

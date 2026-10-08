@@ -12,18 +12,18 @@ import {
 } from "@/renderer/components/sql-editor"
 import { Button } from "@/renderer/components/ui/button"
 import { AreaToolbar } from "@/renderer/components/ui/panel-bar"
-import database, { connectionEntriesAtom } from "@/renderer/modules/database"
+import database, { connectionsAtom } from "@/renderer/modules/database"
 import {
+  activeQueryConfigAtom,
+  activeQueryEditorAtom,
   activeQueryRunningAtom,
   activeQueryTabAtom,
-  activeQueryTabConfigAtom,
-  activeQueryTabEditorStateAtom,
   activeSessionAtom,
   activeTabIdAtom,
   bindQueryConfigAtom,
-  cancelActiveQueryAtom,
-  rebuildActiveSessionAtom,
-  runActiveQueryTabSqlAtom,
+  cancelQueryAtom,
+  rebuildSessionAtom,
+  runQueryAtom,
   updateQueryEditorAtom,
 } from "@/renderer/modules/workspace"
 import CodeConfig from "./config"
@@ -58,27 +58,27 @@ function isSameEditorState(left: EditorState, right: EditorState): boolean {
   )
 }
 
-export default function CoreArea() {
+export default function QueryCodeArea() {
   const tabId = useAtomValue(activeTabIdAtom)
-  const config = useAtomValue(activeQueryTabConfigAtom)
-  const connections = useAtomValue(connectionEntriesAtom)
+  const config = useAtomValue(activeQueryConfigAtom)
+  const connections = useAtomValue(connectionsAtom)
   const connection = connections?.find(
     (entry) => entry.config.id === config?.id,
   )
   const tab = useAtomValue(activeQueryTabAtom)
   const session = useAtomValue(activeSessionAtom)
-  const cancel = useSetAtom(cancelActiveQueryAtom)
-  const rebuild = useSetAtom(rebuildActiveSessionAtom)
+  const cancel = useSetAtom(cancelQueryAtom)
+  const rebuild = useSetAtom(rebuildSessionAtom)
   const bind = useSetAtom(bindQueryConfigAtom)
   const configId = config?.id
   const loadSchema = useCallback(async () => {
     if (!configId) return []
-    return (await database.ensureSchema(configId)).schema ?? []
+    return (await database.loadSchema(configId)).schema ?? []
   }, [configId])
   useEffect(() => {
     if (!configId) return
     let active = true
-    void database.ensureSchema(configId).catch((error) => {
+    void database.loadSchema(configId).catch((error) => {
       if (active)
         toast.error(
           `无法加载 SQL 提示所需的数据库结构：${error instanceof Error ? error.message : "加载失败"}`,
@@ -98,7 +98,7 @@ export default function CoreArea() {
   }
 
   const running = useAtomValue(activeQueryRunningAtom)
-  const state = useAtomValue(activeQueryTabEditorStateAtom)
+  const state = useAtomValue(activeQueryEditorAtom)
 
   const update = useSetAtom(updateQueryEditorAtom)
   const setState = (change: (current: EditorState) => EditorState) => {
@@ -106,7 +106,7 @@ export default function CoreArea() {
     update({ tabId, update: change })
   }
 
-  const runSql = useSetAtom(runActiveQueryTabSqlAtom)
+  const runSql = useSetAtom(runQueryAtom)
   const canRun = !!config && !running && !tab?.closing && !failed
   const handleRun = () => {
     if (canRun && tab) void runSql({ tabId: tab.id })

@@ -7,11 +7,11 @@ import {
 } from "@/renderer/components/result-grid"
 import {
   activeQueryRunningAtom,
-  activeQueryTabTableStateAtom,
+  activeQueryTableAtom,
   activeResultStaleAtom,
   activeTabIdAtom,
   copyOptionsAtom,
-  resetActiveQueryTabTableStateAtom,
+  resetQueryLayoutAtom,
   setCopyOptionsAtom,
   setTableSelectionAtom,
   updateQueryLayoutAtom,
@@ -19,7 +19,7 @@ import {
 import { saveText, showError } from "../../feedback"
 
 export default function QueryTableArea() {
-  const tableState = useAtomValue(activeQueryTabTableStateAtom)
+  const tableState = useAtomValue(activeQueryTableAtom)
   const tabId = useAtomValue(activeTabIdAtom)
   const copyOptions = useAtomValue(copyOptionsAtom)
   const setCopyOptions = useSetAtom(setCopyOptionsAtom)
@@ -29,7 +29,7 @@ export default function QueryTableArea() {
     if (tabId === null) return
     update({ tabId, update: change })
   }
-  const resetTableState = useSetAtom(resetActiveQueryTabTableStateAtom)
+  const resetTableState = useSetAtom(resetQueryLayoutAtom)
   const running = useAtomValue(activeQueryRunningAtom)
   const { status, error } = tableState
   const stale = useAtomValue(activeResultStaleAtom)

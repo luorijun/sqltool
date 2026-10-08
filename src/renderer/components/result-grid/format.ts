@@ -1,6 +1,6 @@
 import type { DbDriver, QueryResultColumn } from "@/contracts/database"
 
-export function getColumnTypeLabel(type: string, driver?: DbDriver): string {
+export function getTypeLabel(type: string, driver?: DbDriver): string {
   const label = type.trim()
   if (driver !== "postgres") return label
   return label.replace(
@@ -9,12 +9,12 @@ export function getColumnTypeLabel(type: string, driver?: DbDriver): string {
   )
 }
 
-export function getQueryColumnTypeLabel(
+export function getColumnTypeLabel(
   column?: Pick<QueryResultColumn, "dbType" | "driver" | "typeCode">,
 ): string | undefined {
   const dbType = column?.dbType?.trim()
   if (dbType) {
-    return getColumnTypeLabel(dbType, column?.driver)
+    return getTypeLabel(dbType, column?.driver)
   }
 
   if (column?.typeCode !== undefined) {
@@ -26,7 +26,7 @@ export function getQueryColumnTypeLabel(
   return undefined
 }
 
-export function getQueryColumnSourceLabel(
+export function getColumnSourceLabel(
   column?: Pick<
     QueryResultColumn,
     "schema" | "table" | "sourceColumn" | "name"
@@ -47,11 +47,11 @@ export function getQueryColumnSourceLabel(
   return source === column.name ? undefined : source
 }
 
-export function getQueryColumnHeaderTitle(column: QueryResultColumn): string {
+export function getColumnHeaderTitle(column: QueryResultColumn): string {
   const lines = [column.name]
-  const typeLabel = getQueryColumnTypeLabel(column)
-  const sourceLabel = getQueryColumnSourceLabel(column)
-  const flags = getQueryColumnFlagLabels(column)
+  const typeLabel = getColumnTypeLabel(column)
+  const sourceLabel = getColumnSourceLabel(column)
+  const flags = getColumnFlagLabels(column)
 
   if (typeLabel) {
     lines.push(`类型: ${typeLabel}`)
@@ -72,7 +72,7 @@ export function getQueryColumnHeaderTitle(column: QueryResultColumn): string {
   return lines.join("\n")
 }
 
-export function getQueryColumnFlagLabels(
+export function getColumnFlagLabels(
   column?: Pick<QueryResultColumn, "primaryKey" | "autoIncrement" | "unsigned">,
 ): string[] {
   const labels: string[] = []
@@ -92,12 +92,12 @@ export function getQueryColumnFlagLabels(
   return labels
 }
 
-export function isQueryColumnRightAligned(column?: QueryResultColumn): boolean {
+export function isColumnRightAligned(column?: QueryResultColumn): boolean {
   const family = column?.typeFamily
   return family === "number" || family === "decimal"
 }
 
-export interface QueryValueDisplay {
+export interface ValueDisplay {
   kind:
     | "null"
     | "boolean"
@@ -176,10 +176,10 @@ function formatTemporalValue(
     return iso
   }
 
-  return serializeQueryValue(value)
+  return serializeValue(value)
 }
 
-export function serializeQueryValue(
+export function serializeValue(
   value: unknown,
   column?: QueryResultColumn,
 ): string {
@@ -216,10 +216,10 @@ export function serializeQueryValue(
   return stringifyJsonValue(value)
 }
 
-export function getQueryValueDisplay(
+export function getValueDisplay(
   value: unknown,
   column?: QueryResultColumn,
-): QueryValueDisplay {
+): ValueDisplay {
   if (value === null) {
     return { kind: "null", text: "NULL" }
   }
@@ -241,7 +241,7 @@ export function getQueryValueDisplay(
   if (family === "boolean") {
     return {
       kind: "boolean",
-      text: normalizeBooleanText(value) ?? serializeQueryValue(value, column),
+      text: normalizeBooleanText(value) ?? serializeValue(value, column),
     }
   }
 
@@ -250,7 +250,7 @@ export function getQueryValueDisplay(
   }
 
   if (family === "number" || family === "decimal") {
-    return { kind: "number", text: serializeQueryValue(value, column) }
+    return { kind: "number", text: serializeValue(value, column) }
   }
 
   if (typeof value === "number" || typeof value === "bigint") {

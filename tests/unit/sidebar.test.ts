@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Connection } from "../../src/contracts/database"
-import { getQueryColumnTypeLabel } from "../../src/renderer/components/result-grid/format"
+import { getColumnTypeLabel } from "../../src/renderer/components/result-grid/format"
 import {
   buildTree,
   canRefresh,
@@ -63,15 +63,13 @@ describe("sidebar tree state", () => {
       "character varying(100)",
     ])
     expect(labels).toEqual(
-      types.map((dbType) =>
-        getQueryColumnTypeLabel({ dbType, driver: "postgres" }),
-      ),
+      types.map((dbType) => getColumnTypeLabel({ dbType, driver: "postgres" })),
     )
     updated.config.driver = "mysql"
     expect(
       buildTree([updated]).find((node) => node.kind === "column")?.meta,
     ).toBe(types[0])
-    expect(getQueryColumnTypeLabel({ dbType: types[0], driver: "mysql" })).toBe(
+    expect(getColumnTypeLabel({ dbType: types[0], driver: "mysql" })).toBe(
       types[0],
     )
   })

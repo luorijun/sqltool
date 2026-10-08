@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/renderer/components/ui/dropdown-menu"
-import { connectionEntriesAtom } from "@/renderer/modules/database"
+import { connectionsAtom } from "@/renderer/modules/database"
 
 interface CodeConfigProps {
   configId?: string
@@ -25,7 +25,7 @@ export default function CodeConfig({
   disabled,
   onChange,
 }: CodeConfigProps) {
-  const connections = useAtomValue(connectionEntriesAtom)
+  const connections = useAtomValue(connectionsAtom)
   const config = connections?.find(
     (entry) => entry.config.id === configId,
   )?.config

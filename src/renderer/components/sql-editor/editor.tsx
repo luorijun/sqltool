@@ -10,9 +10,9 @@ import {
 } from "react"
 import type { DbDriver, DbSchema } from "@/contracts/database"
 import {
+  type Controller,
   type CursorPosition,
-  createSqlEditorController,
-  type SqlEditorController,
+  createController,
 } from "./controller"
 import type { EditorState as EditorViewState } from "./types"
 
@@ -53,7 +53,7 @@ function SqlEditor({
   onRun,
   onFormat,
 }: SqlEditorProps) {
-  const controllerRef = useRef<SqlEditorController | null>(null)
+  const controllerRef = useRef<Controller | null>(null)
   const initialValueRef = useRef(value)
   const initialDriverRef = useRef(driver)
   const initialSchemaRef = useRef(schema)
@@ -111,7 +111,7 @@ function SqlEditor({
       return
     }
 
-    const controller = createSqlEditorController({
+    const controller = createController({
       host,
       value: initialValueRef.current,
       driver: initialDriverRef.current,

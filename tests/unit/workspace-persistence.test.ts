@@ -12,11 +12,11 @@ import {
   closeTabAtom,
   openQueryTabAtom,
   openViewTabAtom,
-  runActiveQueryTabSqlAtom,
+  runQueryAtom,
   selectTabAtom,
-  setActiveViewTabPageAtom,
-  setActiveViewTabPageSizeAtom,
-  setViewTabSortAtom,
+  setViewPageAtom,
+  setViewPageSizeAtom,
+  setViewSortAtom,
   tabsAtom,
   updateQueryEditorAtom,
 } from "../../src/renderer/modules/workspace"
@@ -89,7 +89,7 @@ describe("workspace persistence", () => {
         configId: "db",
         initialSql: "SELECT 1",
       })
-      await store.set(runActiveQueryTabSqlAtom, {
+      await store.set(runQueryAtom, {
         tabId: store.get(activeTabIdAtom) ?? "",
       })
       store.set(updateQueryEditorAtom, {
@@ -107,16 +107,16 @@ describe("workspace persistence", () => {
         configId: "db",
         source,
       })
-      await store.set(setViewTabSortAtom, {
+      await store.set(setViewSortAtom, {
         tabId: viewId,
         order: ["n"],
         sort: [{ column: "n", direction: "desc" }],
       })
-      await store.set(setActiveViewTabPageSizeAtom, {
+      await store.set(setViewPageSizeAtom, {
         tabId: store.get(activeTabIdAtom) ?? "",
         limit: 50,
       })
-      await store.set(setActiveViewTabPageAtom, {
+      await store.set(setViewPageAtom, {
         tabId: store.get(activeTabIdAtom) ?? "",
         page: 3,
       })
@@ -134,7 +134,7 @@ describe("workspace persistence", () => {
       })
       expect(saved.tabs[0]).not.toHaveProperty("sessionId")
       expect(saved.tabs[0]).not.toHaveProperty("table")
-      expect(saved.tabs[0]).not.toHaveProperty("logger")
+      expect(saved.tabs[0]).not.toHaveProperty("log")
       expect(saved.tabs[1]).toMatchObject({
         sort: [{ column: "n", direction: "desc" }],
         sortOrder: ["n"],
@@ -164,13 +164,13 @@ describe("workspace persistence", () => {
           selections: [{ anchor: 7, head: 7 }],
         },
         table: { status: "idle", data: [], columns: [] },
-        logger: { logs: [] },
+        log: { logs: [] },
       })
       expect(store.get(activeQueryTabAtom)?.sessionId).toBeUndefined()
       store.set(selectTabAtom, viewId)
       expect(store.get(activeViewTabAtom)).toMatchObject({
         table: { status: "idle", data: [], sql: "", totalCount: null },
-        logger: { logs: [] },
+        log: { logs: [] },
       })
       store.set(selectTabAtom, queryId)
       await reloadWorkspaceTables()
@@ -250,7 +250,7 @@ describe("workspace persistence", () => {
     try {
       await Bun.sleep(30)
       expect(save).not.toHaveBeenCalled()
-      await store.set(runActiveQueryTabSqlAtom, {
+      await store.set(runQueryAtom, {
         tabId: store.get(activeTabIdAtom) ?? "",
       })
       await Bun.sleep(30)

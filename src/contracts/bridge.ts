@@ -4,6 +4,6 @@ import type { WorkspaceApi } from "@/contracts/workspace"
 
 export interface MainBridge {
   conn: DatabaseApi
-  serialize: SystemApi
+  system: SystemApi
   workspace: WorkspaceApi
 }

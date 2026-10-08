@@ -2,7 +2,7 @@ import { ResizeContainer } from "@/renderer/components/ui/resizer"
 import { Toaster } from "@/renderer/components/ui/sonner"
 import { AppBar } from "./appbar"
 import Sidebar from "./sidebar"
-import Main from "./workspace"
+import Workspace from "./workspace"
 
 const DEFAULT_NAV_WIDTH = 300
 const MIN_NAV_WIDTH = 100
@@ -22,7 +22,7 @@ export default function Workbench() {
           className="flex-1"
           dividerLabel="左右拖拽调节导航栏宽度"
           first={<Sidebar className="size-full" />}
-          second={<Main className="size-full min-w-0" />}
+          second={<Workspace className="size-full min-w-0" />}
         />
       </div>
       <Toaster />

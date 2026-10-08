@@ -4,7 +4,7 @@ import client, {
   connectConnectionAtom,
   connectionActionAtom,
   disconnectConnectionAtom,
-  refreshConnectionSchemaAtom,
+  refreshConnectionAtom,
   snapshotAtom,
 } from "../../src/renderer/modules/database/client"
 import { renderer } from "../support/renderer"
@@ -111,14 +111,14 @@ describe("database client", () => {
     })
     env.bridge.inspect = inspect
     const source = { schema: "public", table: "items" }
-    const refresh = store.set(refreshConnectionSchemaAtom, { id: "db", source })
-    const background = client.ensureSchema("db")
+    const refresh = store.set(refreshConnectionAtom, { id: "db", source })
+    const background = client.loadSchema("db")
     try {
       await Promise.resolve()
       expect(inspect).toHaveBeenCalledTimes(2)
       expect(inspect).toHaveBeenCalledWith("db", source, true)
       expect(inspect).toHaveBeenCalledWith("db", undefined, false)
-      expect(store.get(connectionActionAtom).db).toBe("inspect")
+      expect(store.get(connectionActionAtom).db).toBe("refresh")
       await expect(store.set(connectConnectionAtom, "db")).rejects.toThrow(
         "正在处理中",
       )

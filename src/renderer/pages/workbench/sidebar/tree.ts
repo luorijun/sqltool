@@ -1,5 +1,5 @@
 import type { Connection, DbColumn, TableSource } from "@/contracts/database"
-import { getColumnTypeLabel } from "@/renderer/components/result-grid"
+import { getTypeLabel } from "@/renderer/components/result-grid"
 
 export interface TreeNode {
   key: string
@@ -105,7 +105,7 @@ export function buildTree(connections: Connection[]): TreeNode[] {
               expandable: false,
               source,
               column,
-              meta: getColumnTypeLabel(column.type, connection.config.driver),
+              meta: getTypeLabel(column.type, connection.config.driver),
             })
           }
         }

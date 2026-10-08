@@ -37,7 +37,7 @@ export function SchemaTree({
   nodes: TreeNode[]
   selected?: TreeNode
   expanded: ReadonlySet<string>
-  pending: Record<string, "connect" | "disconnect" | "inspect" | undefined>
+  pending: Record<string, "connect" | "disconnect" | "refresh" | undefined>
   actions: NodeActions
   onSelect: (node: TreeNode) => void
   onExpand: (node: TreeNode, expanded: boolean) => void
@@ -198,7 +198,7 @@ export function SchemaTree({
       {groups.map(({ node, index, children }) => {
         const { connection } = node
         const action = pending[connection.config.id]
-        const loading = action === "connect" || action === "inspect"
+        const loading = action === "connect" || action === "refresh"
         const error = loading ? null : connection.error
         return (
           <div key={node.key} className="flex flex-col pl-2 pr-3.5 gap-1">

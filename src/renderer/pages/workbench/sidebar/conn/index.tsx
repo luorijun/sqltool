@@ -15,7 +15,7 @@ export function ConnectionLabel({
   action,
 }: {
   connection: Connection
-  action?: "connect" | "disconnect" | "inspect"
+  action?: "connect" | "disconnect" | "refresh"
 }) {
   const { config } = connection
   return (
@@ -39,12 +39,12 @@ function ConnectionStatusBadge({
   action,
 }: {
   connection: Connection
-  action?: "connect" | "disconnect" | "inspect"
+  action?: "connect" | "disconnect" | "refresh"
 }) {
   if (action)
     return (
       <Badge variant="warning">
-        {{ connect: "连接中", disconnect: "断开中", inspect: "刷新中" }[action]}
+        {{ connect: "连接中", disconnect: "断开中", refresh: "刷新中" }[action]}
       </Badge>
     )
   if (connection.connected && connection.error)

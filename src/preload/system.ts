@@ -6,7 +6,7 @@ import {
   WRITE_CLIPBOARD_TEXT,
 } from "@/contracts/system"
 
-const serialize: SystemApi = {
+const system: SystemApi = {
   writeClipboardText: (text: string) => {
     return ipcRenderer.invoke(WRITE_CLIPBOARD_TEXT, text)
   },
@@ -15,4 +15,4 @@ const serialize: SystemApi = {
   },
 }
 
-export default serialize
+export default system

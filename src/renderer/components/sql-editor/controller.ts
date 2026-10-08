@@ -22,7 +22,7 @@ export interface CursorPosition {
   col: number
 }
 
-interface CreateSqlEditorControllerOptions {
+interface ControllerOptions {
   host: HTMLDivElement
   value: string
   driver?: DbDriver
@@ -36,7 +36,7 @@ interface CreateSqlEditorControllerOptions {
   onFormat?: () => void
 }
 
-export interface SqlEditorController {
+export interface Controller {
   destroy: () => void
   focus: () => void
   openSearch: () => void
@@ -263,7 +263,7 @@ function clampSelection(
   }
 }
 
-function getSelectionRanges(
+function normalizeSelections(
   selections: EditorViewState["selections"],
   length: number,
 ): EditorViewState["selections"] {
@@ -303,9 +303,7 @@ function getEditorSnapshot(
   }
 }
 
-export function createSqlEditorController(
-  options: CreateSqlEditorControllerOptions,
-): SqlEditorController {
+export function createController(options: ControllerOptions): Controller {
   const language = new Compartment()
   const mode = new Compartment()
   let readOnly = options.readOnly ?? false
@@ -316,7 +314,7 @@ export function createSqlEditorController(
   let applyingExternalChange = false
   let syncingSnapshot = false
 
-  const initialRanges = getSelectionRanges(
+  const initialRanges = normalizeSelections(
     options.editorState.selections,
     options.value.length,
   )
@@ -491,7 +489,7 @@ export function createSqlEditorController(
         anchor: range.anchor,
         head: range.head,
       }))
-      const nextRanges = getSelectionRanges(selectionRanges, value.length)
+      const nextRanges = normalizeSelections(selectionRanges, value.length)
       const nextSelection = EditorSelection.create(
         nextRanges.map((selection) =>
           EditorSelection.range(selection.anchor, selection.head),
@@ -516,7 +514,7 @@ export function createSqlEditorController(
       }
 
       const docLength = view.state.doc.length
-      const clampedSelections = getSelectionRanges(
+      const clampedSelections = normalizeSelections(
         editorState.selections,
         docLength,
       )

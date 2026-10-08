@@ -8,10 +8,10 @@ import { ScrollArea } from "@/renderer/components/ui/scroll-area"
 import {
   connectConnectionAtom,
   connectionActionAtom,
-  connectionEntriesAtom,
-  deleteConnectionAtom,
+  connectionsAtom,
   disconnectConnectionAtom,
-  refreshConnectionSchemaAtom,
+  refreshConnectionAtom,
+  removeConnectionAtom,
 } from "@/renderer/modules/database"
 import { openQueryTabAtom, openViewTabAtom } from "@/renderer/modules/workspace"
 import { ConnDialog } from "./dialog"
@@ -28,12 +28,12 @@ import {
 } from "./tree"
 
 export default function Sidebar(props: { className?: string }) {
-  const connections = useAtomValue(connectionEntriesAtom)
+  const connections = useAtomValue(connectionsAtom)
   const pending = useAtomValue(connectionActionAtom)
   const connect = useSetAtom(connectConnectionAtom)
   const disconnect = useSetAtom(disconnectConnectionAtom)
-  const refresh = useSetAtom(refreshConnectionSchemaAtom)
-  const remove = useSetAtom(deleteConnectionAtom)
+  const refresh = useSetAtom(refreshConnectionAtom)
+  const remove = useSetAtom(removeConnectionAtom)
   const openQuery = useSetAtom(openQueryTabAtom)
   const openView = useSetAtom(openViewTabAtom)
   const [dialog, setDialog] = useState<{
@@ -74,7 +74,7 @@ export default function Sidebar(props: { className?: string }) {
   const actions: NodeActions = {
     disconnect: (node) =>
       run(node, () => disconnect(node.connection.config.id)),
-    connect: (node) => {
+    toggleConnection: (node) => {
       run(node, async () => {
         const id = node.connection.config.id
         if (node.connection.connected) {
@@ -125,7 +125,7 @@ export default function Sidebar(props: { className?: string }) {
     setSelection(node.key)
     if (node.kind === "connection") {
       expand(node, true)
-      if (!node.connection.connected) actions.connect(node)
+      if (!node.connection.connected) actions.toggleConnection(node)
     } else if (node.kind === "table") {
       setExpanded(node.key, true)
       actions.browse(node)

@@ -3,11 +3,11 @@ import type { WorkspaceSnapshot } from "@/contracts/workspace"
 import database from "@/renderer/modules/database"
 import {
   activeIdAtom,
-  createDefaultCodeView,
-  createDefaultLoggerState,
-  createDefaultQueryEditorState,
-  createDefaultQueryTableState,
-  createDefaultViewTableState,
+  createCodeView,
+  createLog,
+  createQueryEditor,
+  createQueryTable,
+  createViewTable,
   type TabStateMap,
   tabOrderAtom,
   tabStatesAtom,
@@ -72,9 +72,9 @@ export const restoreWorkspaceAtom = atom(
               label: tab.label,
               kind: "query",
               configId: tab.configId,
-              editor: { ...createDefaultQueryEditorState(), ...tab.editor },
-              table: createDefaultQueryTableState(),
-              logger: createDefaultLoggerState(),
+              editor: { ...createQueryEditor(), ...tab.editor },
+              table: createQueryTable(),
+              log: createLog(),
             }
           : {
               id: tab.id,
@@ -83,14 +83,14 @@ export const restoreWorkspaceAtom = atom(
               configId: tab.configId,
               source: tab.source,
               table: {
-                ...createDefaultViewTableState(),
+                ...createViewTable(),
                 sort: tab.sort,
                 sortOrder: tab.sortOrder,
                 offset: tab.offset,
                 limit: tab.limit,
               },
-              code: createDefaultCodeView(),
-              logger: createDefaultLoggerState(),
+              code: createCodeView(),
+              log: createLog(),
             }
     }
     set(tabStatesAtom, states)

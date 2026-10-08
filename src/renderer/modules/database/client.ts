@@ -11,14 +11,12 @@ import type {
   UpdateConfig,
 } from "@/contracts/database"
 
-type ConnectionAction = "connect" | "disconnect" | "inspect"
+type ConnectionAction = "connect" | "disconnect" | "refresh"
 const connSnapshotAtom = atom<ConnSnapshot | null>(null as ConnSnapshot | null)
-export const connectionEntriesAtom = atom(
+export const connectionsAtom = atom(
   (get) => get(connSnapshotAtom)?.connections ?? null,
 )
-export const sessionEntriesAtom = atom(
-  (get) => get(connSnapshotAtom)?.sessions ?? [],
-)
+export const sessionsAtom = atom((get) => get(connSnapshotAtom)?.sessions ?? [])
 const actionsAtom = atom<Record<string, ConnectionAction | undefined>>({})
 
 export function applySnapshot(snapshot: ConnSnapshot): void {
@@ -73,7 +71,7 @@ const connApi = {
   disconnect(id: string) {
     return unwrap(window.main.conn.disconnect(id))
   },
-  ensureSchema(id: string, source?: TableSource) {
+  loadSchema(id: string, source?: TableSource) {
     return readSchema(id, source, false)
   },
   refreshSchema(id: string, source?: TableSource) {
@@ -136,23 +134,23 @@ function runAction<T>(
   return promise
 }
 export const connectConnectionAtom = atom(null, (_get, set, id: string) =>
-  runAction(set, id, "connect", undefined, () => connApi.ensureSchema(id)),
+  runAction(set, id, "connect", undefined, () => connApi.loadSchema(id)),
 )
 export const disconnectConnectionAtom = atom(null, (_get, set, id: string) =>
   runAction(set, id, "disconnect", undefined, () => connApi.disconnect(id)),
 )
-export const refreshConnectionSchemaAtom = atom(
+export const refreshConnectionAtom = atom(
   null,
   (_get, set, target: string | { id: string; source: TableSource }) =>
     typeof target === "string"
-      ? runAction(set, target, "inspect", undefined, () =>
+      ? runAction(set, target, "refresh", undefined, () =>
           connApi.refreshSchema(target),
         )
-      : runAction(set, target.id, "inspect", target.source, () =>
+      : runAction(set, target.id, "refresh", target.source, () =>
           connApi.refreshSchema(target.id, target.source),
         ),
 )
-export const deleteConnectionAtom = atom(null, (_get, _set, id: string) =>
+export const removeConnectionAtom = atom(null, (_get, _set, id: string) =>
   connApi.remove(id),
 )
 

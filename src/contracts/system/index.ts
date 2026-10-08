@@ -1,14 +1,14 @@
-export const WRITE_CLIPBOARD_TEXT = "serialize:write-clipboard-text"
-export const SAVE_TEXT_FILE = "serialize:save-text-file"
+export const WRITE_CLIPBOARD_TEXT = "system:write-clipboard-text"
+export const SAVE_TEXT_FILE = "system:save-text-file"
 
-export interface SerializeSaveFilter {
+export interface FileFilter {
   name: string
   extensions: string[]
 }
 
 export interface SaveTextFileOptions {
   defaultPath?: string
-  filters?: SerializeSaveFilter[]
+  filters?: FileFilter[]
   content: string
 }
 

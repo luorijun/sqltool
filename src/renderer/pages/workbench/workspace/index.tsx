@@ -5,7 +5,7 @@ import { EmptyPage } from "./empty-page"
 import { TabBar } from "./tab-bar"
 import TabPage from "./tab-page"
 
-export default function Main(props: { className?: string }) {
+export default function Workspace(props: { className?: string }) {
   const hasActiveTab = useAtomValue(hasActiveTabAtom)
   return (
     <main

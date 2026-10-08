@@ -10,25 +10,25 @@ import {
   activeResultStaleAtom,
   activeTabIdAtom,
   activeViewTabAtom,
-  activeViewTabTableStateAtom,
-  cancelActiveViewAtom,
+  activeViewTableAtom,
+  cancelViewAtom,
   copyOptionsAtom,
   getPagination,
-  refreshActiveViewTabAtom,
-  resetActiveViewTabTableStateAtom,
-  setActiveViewTabPageAtom,
-  setActiveViewTabPageSizeAtom,
-  setActiveViewTabRangeAtom,
+  refreshViewAtom,
+  resetViewLayoutAtom,
   setCopyOptionsAtom,
   setTableSelectionAtom,
-  setViewTabSortAtom,
+  setViewPageAtom,
+  setViewPageSizeAtom,
+  setViewRangeAtom,
+  setViewSortAtom,
   updateViewLayoutAtom,
 } from "@/renderer/modules/workspace"
 import { saveText, showError } from "../../feedback"
 import { Paging } from "./paging"
 
 export default function ViewTableArea() {
-  const tableState = useAtomValue(activeViewTabTableStateAtom)
+  const tableState = useAtomValue(activeViewTableAtom)
   const tabId = useAtomValue(activeTabIdAtom)
   const copyOptions = useAtomValue(copyOptionsAtom)
   const setCopyOptions = useSetAtom(setCopyOptionsAtom)
@@ -40,7 +40,7 @@ export default function ViewTableArea() {
   }
   const viewTab = useAtomValue(activeViewTabAtom)
   const stale = useAtomValue(activeResultStaleAtom)
-  const cancel = useSetAtom(cancelActiveViewAtom)
+  const cancel = useSetAtom(cancelViewAtom)
   const cancelling = viewTab?.cancelling ?? false
   const stop = async () => {
     try {
@@ -49,12 +49,12 @@ export default function ViewTableArea() {
       toast.error(error instanceof Error ? error.message : "取消失败")
     }
   }
-  const resetTableState = useSetAtom(resetActiveViewTabTableStateAtom)
-  const refresh = useSetAtom(refreshActiveViewTabAtom)
-  const setPage = useSetAtom(setActiveViewTabPageAtom)
-  const setPageSize = useSetAtom(setActiveViewTabPageSizeAtom)
-  const setSort = useSetAtom(setViewTabSortAtom)
-  const setRange = useSetAtom(setActiveViewTabRangeAtom)
+  const resetTableState = useSetAtom(resetViewLayoutAtom)
+  const refresh = useSetAtom(refreshViewAtom)
+  const setPage = useSetAtom(setViewPageAtom)
+  const setPageSize = useSetAtom(setViewPageSizeAtom)
+  const setSort = useSetAtom(setViewSortAtom)
+  const setRange = useSetAtom(setViewRangeAtom)
 
   const initialLoading =
     tableState.status === "running" && tableState.dataAt === null
