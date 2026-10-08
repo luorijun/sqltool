@@ -1,5 +1,10 @@
 export { getPagination } from "./pagination"
 export {
+  reloadWorkspaceTables,
+  restoreWorkspace,
+  startWorkspaceSaving,
+} from "./persistence"
+export {
   activeQueryTabAtom,
   activeQueryTabConfigAtom,
   activeQueryTabEditorStateAtom,

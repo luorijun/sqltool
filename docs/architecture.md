@@ -18,6 +18,7 @@ src/
 ├─ contracts/                    # 跨进程协议
 │  ├─ database/                  # 数据库请求、结果、快照、错误和通道
 │  ├─ system/                    # 文件、剪贴板等系统能力协议
+│  ├─ workspace/                 # 工作区持久化快照与存取协议
 │  └─ bridge.ts                  # 聚合各领域 API
 │
 ├─ main/
@@ -69,7 +70,7 @@ src/
 `contracts` 只保存跨进程共享的请求参数、返回结果、状态快照、错误分类、API 签名、IPC 通道及必要的协议校验。
 
 - 不依赖 Electron、Node、React、Jotai 或任一端的实现。
-- 不包含数据库连接对象、页面状态或具体业务实现。
+- 不包含数据库连接对象、运行中的页面状态或具体业务实现；工作区持久化快照作为跨进程协议单独定义。
 - 领域协议由 `bridge.ts` 聚合，领域协议不反向依赖聚合入口。
 - 仅后端使用的驱动接口留在后端，仅前端使用的编辑器和表格类型留在前端。
 
@@ -94,6 +95,8 @@ src/
 
 - `modules/database` 维护后端快照的客户端缓存及派生状态，不另行定义一套真实连接状态。
 - `modules/workspace` 维护标签页、查询与分页流程、结果和日志的归属；不同标签页的状态按标识保存。
+- 工作区只持久化标签顺序、名称、当前标签、查询页编辑内容及位置、表格页的数据源与排序分页参数。主进程在独立的 `workspace` 存储中保存快照；前端启动时先恢复标签，再自动加载所有表格页，查询页不自动执行。结果、日志、会话和任务状态重新初始化。
+- 自动保存每 5 秒检查一次，仅在持久化内容变化时写入，不在退出时额外保存；最后一个保存周期内的修改可能丢失。
 - 页面和组件保留菜单展开、弹窗开关等局部交互状态。需要随标签页保留的界面状态，由工作区保存，通过页面接入组件。
 - 组件公开自身所需的参数与回调，不依赖工作区的具体状态类型；页面负责必要的数据适配，业务模块不反向导入组件类型。
 
@@ -114,7 +117,7 @@ preload        → contracts
 
 renderer/app                 → pages、modules（初始化与组装）
 renderer/pages               → modules、components、contracts（所需类型）
-renderer/modules/workspace   → modules/database、contracts/database
+renderer/modules/workspace   → modules/database、contracts/database、contracts/workspace
 renderer/modules/database    → contracts/database
 renderer/modules/system      → contracts/system
 renderer/components/业务组件 → components/ui、contracts（所需类型）

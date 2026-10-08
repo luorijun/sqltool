@@ -1,5 +1,6 @@
 import { atom } from "jotai"
 import type { Config, QueryResult } from "@/contracts/database"
+import type { WorkspaceSnapshot } from "@/contracts/workspace"
 import connApi, {
   connectionEntriesAtom,
   RequestError,
@@ -1286,6 +1287,106 @@ function upsertLogEntry(
   nextEntries[index] = getNextEntry(nextEntries[index])
   return nextEntries
 }
+
+// Only durable tab content crosses the persistence boundary.
+export const workspaceSnapshotAtom = atom<WorkspaceSnapshot>((get) => {
+  const states = get(tabStatesAtom)
+  return {
+    version: 1,
+    activeTabId: get(activeIdAtom),
+    tabs: get(tabListAtom).map((meta): WorkspaceSnapshot["tabs"][number] => {
+      const tab = states[meta.id]
+      if (tab.kind === "query") {
+        const { text, cursor, selections, mainSelectionIndex, scroll, search } =
+          tab.editor
+        return {
+          ...meta,
+          kind: "query",
+          configId: tab.configId,
+          editor: {
+            text,
+            cursor,
+            selections,
+            mainSelectionIndex,
+            scroll,
+            search,
+          },
+        }
+      }
+      const { sort, sortOrder, offset, limit } = tab.table
+      return {
+        ...meta,
+        kind: "view",
+        configId: tab.configId,
+        source: tab.source,
+        sort,
+        sortOrder,
+        offset,
+        limit,
+      }
+    }),
+  }
+})
+
+export const restoreWorkspaceAtom = atom(
+  null,
+  (get, set, snapshot: WorkspaceSnapshot) => {
+    if (get(tabListAtom).length) throw new Error("仅能在空工作区中恢复页面")
+    const states: TabStateMap = {}
+    const tabs: TabMeta[] = []
+    for (const tab of snapshot.tabs) {
+      tabs.push({ id: tab.id, kind: tab.kind, label: tab.label })
+      const id = Number(tab.id)
+      if (Number.isSafeInteger(id) && id >= 0)
+        nextTabId = Math.max(nextTabId, id + 1)
+      states[tab.id] =
+        tab.kind === "query"
+          ? {
+              id: tab.id,
+              kind: "query",
+              configId: tab.configId,
+              editor: { ...createDefaultQueryEditorState(), ...tab.editor },
+              table: createDefaultQueryTableState(),
+              logger: createDefaultLoggerState(),
+            }
+          : {
+              id: tab.id,
+              kind: "view",
+              configId: tab.configId,
+              source: tab.source,
+              table: {
+                ...createDefaultViewTableState(),
+                sort: tab.sort,
+                sortOrder: tab.sortOrder,
+                offset: tab.offset,
+                limit: tab.limit,
+              },
+              code: createDefaultCodeView(),
+              logger: createDefaultLoggerState(),
+            }
+    }
+    set(tabStatesAtom, states)
+    set(tabListAtom, tabs)
+    set(
+      activeIdAtom,
+      snapshot.activeTabId && states[snapshot.activeTabId]
+        ? snapshot.activeTabId
+        : (tabs[0]?.id ?? null),
+    )
+  },
+)
+
+export const reloadViewTabsAtom = atom(null, async (get, set) => {
+  const tabs = get(tabListAtom).filter((tab) => tab.kind === "view")
+  await Promise.all(
+    tabs.map((tab) =>
+      Promise.all([
+        set(loadViewTabPageByIdAtom, { tabId: tab.id }),
+        set(loadViewTabCountByIdAtom, tab.id),
+      ]),
+    ),
+  )
+})
 
 export const tabsAtom = atom((get) => get(tabListAtom))
 export const activeTabIdAtom = atom((get) => get(activeIdAtom))

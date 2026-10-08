@@ -4,6 +4,7 @@ import type {
   ConnSnapshot,
   DatabaseApi,
 } from "../../src/contracts/database"
+import type { WorkspaceApi } from "../../src/contracts/workspace"
 
 export const config: Config = {
   id: "db",
@@ -59,14 +60,18 @@ export function renderer(version: number) {
     select: unexpected,
     cancel: unexpected,
   }
+  const workspace: WorkspaceApi = {
+    load: async () => null,
+    save: async () => {},
+  }
   const original = Object.getOwnPropertyDescriptor(globalThis, "window")
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: { main: { conn: bridge } },
+    value: { main: { conn: bridge, workspace } },
   })
   const restore = () => {
     if (original) Object.defineProperty(globalThis, "window", original)
     else Reflect.deleteProperty(globalThis, "window")
   }
-  return { snapshot, capture, ok, bridge, restore }
+  return { snapshot, capture, ok, bridge, workspace, restore }
 }

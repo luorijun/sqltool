@@ -2,6 +2,7 @@ import { type IpcMainInvokeEvent, ipcMain } from "electron"
 import { z } from "zod"
 import * as db from "@/contracts/database"
 import * as system from "@/contracts/system"
+import * as workspace from "@/contracts/workspace"
 import type { Database } from "@/main/database"
 import { saveTextFile, writeClipboardText } from "@/main/system"
 import {
@@ -12,6 +13,7 @@ import {
   query,
   tableSource,
   text,
+  workspaceSnapshot,
 } from "./validation"
 
 function owner(event: IpcMainInvokeEvent): number {
@@ -33,7 +35,10 @@ function handle<A extends unknown[]>(
   )
 }
 
-export function registerIpc(database: Database): void {
+export function registerIpc(
+  database: Database,
+  workspaceApi: workspace.WorkspaceApi,
+): void {
   const api = (owner: number) => database.forOwner(owner)
   handle(db.TEST, z.tuple([profile]), (owner, input) => api(owner).test(input))
   handle(db.SYNC, z.tuple([]), (owner) => api(owner).sync())
@@ -72,4 +77,13 @@ export function registerIpc(database: Database): void {
     writeClipboardText(text),
   )
   handle(system.SAVE_TEXT_FILE, z.tuple([file]), saveTextFile)
+  handle(workspace.LOAD_WORKSPACE, z.tuple([]), async () => {
+    const snapshot = await workspaceApi.load()
+    return snapshot ? workspaceSnapshot.parse(snapshot) : null
+  })
+  handle(
+    workspace.SAVE_WORKSPACE,
+    z.tuple([workspaceSnapshot]),
+    (_owner, snapshot) => workspaceApi.save(snapshot),
+  )
 }

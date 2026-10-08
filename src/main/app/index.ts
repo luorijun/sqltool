@@ -3,6 +3,7 @@ import { app, BrowserWindow } from "electron"
 import { registerIpc } from "@/main/ipc"
 import { initUpdater } from "@/main/updater"
 import { database } from "./database"
+import { workspace } from "./workspace"
 
 const appDir = import.meta.dirname
 
@@ -86,7 +87,7 @@ app.on("window-all-closed", () => {
 })
 
 app.whenReady().then(() => {
-  registerIpc(database)
+  registerIpc(database, workspace)
   initUpdater()
   createWindow()
 })
