@@ -1,28 +1,15 @@
-import type { Config, ConnSnapshot } from "../../src/core/database"
-import type {
-  ConnResponse,
-  DatabaseApi,
-  WorkspaceApi,
-} from "../../src/preload/bridge"
+import { config } from "@tests/support/config"
+import type { ConnSnapshot } from "@/core/database"
+import type { ConnResponse, DatabaseApi, WorkspaceApi } from "@/preload/bridge"
 
-export const config: Config = {
-  id: "db",
-  driver: "postgres",
-  host: "localhost",
-  port: "5432",
-  username: "u",
-  password: "p",
-  database: "db",
-  createdAt: 0,
-  updatedAt: 0,
-}
+export { config } from "@tests/support/config"
 
 export function renderer(version: number) {
   const snapshot: ConnSnapshot = {
     version,
     connections: [
       {
-        config,
+        config: structuredClone(config),
         connected: true,
         error: null,
         schema: null,

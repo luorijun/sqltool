@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import { randomUUID } from "node:crypto"
-import { connectDriver } from "../../src/main/drivers"
-import type { Confirm, ConfirmKind } from "../../src/main/sessions"
 import {
   pid,
   profile,
@@ -11,7 +9,9 @@ import {
   value,
   waitClosed,
   waitRunning,
-} from "./helpers"
+} from "@tests/integration/helpers"
+import { connectDriver } from "@/main/drivers"
+import type { Confirm, ConfirmKind } from "@/main/sessions"
 
 function confirmations() {
   const kinds: ConfirmKind[] = []
@@ -64,6 +64,8 @@ describe.each(["postgres", "mysql"] as const)(
           const id = value(await env.api.openSession("db", tab))
           for (const text of sql) await query(env.api, id, text)
           expect(value(await env.api.closeTab(tab))).toBe(true)
+          expect(kinds).toEqual([])
+          kinds.length = 0
         }
         const id = value(await env.api.openSession("db", "bad"))
         expect(await env.api.query(id, randomUUID(), "BAD SQL")).toMatchObject({
@@ -100,6 +102,8 @@ describe.each(["postgres", "mysql"] as const)(
         await query(env.api, id, `INSERT INTO ${table} VALUES (1)`)
         const backend = await pid(env.api, id, driver)
         expect(value(await env.api.closeTab("a"))).toBe(false)
+        expect(kinds).toEqual(["rollback"])
+        kinds.length = 0
         expect(
           Number(
             (await query(env.api, id, `SELECT COUNT(*) FROM ${table}`))
@@ -113,7 +117,7 @@ describe.each(["postgres", "mysql"] as const)(
         ).toBe(0)
         accepted = true
         expect(value(await env.api.closeTab("a"))).toBe(true)
-        expect(kinds).toEqual(["rollback", "rollback"])
+        expect(kinds).toEqual(["rollback"])
         await waitClosed(env.admin, driver, backend)
         expect(
           Number(
@@ -144,8 +148,9 @@ describe.each(["postgres", "mysql"] as const)(
           const id = value(await env.api.openSession("db", tab))
           for (const text of sql) await query(env.api, id, text)
           expect(value(await env.api.closeTab(tab))).toBe(true)
+          expect(kinds).toEqual(["rollback"])
+          kinds.length = 0
         }
-        expect(kinds).toEqual(["rollback", "rollback", "rollback"])
       } finally {
         await env.close()
       }
@@ -167,9 +172,12 @@ describe.each(["postgres", "mysql"] as const)(
       }
     })
 
-    test.each([false, true])(
+    test.each([
+      ["without transaction", false],
+      ["with transaction", true],
+    ] as const)(
       "stopping a running query with an existing transaction %s reads the post-cancellation state",
-      async (transaction) => {
+      async (_case, transaction) => {
         const { kinds, confirm } = confirmations()
         const env = await setup(profile(driver), confirm)
         let running: ReturnType<typeof env.api.query> | undefined
@@ -215,50 +223,73 @@ describe.each(["postgres", "mysql"] as const)(
   },
 )
 
-test("mysql probes recognize implicit transactions and commits without creating a new transaction", async () => {
+test("mysql recognizes implicit transactions and commits without creating a new transaction", async () => {
   const { kinds, confirm } = confirmations()
   const env = await setup(profile("mysql"), confirm)
-  const table = `implicit_${randomUUID().replaceAll("-", "")}`
+  const tables = Array.from(
+    { length: 3 },
+    () => `implicit_${randomUUID().replaceAll("-", "")}`,
+  )
+  const [read, ddl, commit] = tables
+  const cases: {
+    tab: string
+    table?: string
+    sql: string[]
+    kinds: ConfirmKind[]
+    rows?: number
+  }[] = [
+    {
+      tab: "read",
+      table: read,
+      sql: ["SET autocommit = 0", `SELECT * FROM ${read}`],
+      kinds: ["rollback"],
+    },
+    {
+      tab: "ddl",
+      table: ddl,
+      sql: [
+        "BEGIN",
+        `INSERT INTO ${ddl} VALUES (1)`,
+        `ALTER TABLE ${ddl} ADD COLUMN extra INT`,
+      ],
+      kinds: [],
+      rows: 1,
+    },
+    {
+      tab: "commit",
+      table: commit,
+      sql: ["SET autocommit = 0", `INSERT INTO ${commit} VALUES (1)`, "COMMIT"],
+      kinds: [],
+      rows: 1,
+    },
+    {
+      tab: "constant",
+      sql: ["SET autocommit = 0", "SELECT 1"],
+      kinds: [],
+    },
+  ]
   try {
-    await env.admin.query(`CREATE TABLE ${table} (id INT PRIMARY KEY)`)
-    const a = value(await env.api.openSession("db", "a"))
-    await query(env.api, a, "SET autocommit = 0")
-    await query(env.api, a, `SELECT * FROM ${table}`)
-    expect(value(await env.api.closeTab("a"))).toBe(true)
-    expect(kinds).toEqual(["rollback"])
-    kinds.length = 0
-
-    const b = value(await env.api.openSession("db", "b"))
-    await query(env.api, b, "BEGIN")
-    await query(env.api, b, `INSERT INTO ${table} VALUES (1)`)
-    await query(env.api, b, `ALTER TABLE ${table} ADD COLUMN extra INT`)
-    expect(value(await env.api.closeTab("b"))).toBe(true)
-    expect(kinds).toEqual([])
-    expect(
-      Number(
-        (await env.admin.query(`SELECT COUNT(*) FROM ${table}`)).rows[0][0],
-      ),
-    ).toBe(1)
-
-    const c = value(await env.api.openSession("db", "c"))
-    await query(env.api, c, "SET autocommit = 0")
-    await query(env.api, c, `INSERT INTO ${table} (id) VALUES (2)`)
-    await query(env.api, c, "COMMIT")
-    expect(value(await env.api.closeTab("c"))).toBe(true)
-    expect(kinds).toEqual([])
-    expect(
-      Number(
-        (await env.admin.query(`SELECT COUNT(*) FROM ${table}`)).rows[0][0],
-      ),
-    ).toBe(2)
-
-    const d = value(await env.api.openSession("db", "d"))
-    await query(env.api, d, "SET autocommit = 0")
-    await query(env.api, d, "SELECT 1")
-    expect(value(await env.api.closeTab("d"))).toBe(true)
-    expect(kinds).toEqual([])
+    for (const entry of cases) {
+      if (entry.table)
+        await env.admin.query(
+          `CREATE TABLE ${entry.table} (id INT PRIMARY KEY)`,
+        )
+      const session = value(await env.api.openSession("db", entry.tab))
+      for (const sql of entry.sql) await query(env.api, session, sql)
+      expect(value(await env.api.closeTab(entry.tab))).toBe(true)
+      expect(kinds).toEqual(entry.kinds)
+      kinds.length = 0
+      if (entry.rows !== undefined) {
+        expect(
+          Number(
+            (await env.admin.query(`SELECT COUNT(*) FROM ${entry.table}`))
+              .rows[0][0],
+          ),
+        ).toBe(entry.rows)
+      }
+    }
   } finally {
-    await env.close([table])
+    await env.close(tables)
   }
 })
 

@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto"
-import type { Config, DbDriver } from "../../src/core/database"
-import type { ConnectionSession } from "../../src/main/drivers"
-import { connectDriver } from "../../src/main/drivers"
-import type { Confirm } from "../../src/main/sessions"
-import type { ConnResponse, DatabaseApi } from "../../src/preload/bridge"
-import { createDatabase } from "../support/database"
+import { createDatabase } from "@tests/support/database"
+import type { Config, DbDriver } from "@/core/database"
+import type { ConnectionSession } from "@/main/drivers"
+import { connectDriver } from "@/main/drivers"
+import type { Confirm } from "@/main/sessions"
+import type { ConnResponse, DatabaseApi } from "@/preload/bridge"
 
 export function profile(driver: DbDriver): Config {
   return {
@@ -45,13 +45,15 @@ export async function setup(
   return {
     api: database.forOwner(1),
     admin,
-    async close(tables: string[] = []) {
+    async close(tables: string[] = [], types: string[] = []) {
       try {
         await database.closeOwner(1, true)
       } finally {
         try {
           for (const table of tables)
             await admin.query(`DROP TABLE IF EXISTS ${table}`)
+          if (types.length)
+            await admin.query(`DROP TYPE IF EXISTS ${types.join(", ")}`)
         } finally {
           await admin.close()
         }
