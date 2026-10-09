@@ -1,6 +1,7 @@
 import path from "node:path"
 import { BrowserWindow, dialog } from "electron"
 import type { Confirm, Sessions } from "@/main/sessions"
+import { hasResultChanges, setResultChanges } from "@/main/system"
 
 const appDir = import.meta.dirname
 
@@ -30,8 +31,21 @@ export const createWindow = (sessions: Sessions) => {
     event.preventDefault()
     if (closing) return
     closing = true
-    void sessions
-      .closeOwner(owner)
+    void (async () => {
+      if (hasResultChanges(owner)) {
+        const result = await dialog.showMessageBox(mainWindow, {
+          type: "question",
+          message: "结果中有未提交的修改，仍要退出吗？",
+          detail: "返回表格可以提交、复制或导出修改后的数据。",
+          buttons: ["返回", "放弃修改并退出"],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        })
+        if (result.response !== 1) return false
+      }
+      return sessions.closeOwner(owner)
+    })()
       .then((closed) => {
         if (closed && !mainWindow.isDestroyed()) {
           approved = true
@@ -44,6 +58,7 @@ export const createWindow = (sessions: Sessions) => {
       })
   })
   mainWindow.webContents.on("render-process-gone", () => {
+    setResultChanges(owner, false)
     void sessions
       .closeOwner(owner, true)
       .catch((error) => console.error("清理会话失败", error))
@@ -57,10 +72,12 @@ export const createWindow = (sessions: Sessions) => {
   mainWindow.webContents.on(
     "did-start-navigation",
     ({ isSameDocument, isMainFrame }) => {
-      if (isMainFrame && !isSameDocument)
+      if (isMainFrame && !isSameDocument) {
+        setResultChanges(owner, false)
         void sessions
           .closeOwner(owner, true)
           .catch((error) => console.error("清理会话失败", error))
+      }
     },
   )
 

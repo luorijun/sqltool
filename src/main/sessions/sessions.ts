@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type {
+  CellChange,
   Config,
   SelectQuery,
   SessionSnapshot,
@@ -12,6 +13,7 @@ import type {
   Transaction,
 } from "@/main/drivers"
 import { Metadata } from "@/main/metadata"
+import { Results } from "./edit"
 import { compileSelectQuery } from "./query"
 import { Tasks, withTimeout } from "./tasks"
 
@@ -41,6 +43,7 @@ export interface SessionOptions {
 export class Sessions {
   private entries = new Map<string, Session>()
   private tasks = new Tasks()
+  private results = new Results()
   private blocked = new Set<string>()
   private owners = new Set<number>()
   private tabs = new Set<string>()
@@ -291,10 +294,8 @@ export class Sessions {
     })
     if (session.status !== "ready") abort.abort()
     try {
-      return await this.metadata.complete(
-        session.configId,
-        result,
-        abort.signal,
+      return this.results.complete(
+        await this.metadata.complete(session.configId, result, abort.signal),
       )
     } finally {
       this.enrichment.delete(requestId)
@@ -303,12 +304,23 @@ export class Sessions {
 
   async query(id: string, owner: number, requestId: string, sql: string) {
     const session = this.get(id, owner)
+    const tabId = session.tabId
+    if (!tabId) throw new Error("会话缺少标签页编号")
     const result = await this.run(
       session,
       owner,
       requestId,
       session.tabId,
-      (client) => client.query(sql),
+      async (client) =>
+        this.results.capture(
+          client,
+          session.id,
+          owner,
+          tabId,
+          session.profile.driver,
+          sql,
+          await client.query(sql),
+        ),
     )
     return this.complete(session, owner, requestId, session.tabId, result)
   }
@@ -322,13 +334,46 @@ export class Sessions {
   ) {
     const session = this.create(configId, owner, "browse")
     const compiled = compileSelectQuery(session.profile.driver, query)
-    const result = await this.run(session, owner, requestId, tabId, (client) =>
-      client.query(compiled.sql, compiled.params),
+    const result = await this.run(
+      session,
+      owner,
+      requestId,
+      tabId,
+      async (client) => {
+        const result = await client.query(compiled.sql, compiled.params)
+        return query.select?.length
+          ? result
+          : this.results.capture(
+              client,
+              session.id,
+              owner,
+              tabId,
+              session.profile.driver,
+              compiled.sql,
+              result,
+            )
+      },
     )
     return {
       executedSql: compiled.sql,
       result: await this.complete(session, owner, requestId, tabId, result),
     }
+  }
+
+  async save(
+    owner: number,
+    tabId: string,
+    requestId: string,
+    resultId: string,
+    changes: CellChange[],
+  ) {
+    const id = this.results.session(resultId, owner, tabId)
+    const session = this.entries.get(id)
+    if (!session || session.owner !== owner || session.status !== "ready")
+      throw new Error("原会话已失效，请重新查询")
+    return this.run(session, owner, requestId, tabId, (client) =>
+      this.results.save(client, resultId, owner, tabId, changes),
+    )
   }
 
   async inspect(
@@ -351,6 +396,7 @@ export class Sessions {
   }
 
   private destroy(session: Session): void {
+    this.results.forget(session.id)
     if (session.kind === "schema") this.metadata.invalidate(session.configId)
     session.status = "closed"
     session.unwatch?.()
@@ -518,7 +564,10 @@ export class Sessions {
         }
       }
       const closed = await this.close(entries, owner)
-      if (closed) for (const s of entries) this.entries.delete(s.id)
+      if (closed) {
+        this.results.clear(owner, tabId)
+        for (const s of entries) this.entries.delete(s.id)
+      }
       return closed
     } finally {
       this.tabs.delete(key)
@@ -557,6 +606,7 @@ export class Sessions {
       )
       const closed = await this.close(entries, owner, force)
       if (closed) {
+        this.results.clear(owner)
         for (const s of entries) this.entries.delete(s.id)
         for (const [id, consumers] of this.consumers) {
           consumers.delete(owner)

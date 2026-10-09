@@ -1,4 +1,23 @@
-import type { QueryResultColumn, SelectOrderBy } from "@/core/database"
+import type {
+  CellChange,
+  QueryResultColumn,
+  ResultEdit,
+  SelectOrderBy,
+} from "@/core/database"
+
+export interface EditState {
+  resultId: string
+  info?: ResultEdit
+  changes: CellChange[]
+  history: CellChange[][]
+  future: CellChange[][]
+  saving?: string
+  confirming?: boolean
+  editing?: boolean
+  uncertain?: boolean
+  error?: string
+  notice?: string
+}
 
 export type TabKind = "query" | "view"
 
@@ -36,6 +55,7 @@ export interface ViewTabState extends TabMeta {
 export type TabState = QueryTabState | ViewTabState
 
 export interface QueryTableState {
+  edits?: EditState
   status: "idle" | "success" | "error"
   error: string | null
   dataAt: number | null
@@ -86,6 +106,7 @@ export interface LogState {
 }
 
 export interface ViewTableState {
+  edits?: EditState
   sort: SelectOrderBy[]
   sortOrder: string[]
   status: "idle" | "running" | "success" | "error"

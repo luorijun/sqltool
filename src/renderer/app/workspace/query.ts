@@ -23,6 +23,7 @@ import {
   updateQueryEditorAtom,
   updateQueryLayoutAtom,
 } from "@/renderer/modules/workspace"
+import { useTableEditing } from "./edit"
 import { saveText, showError } from "./feedback"
 
 export function useQueryCode(): Extract<CodeAreaProps, { mode: "query" }> {
@@ -123,12 +124,15 @@ export function useQueryTable(): Extract<TableAreaProps, { mode: "query" }> {
   const copyOptions = useAtomValue(copyOptionsAtom)
   const updateTable = useSetAtom(updateQueryLayoutAtom)
   const resetTable = useSetAtom(resetQueryLayoutAtom)
+  const tab = useAtomValue(activeQueryTabAtom)
+  const { data, editing } = useTableEditing(tab, stale)
   const setCopyOptions = useSetAtom(setCopyOptionsAtom)
   const setSelection = useSetAtom(setTableSelectionAtom)
   return {
     mode: "query",
     id,
-    tableState,
+    tableState: { ...tableState, data },
+    editing,
     stale,
     running,
     copyOptions,

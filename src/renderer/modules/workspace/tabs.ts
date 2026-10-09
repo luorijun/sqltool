@@ -1,5 +1,6 @@
 import { atom } from "jotai"
 import connApi, { connectionsAtom } from "@/renderer/modules/database"
+import { guardEditsAtom } from "./edit"
 import { openings } from "./query"
 import {
   activeIdAtom,
@@ -95,6 +96,15 @@ export const openViewTabAtom = atom(
 export const closeTabAtom = atom(null, async (get, set, tabId: string) => {
   const current = get(tabStatesAtom)[tabId]
   if (!current || current.closing) return
+  if (
+    current.table.edits &&
+    (current.table.edits.changes.length ||
+      current.table.edits.saving ||
+      current.table.edits.confirming ||
+      current.table.edits.editing) &&
+    !(await set(guardEditsAtom, tabId))
+  )
+    return
   set(tabStatesAtom, (states) => ({
     ...states,
     [tabId]: { ...states[tabId], closing: true },
@@ -149,6 +159,7 @@ export const bindQueryConfigAtom = atom(
       !configId ||
       get(connectionsAtom)?.some((entry) => entry.config.id === configId)
     if (!exists()) throw new Error("连接配置不存在或已删除")
+    if (!(await set(guardEditsAtom, tabId))) return
 
     set(tabStatesAtom, (states) =>
       updateQueryTab(states, tabId, (current) => ({
@@ -179,6 +190,8 @@ export const bindQueryConfigAtom = atom(
 )
 
 export const selectTabAtom = atom(null, (get, set, id: string) => {
+  const active = get(activeIdAtom)
+  if (active && get(tabStatesAtom)[active]?.table.edits?.editing) return
   if (get(tabStatesAtom)[id]) set(activeIdAtom, id)
 })
 

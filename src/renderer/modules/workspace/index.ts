@@ -1,4 +1,14 @@
 export {
+  changeCellAtom,
+  discardEditsAtom,
+  editedRows,
+  saveEditsAtom,
+  saveReason,
+  setCellEditingAtom,
+  undoEditAtom,
+  watchResultChanges,
+} from "./edit"
+export {
   clearLogsAtom,
   updateLogViewAtom,
 } from "./logs"

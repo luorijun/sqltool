@@ -39,7 +39,7 @@ describe("result table component contract", () => {
     const html = renderToStaticMarkup(
       createElement(ResultTable, {
         tableState: initialState(),
-        readOnly: false,
+        enableSorting: true,
         sortOrder: [],
         sorting: [{ id: "amount", desc: false }],
         onSortingChange: () => {},
@@ -67,7 +67,7 @@ describe("result table component contract", () => {
     const html = renderToStaticMarkup(
       createElement(ResultTable, {
         tableState: initialState(),
-        readOnly: true,
+        enableSorting: false,
         onLayoutChange: () => {},
         onReset: () => {},
         copyOptions: { format: "tsv", headers: false },
@@ -150,7 +150,7 @@ test("the grid renders cross-product selection, partial headers and a single dat
   const html = renderToStaticMarkup(
     createElement(ResultTable, {
       tableState: state,
-      readOnly: true,
+      enableSorting: false,
       onLayoutChange: () => {},
       onReset: () => {},
       onSelectionChange: () => {},
@@ -186,7 +186,7 @@ test("an empty selection retains a focus target without showing selected cells o
   const html = renderToStaticMarkup(
     createElement(ResultTable, {
       tableState: state,
-      readOnly: true,
+      enableSorting: false,
       onLayoutChange: () => {},
       onReset: () => {},
       onSelectionChange: () => {},

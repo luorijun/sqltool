@@ -112,6 +112,8 @@ async function connectDirect(profile: ConfigProfile): Promise<ConnectedClient> {
     password: profile.password,
     database: profile.database,
     connectTimeout: 20_000,
+    supportBigNumbers: true,
+    dateStrings: true,
   })
 
   return { client }
@@ -133,6 +135,8 @@ async function connectSsh(profile: ConfigProfile): Promise<ConnectedClient> {
       password: profile.password,
       database: profile.database,
       connectTimeout: 20_000,
+      supportBigNumbers: true,
+      dateStrings: true,
       stream: () => new SshTunnelStream(ssh).connect(port, profile.host),
     })
 
@@ -373,6 +377,46 @@ export async function connectMySql(
   const { client, closeTransport } = await connectClient(profile)
 
   return createConnectionSession({
+    async describe(columns, source) {
+      const sources = columns.filter(
+        (c) => c.schema && c.table && c.sourceColumn,
+      )
+      const first = sources[0]
+      if (
+        !first?.schema ||
+        !first.table ||
+        sources.some(
+          (c) => c.schema !== first.schema || c.table !== first.table,
+        )
+      )
+        return null
+      const name = (
+        source
+          ? [source.schema, source.table].filter(Boolean)
+          : [first.schema, first.table]
+      )
+        .map((s) => `\`${s.replaceAll("`", "``")}\``)
+        .join(".")
+      const [create] = await client.query<RowDataPacket[]>(
+        `SHOW CREATE TABLE ${name}`,
+      )
+      if (
+        !create[0] ||
+        !/ENGINE=InnoDB\b/i.test(String(create[0]["Create Table"] ?? ""))
+      )
+        return null
+      const [fields] = await client.query<RowDataPacket[]>(
+        `SHOW FULL COLUMNS FROM ${name}`,
+      )
+      return {
+        source: { schema: first.schema, table: first.table },
+        columns: fields.map((f) => ({
+          name: String(f.Field),
+          key: f.Key === "PRI",
+          generated: /GENERATED/i.test(String(f.Extra)),
+        })),
+      }
+    },
     transaction: () => readTransaction(client),
     async charsets() {
       const rows = await queryRows<

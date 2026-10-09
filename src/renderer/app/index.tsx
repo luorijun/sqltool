@@ -9,6 +9,7 @@ import {
   reloadWorkspaceTables,
   restoreWorkspace,
   startWorkspaceSaving,
+  watchResultChanges,
 } from "@/renderer/modules/workspace"
 import Layout from "./layout"
 
@@ -29,6 +30,7 @@ function App() {
   useEffect(() => {
     let disposed = false
     let stop = () => {}
+    const stopChanges = watchResultChanges()
     const report = (error: unknown) =>
       toast.error(
         error instanceof Error ? error.message : "工作区保存或恢复失败",
@@ -46,6 +48,7 @@ function App() {
     return () => {
       disposed = true
       stop()
+      stopChanges()
       window.removeEventListener("focus", syncConnections)
     }
   }, [])

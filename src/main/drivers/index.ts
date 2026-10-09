@@ -22,6 +22,7 @@ export type {
   DriverResult,
   MySqlTypeRef,
   PostgresTypeRef,
+  TableDefinition,
   Transaction,
   TypeRef,
 } from "./types"

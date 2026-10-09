@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type {
+  CellChange,
   ConfigProfile,
   SelectCondition,
   SelectQuery,
@@ -10,6 +11,16 @@ import type { CreateConfig, UpdateConfig } from "@/preload/bridge"
 
 export const id = z.string().min(1)
 export const text = z.string()
+export const cellChanges = z
+  .array(
+    z.strictObject({
+      row: z.number().int().nonnegative(),
+      column: id,
+      value: z.unknown(),
+    }),
+  )
+  .min(1)
+  .max(10000) satisfies z.ZodType<CellChange[]>
 export const tableSource = z.strictObject({
   schema: id,
   table: id,

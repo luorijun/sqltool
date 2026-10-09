@@ -1,18 +1,24 @@
 import type { SortingState } from "@tanstack/react-table"
 import { CircleX, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/renderer/components/ui/button"
-import type { ResultActions, ResultLayout, ResultTableState } from "./model"
+import type {
+  ResultActions,
+  ResultEditing,
+  ResultLayout,
+  ResultTableState,
+} from "./model"
 import { Paging } from "./paging"
 import type { GridSelection } from "./selection"
 import type { CopyOptions } from "./serialize"
 import { EmptyState, ResultTable } from "./table"
 
 export { getTypeLabel } from "./format"
-export type { ResultLayout, ResultTableState } from "./model"
+export type { ResultEditing, ResultLayout, ResultTableState } from "./model"
 export type { GridSelection } from "./selection"
 export type { CopyOptions } from "./serialize"
 
 interface TableAreaBase extends ResultActions {
+  editing?: ResultEditing
   id: string | null
   tableState: ResultTableState & {
     status: "idle" | "running" | "success" | "error"
@@ -96,7 +102,8 @@ export function TableArea(props: TableAreaProps) {
 
     return (
       <ResultTable
-        readOnly
+        enableSorting={false}
+        editing={props.editing}
         key={`${id}:${tableState.dataAt}`}
         copyOptions={copyOptions}
         onCopyOptionsChange={onCopyOptionsChange}
@@ -177,7 +184,8 @@ export function TableArea(props: TableAreaProps) {
       tableState={tableState}
       onLayoutChange={onLayoutChange}
       onReset={onReset}
-      readOnly={false}
+      enableSorting
+      editing={props.editing}
       sorting={sorting}
       sortOrder={sortOrder}
       busy={busy}

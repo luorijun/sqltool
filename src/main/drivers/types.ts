@@ -29,12 +29,25 @@ export type DriverResult = Omit<QueryResult, "columns"> & {
 }
 
 export type Transaction = "idle" | "active" | "failed" | "unknown"
+export interface TableDefinition {
+  source: TableSource
+  columns: Array<{
+    name: string
+    key: boolean
+    generated: boolean
+    id?: number
+  }>
+}
 export interface ConnectionSession {
   transaction(): Promise<Transaction>
   prepareMetadata?: () => Promise<void>
   inspect(source?: TableSource): Promise<DbSchema[]>
   types?: (refs: PostgresTypeRef[]) => Promise<Array<ColumnType | null>>
   charsets?: () => Promise<Map<number, number>>
+  describe?: (
+    columns: DriverColumn[],
+    source?: TableSource,
+  ) => Promise<TableDefinition | null>
   query(sql: string, params?: unknown[]): Promise<DriverResult>
   close(): Promise<void>
   destroy(): void

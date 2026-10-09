@@ -9,6 +9,7 @@ interface CreateConnectionSessionOptions {
   inspect: ConnectionSession["inspect"]
   types?: ConnectionSession["types"]
   charsets?: ConnectionSession["charsets"]
+  describe?: ConnectionSession["describe"]
   query: ConnectionSession["query"]
   close: () => Promise<void>
   destroy: () => void
@@ -80,12 +81,16 @@ export function createConnectionSession(
 
   const types = options.types
   const charsets = options.charsets
+  const describe = options.describe
   return {
     transaction: () => execute(options.transaction),
     prepareMetadata: options.prepareMetadata,
     inspect: (source) => execute(() => options.inspect(source)),
     types: types ? (refs) => execute(() => types(refs)) : undefined,
     charsets: charsets ? () => execute(charsets) : undefined,
+    describe: describe
+      ? (columns, source) => execute(() => describe(columns, source))
+      : undefined,
     query: (sql, params) => execute(() => options.query(sql, params)),
     cancel: () => options.cancel(() => active && !closed && !failure),
     destroy: () => {

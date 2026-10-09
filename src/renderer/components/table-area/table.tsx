@@ -8,7 +8,15 @@ import {
   type Updater,
   useTable,
 } from "@tanstack/react-table"
-import { ArrowDownAZ, ArrowUpAZ, RotateCcw, Table2 } from "lucide-react"
+import {
+  ArrowDownAZ,
+  ArrowUpAZ,
+  Redo2,
+  RotateCcw,
+  Save,
+  Table2,
+  Undo2,
+} from "lucide-react"
 import {
   type CSSProperties,
   type ReactNode,
@@ -20,6 +28,7 @@ import { cn } from "tailwind-variants"
 import type { QueryResultColumn } from "@/core/database"
 import { Button } from "@/renderer/components/ui/button"
 import { AreaStatusBar, AreaToolbar } from "@/renderer/components/ui/panel-bar"
+import { CellEditor } from "./cell-editor"
 import {
   getColumnHeaderTitle,
   getColumnTypeLabel,
@@ -38,6 +47,7 @@ import {
   type ResultActions,
   type ResultColumn,
   type ResultColumnDef,
+  type ResultEditing,
   type ResultLayout,
   type ResultTableInstance,
   type ResultTableState,
@@ -55,6 +65,7 @@ import {
 import { useSelection } from "./use-selection"
 
 interface ResultTableBase extends ResultActions {
+  editing?: ResultEditing
   tableState: ResultTableState
   onLayoutChange: (update: (current: ResultLayout) => ResultLayout) => void
   onReset: () => void
@@ -72,13 +83,13 @@ interface ResultTableBase extends ResultActions {
 type ResultTableProps = ResultTableBase &
   (
     | {
-        readOnly: true
+        enableSorting: false
         sorting?: never
         sortOrder?: never
         onSortingChange?: never
       }
     | {
-        readOnly: false
+        enableSorting: true
         sorting: SortingState
         sortOrder: string[]
         onSortingChange: (sorting: SortingState, order: string[]) => void
@@ -91,7 +102,8 @@ export function ResultTable({
   tableState,
   onLayoutChange,
   onReset,
-  readOnly,
+  enableSorting,
+  editing,
   sorting,
   sortOrder,
   busy = false,
@@ -106,9 +118,13 @@ export function ResultTable({
   statusBarStart,
   statusBarEnd,
 }: ResultTableProps) {
+  const [cellEdit, setCellEdit] = useState<{
+    row: number
+    column: string
+    initial?: string
+  } | null>(null)
   const [sortDraft, setSortDraft] = useState<SortItem[] | null>(null)
   const [sortFocus, setSortFocus] = useState<string | null>(null)
-  const enableSorting = !readOnly
   const columns = useMemo<ResultColumnDef[]>(
     () => [
       {
@@ -202,10 +218,14 @@ export function ResultTable({
       ?.headers.map((header) => header.column)
       .filter((column) => column.id !== ROW_NUMBER_COLUMN_ID) ?? []
   const columnIds = visibleColumns.map((column) => column.id)
+  const selectionData = useMemo(
+    () => Array.from({ length: tableState.data.length }, (_, i) => i),
+    [tableState.data.length],
+  )
   const selection = useSelection({
     selection: tableState.selection,
     onChange: onSelectionChange,
-    data: tableState.data,
+    data: selectionData,
     columns: columnIds,
   })
   const selectedRows = new Set(selection.value?.rows)
@@ -214,6 +234,56 @@ export function ResultTable({
   const columnIndex = new Map(columnIds.map((id, index) => [id, index]))
   const cellId = (row: number, col: string) =>
     `${gridId}-${row}-${columnIndex.get(col)}`
+
+  function beginEdit(row: number, column: string, initial?: string) {
+    if (
+      !editing ||
+      editing.busy ||
+      busy ||
+      row < 0 ||
+      !columnMetaById.has(column)
+    )
+      return
+    editing.onEditing(true)
+    setCellEdit({ row, column, initial })
+  }
+  function endEdit(value?: unknown, move?: number, commit = true) {
+    if (!cellEdit || !editing) return
+    if (commit) editing.onChange(cellEdit.row, cellEdit.column, value)
+    editing.onEditing(false)
+    let row = cellEdit.row
+    let index = columnIds.indexOf(cellEdit.column)
+    if (move) {
+      index += move
+      if (index >= columnIds.length) {
+        index = 0
+        row = Math.min(row + 1, tableState.data.length - 1)
+      }
+      if (index < 0) {
+        index = columnIds.length - 1
+        row = Math.max(row - 1, 0)
+      }
+    }
+    const point = { row, col: columnIds[index] }
+    onSelectionChange({
+      rows: [row],
+      columns: [point.col],
+      anchor: point,
+      active: point,
+      toggle: null,
+    })
+    setCellEdit(null)
+    if (move !== undefined || !commit)
+      queueMicrotask(() =>
+        selection.ref.current
+          ?.querySelector<HTMLElement>("[role=grid]")
+          ?.focus(),
+      )
+  }
+  const editingBusy = busy || !!editing?.busy || !!cellEdit
+  const changedCells = new Set(
+    editing?.changes.map((c) => `${c.row}:${c.column}`),
+  )
 
   const exportName = `${exportNamePrefix}-${tableState.dataAt ? new Date(tableState.dataAt).toISOString().slice(11, 19).replaceAll(":", "-") : "latest"}`
   const hasDataColumns = tableState.columns.length > 0
@@ -232,7 +302,61 @@ export function ResultTable({
     <div className="size-full flex flex-col overflow-hidden">
       <AreaToolbar className="overflow-x-auto whitespace-nowrap">
         {toolbarActions}
-        {!readOnly && (
+        {editing && (
+          <>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={
+                editingBusy || !editing.changes.length || !editing.canSave
+              }
+              title={editing.reason ?? "提交修改到数据库 (Ctrl+S)"}
+              onClick={editing.onSave}
+            >
+              <Save className="size-3" />
+              {editing.busy ? "正在提交" : "提交修改"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={editingBusy || !editing.canUndo}
+              title="撤销 (Ctrl+Z)"
+              onClick={editing.onUndo}
+            >
+              <Undo2 className="size-3" />
+              撤销
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={editingBusy || !editing.canRedo}
+              title="重做 (Ctrl+Shift+Z)"
+              onClick={editing.onRedo}
+            >
+              <Redo2 className="size-3" />
+              重做
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={editingBusy || !active}
+              onClick={() => {
+                if (active) editing.onChange(active.row, active.col, null)
+              }}
+            >
+              设为 NULL
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={editingBusy || !editing.changes.length}
+              onClick={editing.onDiscard}
+            >
+              放弃修改
+            </Button>
+          </>
+        )}
+        {enableSorting && (
           <>
             <SortMenu
               table={table}
@@ -308,14 +432,90 @@ export function ResultTable({
             ? `已选 ${selectedRows.size} 行 × ${selectedColumns.size} 列`
             : "未选择"}
         </span>
+        {cellEdit && (
+          <>
+            <span aria-hidden="true" className="h-3 w-px shrink-0 bg-border" />
+            <span>正在编辑</span>
+          </>
+        )}
         {statusText && <span>{statusText}</span>}
+        {editing?.changes.length ? (
+          <span>
+            {editing.changes.length} 个单元格未提交
+            {editing.changes.some((c) => !editing.writable.includes(c.column))
+              ? "（包含仅本地修改）"
+              : ""}
+          </span>
+        ) : null}
+        {editing?.reason && (
+          <span title={editing.reason}>仅本地编辑：{editing.reason}</span>
+        )}
+        {editing?.error && (
+          <span role="alert" className="text-destructive">
+            {editing.error}
+          </span>
+        )}
+        {editing?.notice && <span>{editing.notice}</span>}
         {statusBarEnd}
       </AreaStatusBar>
 
       <div
+        role="group"
+        aria-label="结果表格区域"
         ref={selection.ref}
         className="flex-1 min-h-0 overflow-auto bg-background select-none touch-none"
         {...selection.handlers}
+        onPointerDown={(event) => {
+          if ((event.target as Element).closest("[data-cell-editor]")) return
+          selection.handlers.onPointerDown(event)
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.target !== event.currentTarget.querySelector("[role=grid]") ||
+            !editing
+          ) {
+            selection.handlers.onKeyDown(event)
+            return
+          }
+          const ctrl = event.ctrlKey || event.metaKey
+          if (ctrl && event.key.toLowerCase() === "s") {
+            event.preventDefault()
+            if (!editingBusy && editing.canSave) editing.onSave()
+            return
+          }
+          if (ctrl && ["z", "y"].includes(event.key.toLowerCase())) {
+            event.preventDefault()
+            if (!editingBusy) {
+              if (event.shiftKey || event.key.toLowerCase() === "y")
+                editing.onRedo()
+              else editing.onUndo()
+            }
+            return
+          }
+          if (
+            active &&
+            !ctrl &&
+            !event.altKey &&
+            !event.nativeEvent.isComposing &&
+            (["Enter", "F2"].includes(event.key) || event.key.length === 1)
+          ) {
+            event.preventDefault()
+            beginEdit(
+              active.row,
+              active.col,
+              event.key.length === 1 ? event.key : undefined,
+            )
+            return
+          }
+          selection.handlers.onKeyDown(event)
+        }}
+        onCompositionEnd={(event) => {
+          if (
+            event.target === event.currentTarget.querySelector("[role=grid]") &&
+            active
+          )
+            beginEdit(active.row, active.col, event.data)
+        }}
         onCopy={(event) => {
           if (
             event.target !== event.currentTarget.querySelector("[role=grid]") ||
@@ -488,6 +688,9 @@ export function ResultTable({
                         const serial = column.id === ROW_NUMBER_COLUMN_ID
                         const isActiveCell =
                           active?.row === row.index && active.col === column.id
+                        const isEditing =
+                          cellEdit?.row === row.index &&
+                          cellEdit.column === column.id
                         const selected =
                           !serial &&
                           isActiveRow &&
@@ -512,6 +715,15 @@ export function ResultTable({
                             role={serial ? "rowheader" : "gridcell"}
                             data-grid-row={row.index}
                             data-grid-col={serial ? "" : column.id}
+                            data-editing={isEditing || undefined}
+                            data-edited={
+                              changedCells.has(`${row.index}:${column.id}`) ||
+                              undefined
+                            }
+                            onDoubleClick={() => {
+                              if (!serial && !isEditing)
+                                beginEdit(row.index, column.id)
+                            }}
                             aria-selected={
                               serial
                                 ? isActiveRow &&
@@ -524,23 +736,29 @@ export function ResultTable({
                               serial &&
                                 "text-right font-normal text-muted-foreground",
                               !selected &&
+                                !isEditing &&
                                 "group-hover:bg-[color-mix(in_oklab,var(--accent)_40%,var(--background))]",
                               serial && isActiveRow && "bg-accent text-primary",
                               serial &&
                                 isActiveRow &&
                                 selectedColumns.size === columnIds.length &&
                                 "bg-[color-mix(in_oklab,var(--primary)_15%,var(--background))]",
-                              selected && "bg-accent",
+                              selected && !isEditing && "bg-accent",
+                              changedCells.has(`${row.index}:${column.id}`) &&
+                                "shadow-[inset_3px_0_0_var(--color-amber-500)]",
                               alignRight && "text-right",
                               isActiveCell &&
+                                !isEditing &&
                                 "ring-2 ring-inset ring-primary/70",
+                              isEditing &&
+                                "bg-[color-mix(in_oklab,var(--input)_30%,var(--background))] ring-2 ring-inset ring-ring",
                             )}
                             style={{
                               ...getPinnedStyles(column),
                               width: column.getSize(),
                             }}
                           >
-                            {selected && (
+                            {selected && !isEditing && (
                               <span
                                 aria-hidden="true"
                                 className={cn(
@@ -558,7 +776,20 @@ export function ResultTable({
                                 )}
                               />
                             )}
-                            {serial ? (
+                            {isEditing && resultColumn ? (
+                              <CellEditor
+                                value={rawValue}
+                                column={resultColumn}
+                                initial={cellEdit.initial}
+                                draft={changedCells.has(
+                                  `${row.index}:${column.id}`,
+                                )}
+                                onCommit={(value, move) => endEdit(value, move)}
+                                onCancel={() =>
+                                  endEdit(undefined, undefined, false)
+                                }
+                              />
+                            ) : serial ? (
                               flexRender(
                                 cell.column.columnDef.cell,
                                 cell.getContext(),

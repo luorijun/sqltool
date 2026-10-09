@@ -1,10 +1,12 @@
 import type {
+  CellChange,
   Config,
   ConfigDraft,
   ConfigProfile,
   ConnSnapshot,
   FailureKind,
   QueryResult,
+  SaveResult,
   SelectQuery,
   SelectResult,
   TableSource,
@@ -19,6 +21,7 @@ export const DISCONNECT = "conn:disconnect"
 export const INSPECT = "conn:inspect"
 export const QUERY = "conn:query"
 export const SELECT = "conn:select"
+export const SAVE_RESULT = "conn:save-result"
 export const OPEN_SESSION = "conn:open-session"
 export const CLOSE_TAB = "conn:close-tab"
 export const CANCEL = "conn:cancel"
@@ -51,6 +54,19 @@ export function createDatabaseBridge(invoke: Invoke) {
       invoke<ConnResponse<void>>(CANCEL, requestId),
     query: (sessionId: string, requestId: string, sql: string) =>
       invoke<ConnResponse<QueryResult>>(QUERY, sessionId, requestId, sql),
+    saveResult: (
+      tabId: string,
+      requestId: string,
+      resultId: string,
+      changes: CellChange[],
+    ) =>
+      invoke<ConnResponse<SaveResult>>(
+        SAVE_RESULT,
+        tabId,
+        requestId,
+        resultId,
+        changes,
+      ),
     select: (
       configId: string,
       tabId: string,

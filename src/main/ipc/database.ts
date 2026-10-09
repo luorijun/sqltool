@@ -41,6 +41,8 @@ export function createDatabaseApi(
     closeTab: (tabId) => respond(() => sessions.closeTab(owner, tabId)),
     query: (id, requestId, sql) =>
       respond(() => sessions.query(id, owner, requestId, sql)),
+    saveResult: (tabId, requestId, resultId, changes) =>
+      respond(() => sessions.save(owner, tabId, requestId, resultId, changes)),
     select: (id, tabId, requestId, query) =>
       respond(() => sessions.select(id, owner, tabId, requestId, query)),
     cancel: (id) => respond(() => sessions.cancel(id, owner)),

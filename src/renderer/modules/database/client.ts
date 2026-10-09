@@ -1,6 +1,7 @@
 import { atom, getDefaultStore } from "jotai"
 import type { Setter } from "jotai/vanilla"
 import type {
+  CellChange,
   ConfigProfile,
   ConnSnapshot,
   FailureKind,
@@ -86,6 +87,16 @@ const connApi = {
   },
   query(id: string, requestId: string, sql: string) {
     return unwrap(window.main.conn.query(id, requestId, sql))
+  },
+  saveResult(
+    tabId: string,
+    requestId: string,
+    resultId: string,
+    changes: CellChange[],
+  ) {
+    return unwrap(
+      window.main.conn.saveResult(tabId, requestId, resultId, changes),
+    )
   },
   select(id: string, tabId: string, requestId: string, query: SelectQuery) {
     return unwrap(window.main.conn.select(id, tabId, requestId, query))

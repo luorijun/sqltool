@@ -9,7 +9,7 @@ import {
   rowSortingFeature,
   tableFeatures,
 } from "@tanstack/react-table"
-import type { QueryResultColumn } from "@/core/database"
+import type { CellChange, QueryResultColumn } from "@/core/database"
 import type { SaveTextFileOptions } from "@/preload/bridge"
 import type { GridSelection } from "./selection"
 
@@ -37,6 +37,23 @@ export type ResultRow = Record<string, unknown>
 export type ResultTableInstance = ReactTable<typeof features, ResultRow>
 export type ResultColumn = Column<typeof features, ResultRow, unknown>
 export type ResultColumnDef = ColumnDef<typeof features, ResultRow>
+export interface ResultEditing {
+  changes: CellChange[]
+  writable: string[]
+  busy: boolean
+  canSave: boolean
+  reason?: string
+  error?: string
+  notice?: string
+  canUndo: boolean
+  canRedo: boolean
+  onChange: (row: number, column: string, value: unknown) => void
+  onEditing: (editing: boolean) => void
+  onUndo: () => void
+  onRedo: () => void
+  onDiscard: () => void
+  onSave: () => void
+}
 export interface ResultActions {
   onExport: (options: SaveTextFileOptions) => Promise<void>
   onError: (message: string) => void

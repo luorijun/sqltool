@@ -30,6 +30,7 @@ interface Drag extends Context {
   base: GridSelection | null
   gesture: SelectionGesture
   pointerId: number
+  cell: HTMLElement
   startX: number
   startY: number
   x: number
@@ -80,8 +81,8 @@ export function useSelection({
     ) {
       drag.current = null
       cancelAnimationFrame(frame.current)
-      if (ref.current?.hasPointerCapture(current.pointerId))
-        ref.current.releasePointerCapture(current.pointerId)
+      if (current.cell.hasPointerCapture(current.pointerId))
+        current.cell.releasePointerCapture(current.pointerId)
     }
     const keyboard = keys.current
     if (
@@ -94,14 +95,13 @@ export function useSelection({
   }, [data, columnKey, selection])
 
   useEffect(() => {
-    const root = ref.current
     const cancel = () => {
       const current = drag.current
       drag.current = null
       keys.current = null
       cancelAnimationFrame(frame.current)
-      if (current && root?.hasPointerCapture(current.pointerId))
-        root.releasePointerCapture(current.pointerId)
+      if (current?.cell.hasPointerCapture(current.pointerId))
+        current.cell.releasePointerCapture(current.pointerId)
     }
     const blur = () => {
       cancel()
@@ -119,14 +119,14 @@ export function useSelection({
     drag.current = null
     cancelAnimationFrame(frame.current)
     setDraft(null)
-    if (current && ref.current?.hasPointerCapture(current.pointerId))
-      ref.current.releasePointerCapture(current.pointerId)
+    if (current?.cell.hasPointerCapture(current.pointerId))
+      current.cell.releasePointerCapture(current.pointerId)
     if (current && commit) onChange(current.value)
   }
 
   function pointAt(
     element: Element | null,
-  ): { point: CellPosition; mode: SelectionMode } | null {
+  ): { point: CellPosition; mode: SelectionMode; cell: HTMLElement } | null {
     const cell = element?.closest<HTMLElement>("[data-grid-row][data-grid-col]")
     if (
       !cell ||
@@ -140,6 +140,7 @@ export function useSelection({
     const header = row === -1
     const serial = col === ""
     return {
+      cell,
       point: {
         row: header ? (value?.active.row ?? 0) : row,
         col: serial ? (value?.active.col ?? columns[0]) : col,
@@ -225,6 +226,7 @@ export function useSelection({
       columnKey,
       gesture,
       pointerId: event.pointerId,
+      cell: hit.cell,
       moved: false,
       startX: event.clientX,
       startY: event.clientY,
@@ -233,7 +235,7 @@ export function useSelection({
       value: next,
     }
     setDraft({ base: selection, data, columnKey, value: next })
-    event.currentTarget.setPointerCapture(event.pointerId)
+    hit.cell.setPointerCapture(event.pointerId)
     frame.current = requestAnimationFrame(tick)
   }
 

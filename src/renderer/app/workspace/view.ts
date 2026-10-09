@@ -21,6 +21,7 @@ import {
   updateViewCodeAtom,
   updateViewLayoutAtom,
 } from "@/renderer/modules/workspace"
+import { useTableEditing } from "./edit"
 import { saveText, showError } from "./feedback"
 
 export function useViewCode(): Extract<CodeAreaProps, { mode: "view" }> | null {
@@ -83,6 +84,7 @@ export function useViewTable(): Extract<
   const setSize = useSetAtom(setViewPageSizeAtom)
   const setRange = useSetAtom(setViewRangeAtom)
   const setSort = useSetAtom(setViewSortAtom)
+  const { data, editing } = useTableEditing(tab, stale)
   if (!tab) return null
   const busy = tableState.status === "running"
   const running = busy || tableState.countStatus === "running"
@@ -106,7 +108,8 @@ export function useViewTable(): Extract<
   return {
     mode: "view",
     id,
-    tableState,
+    tableState: { ...tableState, data },
+    editing,
     stale,
     busy,
     running,

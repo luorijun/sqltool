@@ -3,6 +3,7 @@ import connApi, {
   connectionsAtom,
   RequestError,
 } from "@/renderer/modules/database"
+import { createEdits, guardEditsAtom } from "./edit"
 import { createLogEntry, trimLogs, upsertLogEntry } from "./logs"
 import { getPagination, pageOffset } from "./pagination"
 import {
@@ -34,6 +35,15 @@ export const loadViewPageAtom = atom(
       return
     }
 
+    if (
+      tab.table.edits &&
+      (tab.table.edits.changes.length ||
+        tab.table.edits.saving ||
+        tab.table.edits.confirming ||
+        tab.table.edits.editing) &&
+      !(await set(guardEditsAtom, tabId))
+    )
+      return
     const { offset, limit, sort, sortOrder } = {
       ...tab.table,
       ...input,
@@ -96,6 +106,7 @@ export const loadViewPageAtom = atom(
           limit,
           sort,
           sortOrder,
+          edits: createEdits(result),
           columns: result.columns,
           data: toTableRows(result),
           selection: null,
@@ -266,6 +277,15 @@ export const refreshViewAtom = atom(
     if (tab?.kind !== "view") {
       return
     }
+    if (
+      tab.table.edits &&
+      (tab.table.edits.changes.length ||
+        tab.table.edits.saving ||
+        tab.table.edits.confirming ||
+        tab.table.edits.editing) &&
+      !(await set(guardEditsAtom, tabId))
+    )
+      return
     await Promise.all([
       set(loadViewPageAtom, { tabId: tab.id }),
       set(loadViewCountAtom, tab.id),

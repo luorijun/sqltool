@@ -3,11 +3,17 @@ import { z } from "zod"
 import type { Connections } from "@/main/connections"
 import type { Connect } from "@/main/drivers"
 import type { Sessions } from "@/main/sessions"
-import { saveTextFile, writeClipboardText } from "@/main/system"
+import {
+  confirmChanges,
+  saveTextFile,
+  setResultChanges,
+  writeClipboardText,
+} from "@/main/system"
 import type { Workspace } from "@/main/workspace"
 import * as bridge from "@/preload/bridge"
 import { createDatabaseApi } from "./database"
 import {
+  cellChanges,
   config,
   file,
   id,
@@ -82,7 +88,15 @@ export function registerIpc(services: {
     (owner, id, tabId, requestId, query) =>
       api(owner).select(id, tabId, requestId, query),
   )
+  handle(
+    bridge.SAVE_RESULT,
+    z.tuple([id, id, id, cellChanges]),
+    (owner, tabId, requestId, resultId, changes) =>
+      api(owner).saveResult(tabId, requestId, resultId, changes),
+  )
   handle(bridge.CANCEL, z.tuple([id]), (owner, id) => api(owner).cancel(id))
+  handle(bridge.CONFIRM_CHANGES, z.tuple([z.boolean()]), confirmChanges)
+  handle(bridge.SET_DIRTY, z.tuple([z.boolean()]), setResultChanges)
   handle(bridge.WRITE_CLIPBOARD_TEXT, z.tuple([text]), (_owner, text) =>
     writeClipboardText(text),
   )

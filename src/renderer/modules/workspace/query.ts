@@ -3,6 +3,7 @@ import connApi, {
   RequestError,
   sessionsAtom,
 } from "@/renderer/modules/database"
+import { createEdits, guardEditsAtom } from "./edit"
 import { createLogEntry, trimLogs, upsertLogEntry } from "./logs"
 import {
   createQueryTable,
@@ -18,7 +19,7 @@ export const openings = new Map<string, Promise<string>>()
 export const runQueryAtom = atom(
   null,
   async (get, set, { tabId }: { tabId: string }) => {
-    const tab = get(tabStatesAtom)[tabId]
+    let tab = get(tabStatesAtom)[tabId]
     if (!tab || tab.closing || tab.kind !== "query") {
       return
     }
@@ -78,6 +79,23 @@ export const runQueryAtom = atom(
       return
     }
 
+    if (
+      tab.table.edits &&
+      (tab.table.edits.changes.length ||
+        tab.table.edits.saving ||
+        tab.table.edits.confirming ||
+        tab.table.edits.editing)
+    ) {
+      if (!(await set(guardEditsAtom, tabId))) return
+      tab = get(tabStatesAtom)[tabId]
+      if (
+        tab?.kind !== "query" ||
+        !tab.configId ||
+        tab.closing ||
+        tab.execution
+      )
+        return
+    }
     const requestId = crypto.randomUUID()
     let sessionId = tab.sessionId
     const isCurrent = () => {
@@ -182,6 +200,7 @@ export const runQueryAtom = atom(
           error: null,
           dataAt: finishedAt,
           sessionId,
+          edits: createEdits(result),
           columns: result.columns,
           data: toTableRows(result),
         }),
@@ -288,7 +307,10 @@ export const cancelQueryAtom = atom(
 export const rebuildSessionAtom = atom(
   null,
   async (get, set, { tabId }: { tabId: string }) => {
-    const tab = get(tabStatesAtom)[tabId]
+    let tab = get(tabStatesAtom)[tabId]
+    if (tab?.kind !== "query" || !tab.configId || tab.closing) return
+    if (!(await set(guardEditsAtom, tabId))) return
+    tab = get(tabStatesAtom)[tabId]
     if (tab?.kind !== "query" || !tab.configId || tab.closing) return
     set(tabStatesAtom, (states) => ({
       ...states,

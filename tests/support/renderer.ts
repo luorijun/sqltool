@@ -43,20 +43,27 @@ export function renderer(version: number) {
     closeTab: unexpected,
     query: unexpected,
     select: unexpected,
+    saveResult: unexpected,
     cancel: unexpected,
   }
   const workspace: WorkspaceApi = {
     load: async () => null,
     save: async () => {},
   }
+  const system = {
+    confirmChanges: async (
+      _canSubmit: boolean,
+    ): Promise<"submit" | "discard" | "cancel"> => "cancel",
+    setDirty: async (_dirty: boolean) => {},
+  }
   const original = Object.getOwnPropertyDescriptor(globalThis, "window")
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: { main: { conn: bridge, workspace } },
+    value: { main: { conn: bridge, workspace, system } },
   })
   const restore = () => {
     if (original) Object.defineProperty(globalThis, "window", original)
     else Reflect.deleteProperty(globalThis, "window")
   }
-  return { snapshot, capture, ok, bridge, workspace, restore }
+  return { snapshot, capture, ok, bridge, workspace, system, restore }
 }

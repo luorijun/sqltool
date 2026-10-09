@@ -2,6 +2,7 @@ import {
   Client as PgClient,
   type FieldDef as PgField,
   type QueryResultRow as PgRow,
+  types as pgTypes,
 } from "pg"
 import type {
   ConfigProfile,
@@ -400,6 +401,17 @@ async function queryClient(
     text: sql,
     values: params,
     rowMode: "array",
+    types: {
+      getTypeParser(oid, format) {
+        // Preserve temporal precision and timezone text for row identity and edits.
+        if (
+          format !== "binary" &&
+          [1082, 1114, 1184, 1182, 1115, 1185].includes(oid)
+        )
+          return (value: string) => value
+        return pgTypes.getTypeParser(oid, format)
+      },
+    },
   })
 
   const rows = Array.isArray(result.rows) ? result.rows : []
@@ -428,6 +440,55 @@ export async function connectPostgres(
   }
 
   return createConnectionSession({
+    async describe(columns, source) {
+      const ids = new Set(
+        columns.flatMap((c) => (c.sourceTableId ? [c.sourceTableId] : [])),
+      )
+      if (ids.size !== 1) return null
+      const { rows } = await client.query<{
+        schema: string
+        table: string
+        name: string
+        id: number
+        key: boolean
+        generated: boolean
+      }>(
+        `SELECT n.nspname AS schema, c.relname AS table, a.attname AS name,
+          a.attnum AS id, a.attgenerated <> '' AS generated,
+          EXISTS (SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid = c.oid
+            AND i.indisprimary AND a.attnum = ANY((i.indkey::smallint[])[0:i.indnkeyatts-1])) AS key
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+        WHERE c.oid = $1 AND c.relkind IN ('r', 'p')
+          AND a.attnum > 0 AND NOT a.attisdropped
+          AND ($2::text IS NULL OR c.oid = pg_catalog.to_regclass($2)) ORDER BY a.attnum`,
+        [
+          [...ids][0],
+          source
+            ? [source.schema, source.table]
+                .filter(Boolean)
+                .map((s) => `"${s.replaceAll('"', '""')}"`)
+                .join(".")
+            : null,
+        ],
+      )
+      if (!rows.length) return null
+      for (const column of columns) {
+        const field = rows.find((r) => r.id === column.sourceColumnId)
+        if (field)
+          Object.assign(column, {
+            schema: field.schema,
+            table: field.table,
+            sourceColumn: field.name,
+            primaryKey: field.key || undefined,
+          })
+      }
+      return {
+        source: { schema: rows[0].schema, table: rows[0].table },
+        columns: rows,
+      }
+    },
     async transaction() {
       // pg rejects a failed query before ReadyForQuery updates its transaction status.
       if (!("readyForQuery" in client)) return "unknown"

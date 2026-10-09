@@ -107,6 +107,26 @@ export interface QueryResult {
   columns: QueryResultColumn[]
   rows: QueryResultRow[]
   rowCount?: number
+  edit?: ResultEdit
+}
+
+export interface ResultEdit {
+  id: string
+  source?: TableSource
+  keys: string[]
+  writable: string[]
+  reason?: string
+}
+
+export interface CellChange {
+  row: number
+  column: string
+  value: unknown
+}
+
+export interface SaveResult {
+  rows: Array<{ row: number; values: QueryResultRow }>
+  transaction: boolean
 }
 
 export interface TableSource {
