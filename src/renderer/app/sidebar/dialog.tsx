@@ -1,10 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Database, KeyRound, LockKeyhole, Server } from "lucide-react"
-import { useEffect, useId, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { type UseFormReturn, useForm } from "react-hook-form"
 import { toast } from "sonner"
-import type { Config, DbDriver, SshAuth } from "@/core/database"
-import type { CreateConfig } from "@/preload/bridge"
+import type { Config, DbDriver } from "@/core/database"
 import { Badge } from "@/renderer/components/ui/badge"
 import { Button } from "@/renderer/components/ui/button"
 import { ChoiceGroup } from "@/renderer/components/ui/choice-group"
@@ -31,9 +30,23 @@ import {
   TabsTrigger,
 } from "@/renderer/components/ui/tabs"
 import connApi from "@/renderer/modules/database"
-import z from "./validation"
+import {
+  getDefaultValues,
+  getDriverDefaults,
+  getSshState,
+  type Schema,
+  type SshAuthType,
+  schema,
+  toCreateConfig,
+} from "./form"
 
-type SshAuthType = "password" | "privateKey"
+type ConnForm = UseFormReturn<Schema>
+
+type DialogProps = {
+  mode: "create" | "edit"
+  conn?: Config | null
+  onClose: () => void
+}
 
 const driverOptions = [
   {
@@ -72,259 +85,86 @@ const sshAuthOptions = [
   icon: typeof KeyRound
 }>
 
-export const schema = z
-  .object({
-    driver: z.enum(["postgres", "mysql"]),
-    name: z.string().trim().min(1, "连接名称不能为空"),
-    host: z.string(),
-    port: z.string(),
-    username: z.string().trim().min(1, "数据库账号不能为空"),
-    password: z.string().min(1, "数据库密码不能为空"),
-    database: z.string().trim().min(1, "库名不能为空"),
-    ssh: z.object({
-      host: z.string(),
-      port: z.string(),
-      username: z.string(),
-      authType: z.enum(["password", "privateKey"] satisfies [
-        SshAuthType,
-        SshAuthType,
-      ]),
-      secret: z.string(),
-    }),
-  })
-  .superRefine((data, ctx) => {
-    const sshState = getSshState(data.ssh)
-    if (!sshState.hasConfig) {
-      return
-    }
-
-    const requiredFields =
-      data.ssh.authType === "password"
-        ? ([
-            ["host", "SSH 主机不能为空"],
-            ["username", "SSH 账号不能为空"],
-          ] as const)
-        : ([["host", "SSH 主机不能为空"]] as const)
-
-    for (const [field, message] of requiredFields) {
-      if (data.ssh[field].trim()) {
-        continue
-      }
-
-      ctx.addIssue({
-        code: "custom",
-        path: ["ssh", field],
-        message,
-      })
-    }
-
-    if (
-      data.ssh.authType === "password" &&
-      data.ssh.secret.trim().length === 0
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["ssh", "secret"],
-        message: "SSH 密码不能为空",
-      })
-    }
-  })
-
-type Schema = z.infer<typeof schema>
-type ConnDialogMode = "create" | "edit"
-type ConnForm = UseFormReturn<Schema>
-
-function getDriverDefaults(driver: DbDriver) {
-  if (driver === "mysql") {
-    return {
-      host: "127.0.0.1",
-      port: "3306",
-    }
-  }
-
-  return {
-    host: "127.0.0.1",
-    port: "5432",
-  }
-}
-
-function getDefaultSshValues(auth?: SshAuth): Schema["ssh"] {
-  return {
-    host: "",
-    port: "",
-    username: "",
-    authType: auth?.type ?? "privateKey",
-    secret:
-      auth?.type === "password"
-        ? auth.password
-        : auth?.type === "privateKey"
-          ? (auth.passphrase ?? "")
-          : "",
-  }
-}
-
-function getDefaultValues(conn?: Config | null): Schema {
-  return {
-    name: conn?.name ?? "新连接",
-    driver: conn?.driver ?? "postgres",
-    host: conn?.host ?? "",
-    port: conn?.port ?? "",
-    username: conn?.username ?? "",
-    password: conn?.password ?? "",
-    database: conn?.database ?? "",
-    ssh: {
-      ...getDefaultSshValues(conn?.ssh?.auth),
-      host: conn?.ssh?.host ?? "",
-      port: conn?.ssh?.port ?? "",
-      username: conn?.ssh?.username ?? "",
-    },
-  }
-}
-
-function getSshState(values: Schema["ssh"]) {
-  const fields = [values.host, values.port, values.username, values.secret]
-  const hasConfig = fields.some((value) => value.trim().length > 0)
-
-  if (!hasConfig) {
-    return {
-      hasConfig: false,
-      complete: false,
-    }
-  }
-
-  if (values.authType === "privateKey") {
-    return {
-      hasConfig: true,
-      complete: values.host.trim().length > 0,
-    }
-  }
-
-  return {
-    hasConfig: true,
-    complete:
-      values.host.trim().length > 0 &&
-      values.username.trim().length > 0 &&
-      values.secret.trim().length > 0,
-  }
-}
-
-function toSshAuth(data: Schema["ssh"]): SshAuth {
-  if (data.authType === "password") {
-    return {
-      type: "password",
-      password: data.secret,
-    }
-  }
-
-  return {
-    type: "privateKey",
-    passphrase: data.secret.trim() || undefined,
-  }
-}
-
-function toCreateConfig(data: Schema): CreateConfig {
-  const defaults = getDriverDefaults(data.driver)
-  const sshState = getSshState(data.ssh)
-
-  return {
-    name: data.name.trim(),
-    driver: data.driver,
-    host: data.host.trim() || defaults.host,
-    port: data.port.trim() || defaults.port,
-    username: data.username.trim(),
-    password: data.password,
-    database: data.database.trim(),
-    ssh: sshState.hasConfig
-      ? {
-          host: data.ssh.host.trim(),
-          port: data.ssh.port.trim(),
-          username: data.ssh.username.trim(),
-          auth: toSshAuth(data.ssh),
-        }
-      : undefined,
-  }
-}
-
-export function ConnDialog({
-  mode,
-  conn,
-  onClose,
-  onSaved,
-}: {
-  mode: ConnDialogMode | null
-  conn?: Config | null
-  onClose: () => void
-  onSaved?: (conn: Config) => void
-}) {
-  const open = mode !== null
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
+export function useConnDialog({ mode, conn, onClose }: DialogProps) {
+  const active = useRef(true)
+  const pending = useRef(false)
+  const [busy, setBusy] = useState<"save" | "test" | null>(null)
   const form = useForm<Schema>({
     resolver: zodResolver(schema),
-    defaultValues: getDefaultValues(conn),
+    defaultValues: getDefaultValues(mode === "edit" ? conn : null),
   })
 
   useEffect(() => {
-    form.reset(getDefaultValues(mode === "edit" ? conn : null))
-  }, [conn, form, mode])
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
 
   const close = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      form.reset(getDefaultValues(mode === "edit" ? conn : null))
-      setSaving(false)
-      setTesting(false)
-      onClose()
+    if (nextOpen || !active.current) return
+    active.current = false
+    onClose()
+  }
+
+  const run = async (
+    action: "save" | "test",
+    operation: () => Promise<void>,
+  ) => {
+    if (!active.current || pending.current) return
+    pending.current = true
+    setBusy(action)
+    try {
+      await operation()
+    } catch (error) {
+      if (active.current)
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : action === "save"
+              ? "保存失败"
+              : "连接测试失败",
+        )
+    } finally {
+      pending.current = false
+      if (active.current) setBusy(null)
     }
   }
 
-  const save = async (data: Schema) => {
-    setSaving(true)
-
-    try {
+  const save = (data: Schema) =>
+    run("save", async () => {
       const payload = toCreateConfig(data)
-      const saved =
-        mode === "edit" && conn
-          ? await connApi.update(conn.id, payload)
-          : await connApi.create(payload)
-
+      if (mode === "edit" && conn) await connApi.update(conn.id, payload)
+      else await connApi.create(payload)
+      if (!active.current) return
       toast.success(mode === "edit" ? "连接已更新" : "连接已保存")
       close(false)
-      onSaved?.(saved)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "保存失败")
-    } finally {
-      setSaving(false)
-    }
-  }
+    })
 
-  const test = async () => {
-    const valid = await form.trigger()
-    if (!valid) {
-      return
-    }
+  const test = () =>
+    run("test", async () => {
+      const valid = await form.trigger()
+      if (!valid || !active.current) return
+      await connApi.test(toCreateConfig(form.getValues()))
+      if (active.current) toast.success("连接测试成功")
+    })
 
-    setTesting(true)
+  return { form, busy, close, save, test }
+}
 
-    try {
-      const payload = toCreateConfig(form.getValues())
-      await connApi.test(payload)
-      toast.success("连接测试成功")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "连接测试失败")
-    } finally {
-      setTesting(false)
-    }
-  }
-
+export function ConnDialog(props: DialogProps) {
+  const { form, busy, close, save, test } = useConnDialog(props)
   const formId = useId()
   const sshValues = form.watch("ssh")
   const sshState = getSshState(sshValues)
 
   return (
-    <Dialog open={open} onOpenChange={close}>
+    <Dialog open onOpenChange={close}>
       <DialogContent className="w-150">
         <DialogHeader>
-          <DialogTitle>{mode === "edit" ? "编辑连接" : "新连接"}</DialogTitle>
+          <DialogTitle>
+            {props.mode === "edit" ? "编辑连接" : "新连接"}
+          </DialogTitle>
         </DialogHeader>
 
         <ScrollArea viewportClassName="p-3">
@@ -386,15 +226,15 @@ export function ConnDialog({
             type="button"
             variant="outline"
             onClick={test}
-            disabled={saving || testing}
+            disabled={busy !== null}
           >
-            {testing ? "测试中..." : "测试连接"}
+            {busy === "test" ? "测试中..." : "测试连接"}
           </Button>
 
           <div className="flex gap-2">
             <DialogClose render={<Button variant="outline">取消</Button>} />
-            <Button type="submit" form={formId} disabled={saving || testing}>
-              {saving ? "保存中..." : "保存"}
+            <Button type="submit" form={formId} disabled={busy !== null}>
+              {busy === "save" ? "保存中..." : "保存"}
             </Button>
           </div>
         </DialogFooter>

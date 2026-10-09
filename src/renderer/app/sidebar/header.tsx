@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/renderer/components/ui/dropdown-menu"
 import { type NodeActions, NodeMenu } from "./menu"
-import { canRefresh, type TreeNode } from "./tree"
+import { canRefresh, type TreeNode } from "./model"
 
 export function SidebarHeader({
   onCreate,

@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/renderer/components/ui/dropdown-menu"
-import { canRefresh, type TreeNode } from "./tree"
+import { canRefresh, type TreeNode } from "./model"
 
 export interface NodeActions {
   toggleConnection: (node: TreeNode) => void

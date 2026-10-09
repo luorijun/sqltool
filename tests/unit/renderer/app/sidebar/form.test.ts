@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { config } from "@tests/support/config"
 import { createFormControl } from "react-hook-form"
-import { schema } from "@/renderer/app/sidebar/dialog"
+import {
+  getDefaultValues,
+  getSshState,
+  schema,
+  toCreateConfig,
+} from "@/renderer/app/sidebar/form"
 
 test("connection form validates nested SSH fields and clears errors after reset", async () => {
   const defaults = {
@@ -55,4 +61,53 @@ test("connection form validates nested SSH fields and clears errors after reset"
   } finally {
     unsubscribe()
   }
+})
+
+test("connection defaults and payloads keep driver fallbacks and secret whitespace", () => {
+  const values = {
+    ...getDefaultValues(),
+    driver: "mysql" as const,
+    name: "  local  ",
+    host: " ",
+    port: " ",
+    username: " user ",
+    password: " password ",
+    database: " data ",
+  }
+  expect(toCreateConfig(schema.parse(values))).toEqual({
+    driver: "mysql",
+    name: "local",
+    host: "127.0.0.1",
+    port: "3306",
+    username: "user",
+    password: " password ",
+    database: "data",
+    ssh: undefined,
+  })
+  expect(toCreateConfig({ ...values, driver: "postgres" }).port).toBe("5432")
+  expect(getSshState(values.ssh)).toEqual({ hasConfig: false, complete: false })
+})
+
+test("SSH form values restore both authentication modes and preserve omitted private-key fields", () => {
+  for (const auth of [
+    { type: "password" as const, password: " secret " },
+    { type: "privateKey" as const, passphrase: "phrase" },
+  ]) {
+    const ssh = { host: "bastion", port: "", username: "ssh-user", auth }
+    const values = getDefaultValues({ ...config, ssh })
+    expect(getSshState(values.ssh)).toEqual({ hasConfig: true, complete: true })
+    expect(toCreateConfig(schema.parse(values)).ssh).toEqual(ssh)
+  }
+  const values = getDefaultValues(config)
+  values.ssh.host = " bastion "
+  expect(schema.safeParse(values).success).toBe(true)
+  expect(toCreateConfig(values).ssh).toEqual({
+    host: "bastion",
+    port: "",
+    username: "",
+    auth: { type: "privateKey", passphrase: undefined },
+  })
+  values.ssh.authType = "password"
+  expect(getSshState(values.ssh).complete).toBe(false)
+  expect(schema.safeParse(values).success).toBe(false)
 })

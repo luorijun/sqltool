@@ -6,8 +6,8 @@ import {
   nodeKey,
   selectedNode,
   visibleNodes,
-} from "@/renderer/app/sidebar/tree"
-import { getColumnTypeLabel } from "@/renderer/components/result-grid/format"
+} from "@/renderer/app/sidebar/model"
+import { getColumnTypeLabel } from "@/renderer/components/table-area/format"
 
 const connection: Connection = {
   config: {

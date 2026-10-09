@@ -17,7 +17,6 @@ import { openQueryTabAtom, openViewTabAtom } from "@/renderer/modules/workspace"
 import { ConnDialog } from "./dialog"
 import { SidebarHeader } from "./header"
 import type { NodeActions } from "./menu"
-import { SchemaTree } from "./schema"
 import {
   buildTree,
   canRefresh,
@@ -25,7 +24,8 @@ import {
   selectedNode,
   type TreeNode,
   visibleNodes,
-} from "./tree"
+} from "./model"
+import { SchemaTree } from "./tree"
 
 export default function Sidebar(props: { className?: string }) {
   const connections = useAtomValue(connectionsAtom)
@@ -169,11 +169,14 @@ export default function Sidebar(props: { className?: string }) {
           />
         )}
       </ScrollArea>
-      <ConnDialog
-        mode={dialog?.mode ?? null}
-        conn={dialog?.target ?? null}
-        onClose={() => setDialog(null)}
-      />
+      {dialog ? (
+        <ConnDialog
+          key={dialog.target?.id ?? "create"}
+          mode={dialog.mode}
+          conn={dialog.target}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
     </nav>
   )
 }
